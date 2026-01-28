@@ -1,0 +1,1 @@
+"""AudioQual - Audio quality analyzer."""
