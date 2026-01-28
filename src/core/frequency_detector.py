@@ -1187,17 +1187,19 @@ def find_cutoff_by_transition(
         # Musical content has variance >= TRANSITION_MIN_PRE_VARIANCE (0.4)
         # Transcode noise has low variance (typically < 0.3)
         is_musical_content = variance_low >= TRANSITION_MIN_PRE_VARIANCE
-        is_next_non_musical = variance_high < TRANSITION_MIN_PRE_VARIANCE
 
         # Method 1a: Significant energy drop with musical content before
         # NOTE: We do NOT require min_energy_db threshold because high variance
         # already confirms musical content.
         has_significant_drop = drop >= min_drop_db
 
-        # Method 1b: Musical → non-musical transition
+        # Method 1b: Musical → noise transition
         # This catches cases where energy drops gradually but variance clearly
-        # shows the musical content has ended
-        is_variance_transition = is_musical_content and is_next_non_musical and drop > 0
+        # shows the musical content has ended.
+        # IMPORTANT: Require post-variance < 0.2 (clearly noise), not just < 0.4
+        # This prevents false positives on legitimate 320kbps files where variance
+        # gradually decreases but post-band still has significant musical content.
+        is_variance_transition = is_musical_content and variance_high < 0.2 and drop > 0
 
         if is_musical_content and (has_significant_drop or is_variance_transition):
             # Verify energy doesn't recover after the drop
