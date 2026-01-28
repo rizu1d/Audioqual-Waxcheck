@@ -80,6 +80,7 @@ TRANSITION_CONFIRMATION_BANDS = 2     # Number of bands after drop that must sta
 # Instead of absolute thresholds, we check if variance DROPS significantly between bands
 TRANSITION_VARIANCE_DROP_RATIO = 0.30 # Variance must drop by at least 30% between bands
 TRANSITION_RECOVERY_THRESHOLD_DB = 3.0  # If energy rises >3dB after drop, it's not a real cutoff
+TRANSITION_MIN_PRE_VARIANCE = 0.4     # Pre-transition band must have at least 40% of reference variance (musical content)
 
 # Supported audio formats
 SUPPORTED_FORMATS = {".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".wma"}

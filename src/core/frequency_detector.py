@@ -40,6 +40,7 @@ from ..utils.constants import (
     TRANSITION_CONFIRMATION_BANDS,
     TRANSITION_VARIANCE_DROP_RATIO,
     TRANSITION_RECOVERY_THRESHOLD_DB,
+    TRANSITION_MIN_PRE_VARIANCE,
 )
 
 
@@ -1091,7 +1092,8 @@ def find_cutoff_by_transition(
     confirmation_bands: int = TRANSITION_CONFIRMATION_BANDS,
 ) -> Tuple[float, float]:
     """
-    Detect cutoff frequency by finding the most significant energy TRANSITION.
+    Detect cutoff frequency by finding the FIRST significant energy TRANSITION
+    where real musical content ends.
 
     Unlike the relative energy method that asks "does this band have content?",
     this method asks "where does the energy DROP significantly?".
@@ -1100,14 +1102,20 @@ def find_cutoff_by_transition(
     energy drop (typically 8-20dB) at a specific frequency. This function
     finds that transition point.
 
-    Algorithm (v2 - uses RELATIVE variance drop):
+    Algorithm (v3 - "First Musical Transition"):
     1. Calculate energy AND variance for each 500Hz band from 10kHz to 21kHz
-    2. Find where energy DROPS significantly between adjacent bands
-    3. Verify variance DROPS relatively (not absolute thresholds) - this avoids
-       the "dead zone" problem where values between 0.35-0.40 failed both checks
-    4. Verify energy doesn't recover after the drop
-    5. Use combined scoring (energy + variance) to pick best transition
-    6. Return the frequency where the transition occurs
+    2. PHASE 1: Find the FIRST transition where:
+       - Pre-transition band has MUSICAL content (variance >= 40% of reference)
+       - Energy drops significantly (>= 8dB)
+       - Energy doesn't recover after the drop
+       This catches transcodes where real music ends but noise continues.
+    3. PHASE 2 (fallback): If no musical transition found, use best-score method
+       This handles lossless files and edge cases.
+
+    Key insight: Musical content has HIGH temporal variance (follows dynamics).
+    Transcode noise/artifacts have LOW variance (constant energy).
+    By requiring the pre-transition band to have musical content, we find
+    where the REAL music ends, not where the noise finally fades.
 
     Args:
         spectrogram_db: Full spectrogram (frequency_bins x time_frames)
@@ -1152,7 +1160,62 @@ def find_cutoff_by_transition(
     if len(band_stats) < 3:
         return nyquist_hz, 0.3  # Not enough bands to analyze
 
-    # Step 2: Find transitions using RELATIVE variance drop (not absolute thresholds)
+    # Helper function: check if energy recovers after a given band index
+    def energy_recovers_after(band_index: int, post_energy: float) -> bool:
+        for j in range(band_index + 2, len(band_stats)):
+            _, future_energy, _ = band_stats[j]
+            if future_energy > post_energy + TRANSITION_RECOVERY_THRESHOLD_DB:
+                return True
+        return False
+
+    # ==========================================================================
+    # PHASE 1: Find the FIRST transition with MUSICAL content before it
+    # This is the key fix for transcode detection!
+    #
+    # Two detection methods:
+    # 1a. Energy drop >= 8dB with musical content before
+    # 1b. Musical → non-musical variance transition (handles gradual energy drops)
+    # ==========================================================================
+    for i in range(len(band_stats) - 1):
+        freq_low, energy_low, variance_low = band_stats[i]
+        freq_high, energy_high, variance_high = band_stats[i + 1]
+
+        # Calculate energy drop (positive if energy decreases)
+        drop = energy_low - energy_high
+
+        # Check if pre-transition band has MUSICAL content (high variance)
+        # Musical content has variance >= TRANSITION_MIN_PRE_VARIANCE (0.4)
+        # Transcode noise has low variance (typically < 0.3)
+        is_musical_content = variance_low >= TRANSITION_MIN_PRE_VARIANCE
+        is_next_non_musical = variance_high < TRANSITION_MIN_PRE_VARIANCE
+
+        # Method 1a: Significant energy drop with musical content before
+        # NOTE: We do NOT require min_energy_db threshold because high variance
+        # already confirms musical content.
+        has_significant_drop = drop >= min_drop_db
+
+        # Method 1b: Musical → non-musical transition
+        # This catches cases where energy drops gradually but variance clearly
+        # shows the musical content has ended
+        is_variance_transition = is_musical_content and is_next_non_musical and drop > 0
+
+        if is_musical_content and (has_significant_drop or is_variance_transition):
+            # Verify energy doesn't recover after the drop
+            if not energy_recovers_after(i, energy_high):
+                # Found the FIRST transition where musical content ends!
+                # Calculate confidence based on detection method
+                if has_significant_drop:
+                    # Higher confidence for clear energy drops
+                    confidence = min(0.95, 0.6 + (drop / 20.0) * 0.2 + variance_low * 0.15)
+                else:
+                    # Slightly lower confidence for variance-only transitions
+                    confidence = min(0.90, 0.55 + (drop / 20.0) * 0.15 + variance_low * 0.15)
+                return freq_high, confidence
+
+    # ==========================================================================
+    # PHASE 2: Fallback - use best-score method (for lossless, etc.)
+    # If no transition with musical content was found, find the best overall
+    # ==========================================================================
     best_score = 0.0
     best_cutoff_hz = nyquist_hz
     best_confidence = 0.3
@@ -1164,42 +1227,28 @@ def find_cutoff_by_transition(
         # Calculate energy drop (positive if energy decreases)
         drop = energy_low - energy_high
 
-        # Calculate RELATIVE variance drop (v2 approach)
-        # This avoids the "dead zone" problem with absolute thresholds
+        # Calculate RELATIVE variance drop
         variance_drop_ratio = 0.0
         if variance_low > 0.1:  # Avoid division by very small values
             variance_drop_ratio = (variance_low - variance_high) / variance_low
 
         # Determine if this is a good variance transition
-        # Primary: variance drops by at least 30% (TRANSITION_VARIANCE_DROP_RATIO)
-        # Fallback: pre-variance is significant (>0.3) and post-variance is low (<0.2)
         is_good_variance_transition = (
             variance_drop_ratio > TRANSITION_VARIANCE_DROP_RATIO or
             (variance_low > 0.3 and variance_high < 0.2)
         )
 
         if drop >= min_drop_db and energy_low >= min_energy_db:
-            # Step 3: Verify energy doesn't recover after the drop
-            energy_recovers = False
-            for j in range(i + 2, len(band_stats)):
-                _, future_energy, _ = band_stats[j]
-                if future_energy > energy_high + TRANSITION_RECOVERY_THRESHOLD_DB:
-                    energy_recovers = True
-                    break
-
-            if not energy_recovers:
-                # Step 4: Calculate combined score (energy + variance)
-                # Energy score: normalize by 20dB (20dB drop = 1.0)
+            # Verify energy doesn't recover after the drop
+            if not energy_recovers_after(i, energy_high):
+                # Calculate combined score (energy + variance)
                 energy_score = drop / 20.0
-                # Variance score: only count if it's a good transition
                 variance_score = variance_drop_ratio if is_good_variance_transition else 0.0
-                # Combined score: energy is primary, variance is secondary (0.5 weight)
                 combined_score = energy_score + variance_score * 0.5
 
                 if combined_score > best_score:
                     best_score = combined_score
                     best_cutoff_hz = freq_high
-                    # Confidence based on combined score
                     best_confidence = min(0.95, 0.5 + combined_score * 0.3)
 
     return best_cutoff_hz, best_confidence
