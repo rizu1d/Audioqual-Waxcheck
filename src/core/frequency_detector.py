@@ -1196,10 +1196,11 @@ def find_cutoff_by_transition(
         # Method 1b: Musical → noise transition
         # This catches cases where energy drops gradually but variance clearly
         # shows the musical content has ended.
-        # IMPORTANT: Require post-variance < 0.2 (clearly noise), not just < 0.4
-        # This prevents false positives on legitimate 320kbps files where variance
-        # gradually decreases but post-band still has significant musical content.
-        is_variance_transition = is_musical_content and variance_high < 0.2 and drop > 0
+        # IMPORTANT: Require post-variance < 0.3 to catch "gray zone" cases like
+        # The Box where variance drops to ~0.29 (not clearly noise at 0.2 threshold
+        # but also not musical at 0.4). This still prevents false positives on
+        # legitimate 320kbps files.
+        is_variance_transition = is_musical_content and variance_high < 0.3 and drop > 0
 
         if is_musical_content and (has_significant_drop or is_variance_transition):
             # Verify energy doesn't recover after the drop
