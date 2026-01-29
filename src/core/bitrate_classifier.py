@@ -172,7 +172,7 @@ def assess_quality(
         status = STATUS_LOSSLESS
     elif is_transcode:
         status = STATUS_TRANSCODE
-    elif detected_quality in ("low", "96kbps"):
+    elif cutoff_khz < 18.0:
         status = STATUS_LOW_QUALITY
     else:
         status = STATUS_OK
