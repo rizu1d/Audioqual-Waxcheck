@@ -83,7 +83,7 @@ TRANSITION_RECOVERY_THRESHOLD_DB = 3.0  # If energy rises >3dB after drop, it's 
 TRANSITION_MIN_PRE_VARIANCE = 0.4     # Pre-transition band must have at least 40% of reference variance (musical content)
 
 # Supported audio formats
-SUPPORTED_FORMATS = {".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".wma"}
+SUPPORTED_FORMATS = {".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".wma", ".aiff", ".aif"}
 
 # GUI constants
 WINDOW_WIDTH = 1200

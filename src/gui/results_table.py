@@ -150,13 +150,21 @@ class ResultsTable(ctk.CTkFrame):
         if result.is_uncertain and result.detected_quality:
             quality_display = f"{result.detected_quality} (?)"
 
+        # Cutoff display with override support
+        if result.display_cutoff_override:
+            cutoff_display = result.display_cutoff_override
+        elif result.cutoff_frequency_khz > 0:
+            cutoff_display = f"{result.cutoff_frequency_khz:.1f} kHz"
+        else:
+            cutoff_display = "-"
+
         # Format values
         values = (
             result.filename,
             result.format,
             format_duration(result.duration) if result.duration > 0 else "-",
             f"{result.declared_bitrate} kbps" if result.declared_bitrate else "-",
-            f"{result.cutoff_frequency_khz:.1f} kHz" if result.cutoff_frequency_khz > 0 else "-",
+            cutoff_display,
             quality_display,
             result.status,
         )

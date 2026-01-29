@@ -37,6 +37,7 @@ class AnalysisResult:
     audio_data: Optional[AudioData] = None
     is_uncertain: bool = False  # True if result should be verified manually
     uncertainty_reason: str = ""  # Explanation for uncertainty
+    display_cutoff_override: Optional[str] = None  # e.g., ">20 kHz" for genuine lossless
 
 
 @dataclass
@@ -113,6 +114,7 @@ class AudioAnalyzer:
                 audio_data=audio_data,
                 is_uncertain=quality.is_uncertain,
                 uncertainty_reason=quality.uncertainty_reason,
+                display_cutoff_override=quality.display_cutoff_override,
             )
 
         except Exception as e:

@@ -10,6 +10,7 @@ from mutagen import File as MutagenFile
 from mutagen.mp3 import MP3
 from mutagen.flac import FLAC
 from mutagen.wave import WAVE
+from mutagen.aiff import AIFF
 
 from ..utils.constants import SAMPLE_RATE
 from ..utils.file_utils import get_file_extension, get_file_size_mb
@@ -75,6 +76,9 @@ def get_audio_metadata(filepath: str) -> AudioMetadata:
                 if hasattr(audio_file.info, 'bits_per_sample'):
                     bit_depth = audio_file.info.bits_per_sample
             elif ext == 'wav' and isinstance(audio_file, WAVE):
+                if hasattr(audio_file.info, 'bits_per_sample'):
+                    bit_depth = audio_file.info.bits_per_sample
+            elif ext in ('aiff', 'aif') and isinstance(audio_file, AIFF):
                 if hasattr(audio_file.info, 'bits_per_sample'):
                     bit_depth = audio_file.info.bits_per_sample
 

@@ -30,6 +30,7 @@ class QualityAssessment:
     details: str
     is_uncertain: bool = False  # True if result should be verified manually
     uncertainty_reason: str = ""  # Explanation for uncertainty
+    display_cutoff_override: Optional[str] = None  # e.g., ">20 kHz" for genuine lossless
 
 
 def classify_by_frequency(cutoff_khz: float) -> str:
@@ -161,6 +162,13 @@ def assess_quality(
         is_uncertain = True
         uncertainty_reason = "MP3 no puede ser lossless real"
 
+    # Lossless format special handling: genuine lossless files with high cutoff
+    is_lossless_format = metadata.format.upper() in ["FLAC", "WAV", "AIFF"]
+    display_cutoff_override = None
+    if is_lossless_format and cutoff_khz >= 18.0:
+        detected_quality = "lossless"
+        display_cutoff_override = ">20 kHz"
+
     is_transcode = detect_transcode(
         metadata.bitrate,
         detected_quality,
@@ -209,6 +217,7 @@ def assess_quality(
         details=details,
         is_uncertain=is_uncertain,
         uncertainty_reason=uncertainty_reason,
+        display_cutoff_override=display_cutoff_override,
     )
 
 
