@@ -1196,11 +1196,30 @@ def find_cutoff_by_transition(
         # Method 1b: Musical → noise transition
         # This catches cases where energy drops gradually but variance clearly
         # shows the musical content has ended.
-        # IMPORTANT: Require post-variance < 0.3 to catch "gray zone" cases like
-        # The Box where variance drops to ~0.29 (not clearly noise at 0.2 threshold
-        # but also not musical at 0.4). This still prevents false positives on
-        # legitimate 320kbps files.
-        is_variance_transition = is_musical_content and variance_high < 0.3 and drop > 0
+        #
+        # We use THREE criteria (any can trigger detection):
+        # 1. Absolute threshold: post-variance < 0.3 (clearly noise)
+        # 2. Relative drop: variance drops by >= 35% from pre to post band
+        # 3. Two-band lookahead: if the band TWO steps ahead is clearly noise (var < 0.2)
+        #    and we're in a musical band, this indicates a gradual transition
+        #
+        # The relative drop catches "gray zone" cases like gradual transitions
+        # where post-variance might be 0.36 (not < 0.3) but dropped from 0.57
+        # (a 37% drop, close to significant). Using 35% threshold catches these
+        # while avoiding false positives.
+        variance_drop_ratio = (variance_low - variance_high) / variance_low if variance_low > 0.1 else 0.0
+        has_absolute_variance_drop = variance_high < 0.3
+        has_relative_variance_drop = variance_drop_ratio >= 0.35
+
+        # Two-band lookahead: check if band i+2 is clearly noise
+        has_two_band_transition = False
+        if i + 2 < len(band_stats):
+            _, _, variance_two_ahead = band_stats[i + 2]
+            # If current band is musical and two bands ahead is clearly noise,
+            # we're at the start of a gradual transition
+            has_two_band_transition = variance_two_ahead < 0.2 and variance_high < 0.5
+
+        is_variance_transition = is_musical_content and (has_absolute_variance_drop or has_relative_variance_drop or has_two_band_transition) and drop > 0
 
         if is_musical_content and (has_significant_drop or is_variance_transition):
             # Verify energy doesn't recover after the drop
