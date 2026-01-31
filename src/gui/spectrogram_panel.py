@@ -1,15 +1,15 @@
-"""Spectrogram visualization panel with matplotlib."""
+"""Spectrogram visualization panel with background threading."""
 
+import io
+import threading
 from typing import Optional
 
 import customtkinter as ctk
 import matplotlib
-matplotlib.use("TkAgg")
-
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 import numpy as np
+from PIL import Image, ImageTk
 
 from ..core.frequency_detector import FrequencyAnalysis
 
@@ -17,13 +17,19 @@ from ..core.frequency_detector import FrequencyAnalysis
 class SpectrogramPanel(ctk.CTkFrame):
     """
     Panel for displaying audio spectrograms with frequency cutoff visualization.
+    Uses background threading for responsive UI during rendering.
     """
 
     def __init__(self, master, **kwargs):
         super().__init__(master, **kwargs)
 
-        self._setup_ui()
         self._current_analysis: Optional[FrequencyAnalysis] = None
+        self._render_thread: Optional[threading.Thread] = None
+        self._render_cancelled = threading.Event()
+        self._render_id = 0  # Incremental ID for tracking renders
+        self._photo_image = None  # Keep reference to prevent garbage collection
+
+        self._setup_ui()
 
     def _setup_ui(self):
         """Set up the panel UI."""
@@ -50,14 +56,20 @@ class SpectrogramPanel(ctk.CTkFrame):
         )
         self.file_label.grid(row=0, column=1, padx=10, pady=5, sticky="e")
 
-        # Matplotlib figure container
+        # Figure container frame
         self.figure_frame = ctk.CTkFrame(self)
         self.figure_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
         self.figure_frame.grid_columnconfigure(0, weight=1)
         self.figure_frame.grid_rowconfigure(0, weight=1)
 
-        # Create matplotlib figure
-        self._setup_figure()
+        # Image label for displaying rendered spectrogram
+        self._image_label = ctk.CTkLabel(
+            self.figure_frame,
+            text="",
+            image=None,
+        )
+        self._image_label.grid(row=0, column=0, sticky="nsew")
+        self._image_label.grid_remove()  # Initially hidden
 
         # Info panel
         self.info_frame = ctk.CTkFrame(self, height=80)
@@ -97,24 +109,13 @@ class SpectrogramPanel(ctk.CTkFrame):
         )
         self.empty_label.place(relx=0.5, rely=0.5, anchor="center")
 
-    def _setup_figure(self):
-        """Set up the matplotlib figure."""
-        # Create figure with dark theme
-        plt.style.use('dark_background')
-
-        self.fig = Figure(figsize=(6, 4), dpi=100, facecolor='#2b2b2b')
-        self.ax_spectrogram = self.fig.add_subplot(211)
-        self.ax_energy = self.fig.add_subplot(212)
-
-        self.fig.tight_layout(pad=2.0)
-
-        # Create canvas
-        self.canvas = FigureCanvasTkAgg(self.fig, master=self.figure_frame)
-        self.canvas_widget = self.canvas.get_tk_widget()
-        self.canvas_widget.grid(row=0, column=0, sticky="nsew")
-
-        # Initially hide canvas
-        self.canvas_widget.grid_remove()
+        # Loading indicator
+        self._loading_label = ctk.CTkLabel(
+            self.figure_frame,
+            text="Cargando espectrograma...",
+            font=ctk.CTkFont(size=14),
+            text_color=("gray50", "gray60"),
+        )
 
     def show_spectrogram(
         self,
@@ -124,58 +125,136 @@ class SpectrogramPanel(ctk.CTkFrame):
     ):
         """
         Display the spectrogram and energy spectrum for an analysis.
+        Uses background threading for responsive UI.
 
         Args:
             analysis: FrequencyAnalysis object with spectral data
             filename: Name of the file being displayed
             cutoff_khz: Detected cutoff frequency in kHz
         """
-        self._current_analysis = analysis
+        # 1. Cancel any in-progress render
+        self._render_cancelled.set()
+        self._render_id += 1
+        current_render_id = self._render_id
 
-        # Hide empty state, show canvas
+        # 2. Show loading state immediately
+        self._show_loading(filename)
+
+        # 3. Get dimensions for rendering
+        self.update_idletasks()
+        width = max(self.figure_frame.winfo_width(), 600)
+        height = max(self.figure_frame.winfo_height(), 400)
+
+        # 4. Reset cancellation flag for new render
+        self._render_cancelled.clear()
+
+        # 5. Start background render thread
+        self._render_thread = threading.Thread(
+            target=self._render_in_background,
+            args=(current_render_id, analysis, filename, cutoff_khz, width, height),
+            daemon=True,
+        )
+        self._render_thread.start()
+
+    def _show_loading(self, filename: str):
+        """Show loading indicator immediately."""
+        self._current_analysis = None
+
+        # Hide empty state and image
         self.empty_label.place_forget()
-        self.canvas_widget.grid()
+        self._image_label.grid_remove()
 
-        # Update title
+        # Show loading label
+        self._loading_label.place(relx=0.5, rely=0.5, anchor="center")
+
+        # Update file label
         self.file_label.configure(text=filename)
+        self.cutoff_label.configure(text="Cargando...")
+        self.max_freq_label.configure(text="Frec. max: -")
+        self.confidence_label.configure(text="Confianza: -")
 
-        # Clear axes
-        self.ax_spectrogram.clear()
-        self.ax_energy.clear()
+        # Force visual update
+        self.update_idletasks()
 
-        # Plot spectrogram
-        self._plot_spectrogram(analysis)
+    def _render_in_background(
+        self,
+        render_id: int,
+        analysis: FrequencyAnalysis,
+        filename: str,
+        cutoff_khz: float,
+        width: int,
+        height: int,
+    ):
+        """Render spectrogram in background thread using Agg backend."""
+        # Check for cancellation
+        if self._render_cancelled.is_set() or render_id != self._render_id:
+            return
 
-        # Plot energy spectrum with cutoff line
-        self._plot_energy_spectrum(analysis, cutoff_khz)
+        try:
+            # Use non-interactive backend (thread-safe)
+            matplotlib.use('Agg')
+            plt.style.use('dark_background')
 
-        # Update figure
-        self.fig.tight_layout(pad=2.0)
-        self.canvas.draw()
+            # Create new figure (don't reuse to avoid state issues)
+            dpi = 100
+            fig = Figure(
+                figsize=(width / dpi, height / dpi),
+                dpi=dpi,
+                facecolor='#2b2b2b'
+            )
+            ax_spectrogram = fig.add_subplot(211)
+            ax_energy = fig.add_subplot(212)
 
-        # Update info labels
-        self.cutoff_label.configure(text=f"Frec. de corte: {cutoff_khz:.1f} kHz")
-        self.max_freq_label.configure(
-            text=f"Frec. max: {analysis.max_frequency_hz / 1000:.1f} kHz"
-        )
-        self.confidence_label.configure(
-            text=f"Confianza: {analysis.confidence * 100:.0f}%"
-        )
+            # Check for cancellation
+            if self._render_cancelled.is_set() or render_id != self._render_id:
+                plt.close(fig)
+                return
 
-    def _plot_spectrogram(self, analysis: FrequencyAnalysis):
-        """Plot the spectrogram."""
-        ax = self.ax_spectrogram
+            # Plot spectrogram
+            self._plot_spectrogram_on_axes(ax_spectrogram, analysis)
 
+            # Plot energy spectrum
+            self._plot_energy_on_axes(ax_energy, analysis, cutoff_khz)
+
+            fig.tight_layout(pad=2.0)
+
+            # Check for cancellation after plotting
+            if self._render_cancelled.is_set() or render_id != self._render_id:
+                plt.close(fig)
+                return
+
+            # Render to PIL image
+            buf = io.BytesIO()
+            fig.savefig(buf, format='png', facecolor='#2b2b2b', bbox_inches='tight')
+            buf.seek(0)
+            image = Image.open(buf)
+            # Make a copy since we're closing the buffer
+            image = image.copy()
+            buf.close()
+
+            plt.close(fig)  # Free memory
+
+            # Send result to main thread
+            self.after(0, lambda: self._on_render_complete(
+                render_id, image, filename, cutoff_khz, analysis
+            ))
+
+        except Exception as e:
+            # Log error but don't crash
+            print(f"Error rendering spectrogram: {e}")
+            plt.close('all')
+
+    def _plot_spectrogram_on_axes(self, ax, analysis: FrequencyAnalysis):
+        """Plot the spectrogram on given axes."""
         # Get data
         spectrogram_db = analysis.spectrogram_db
         frequencies = analysis.frequencies
 
         # Create time axis (simplified)
         n_frames = spectrogram_db.shape[1]
-        times = np.arange(n_frames)
 
         # Plot spectrogram
-        img = ax.imshow(
+        ax.imshow(
             spectrogram_db,
             aspect='auto',
             origin='lower',
@@ -199,10 +278,10 @@ class SpectrogramPanel(ctk.CTkFrame):
 
         ax.tick_params(colors='white', labelsize=8)
 
-    def _plot_energy_spectrum(self, analysis: FrequencyAnalysis, cutoff_khz: float):
-        """Plot the average energy spectrum with cutoff indicator."""
-        ax = self.ax_energy
-
+    def _plot_energy_on_axes(
+        self, ax, analysis: FrequencyAnalysis, cutoff_khz: float
+    ):
+        """Plot the average energy spectrum with cutoff indicator on given axes."""
         # Get data
         energy = analysis.energy_spectrum
         frequencies = analysis.frequencies / 1000  # Convert to kHz
@@ -239,17 +318,52 @@ class SpectrogramPanel(ctk.CTkFrame):
         ax.tick_params(colors='white', labelsize=8)
         ax.grid(True, alpha=0.2)
 
+    def _on_render_complete(
+        self,
+        render_id: int,
+        image: Image.Image,
+        filename: str,
+        cutoff_khz: float,
+        analysis: FrequencyAnalysis,
+    ):
+        """Handle render completion in main thread."""
+        # Verify this is still the expected render
+        if render_id != self._render_id:
+            return  # Obsolete render, discard
+
+        # Convert to PhotoImage
+        self._photo_image = ImageTk.PhotoImage(image)
+
+        # Hide loading, show image
+        self._loading_label.place_forget()
+        self._image_label.configure(image=self._photo_image, text="")
+        self._image_label.grid()
+
+        # Update info labels
+        self.cutoff_label.configure(text=f"Frec. de corte: {cutoff_khz:.1f} kHz")
+        self.max_freq_label.configure(
+            text=f"Frec. max: {analysis.max_frequency_hz / 1000:.1f} kHz"
+        )
+        self.confidence_label.configure(
+            text=f"Confianza: {analysis.confidence * 100:.0f}%"
+        )
+
+        self._current_analysis = analysis
+
     def clear(self):
         """Clear the spectrogram display."""
+        # Cancel any in-progress render
+        self._render_cancelled.set()
+        self._render_id += 1
+
         self._current_analysis = None
+        self._photo_image = None
 
-        # Clear axes
-        self.ax_spectrogram.clear()
-        self.ax_energy.clear()
-        self.canvas.draw()
+        # Hide image and loading
+        self._image_label.grid_remove()
+        self._loading_label.place_forget()
 
-        # Hide canvas, show empty state
-        self.canvas_widget.grid_remove()
+        # Show empty state
         self.empty_label.place(relx=0.5, rely=0.5, anchor="center")
 
         # Reset labels

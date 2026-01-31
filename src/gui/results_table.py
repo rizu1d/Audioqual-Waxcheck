@@ -133,7 +133,9 @@ class ResultsTable(ctk.CTkFrame):
             return
 
         item_id = selection[0]
-        filepath = self.tree.item(item_id, "values")[0]  # filename is first, but we use item id
+
+        # Force immediate visual update of selection
+        self.tree.update_idletasks()
 
         # The item id is the filepath
         self._selected_filepath = item_id
