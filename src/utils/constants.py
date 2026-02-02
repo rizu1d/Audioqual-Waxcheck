@@ -91,17 +91,30 @@ WINDOW_HEIGHT = 800
 MIN_WINDOW_WIDTH = 900
 MIN_WINDOW_HEIGHT = 600
 
-# Colors for status
+# Theme colors - Premium purple/gold/black palette
+THEME_COLORS = {
+    "primary": "#7969A8",           # Morado Principal - buttons, headers, accents
+    "primary_dark": "#524479",      # Morado Oscuro - hover states, borders, status bar
+    "accent": "#FCC844",            # Amarillo Dorado - selection, highlights
+    "text_primary": "#F3F1E5",      # Crema - main text
+    "text_secondary": "#DCDDE1",    # Gris Claro - secondary text
+    "bg_primary": "#080808",        # Negro - main background
+    "bg_secondary": "#0a0a0a",      # Negro ligeramente más claro - table bg
+    "bg_tertiary": "#0f0f0f",       # Negro para drop zone
+    "bg_frame": "#121212",          # Fondo de frames
+}
+
+# Colors for status - harmonized with theme palette
 STATUS_COLORS = {
-    STATUS_OK: "#2ECC71",
-    STATUS_LOSSLESS: "#3498DB",
-    STATUS_TRANSCODE: "#E74C3C",
-    STATUS_LOW_QUALITY: "#F39C12",
-    STATUS_ERROR: "#95A5A6",
-    STATUS_PENDING: "#BDC3C7",
-    STATUS_ANALYZING: "#9B59B6",
-    STATUS_UNCERTAIN: "#F1C40F",    # Yellow - uncertain result
-    STATUS_VARIABLE: "#E67E22",     # Orange - variable quality
+    STATUS_OK: "#6FCF97",           # Verde armonizado
+    STATUS_LOSSLESS: "#7969A8",     # Morado principal
+    STATUS_TRANSCODE: "#E74C3C",    # Rojo warning (mantener)
+    STATUS_LOW_QUALITY: "#F39C12",  # Naranja (mantener)
+    STATUS_ERROR: "#6B6B6B",        # Gris oscuro
+    STATUS_PENDING: "#4A4A4A",      # Gris medio
+    STATUS_ANALYZING: "#FCC844",    # Dorado
+    STATUS_UNCERTAIN: "#F1C40F",    # Amarillo - uncertain result
+    STATUS_VARIABLE: "#E67E22",     # Naranja - variable quality
 }
 
 # Export formats

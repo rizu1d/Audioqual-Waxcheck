@@ -7,7 +7,7 @@ from typing import Callable, Dict, List, Optional
 import customtkinter as ctk
 
 from ..core.analyzer import AnalysisResult
-from ..utils.constants import STATUS_COLORS
+from ..utils.constants import STATUS_COLORS, THEME_COLORS
 from ..utils.file_utils import format_duration
 
 
@@ -58,24 +58,24 @@ class ResultsTable(ctk.CTkFrame):
         style = ttk.Style()
         style.theme_use("default")
 
-        # Configure treeview colors
+        # Configure treeview colors - new premium palette
         style.configure(
             "Results.Treeview",
-            background="#2b2b2b",
-            foreground="white",
-            fieldbackground="#2b2b2b",
+            background=THEME_COLORS["bg_secondary"],
+            foreground=THEME_COLORS["text_primary"],
+            fieldbackground=THEME_COLORS["bg_secondary"],
             rowheight=28,
         )
         style.configure(
             "Results.Treeview.Heading",
-            background="#1f1f1f",
-            foreground="white",
+            background=THEME_COLORS["primary_dark"],
+            foreground=THEME_COLORS["text_primary"],
             relief="flat",
         )
         style.map(
             "Results.Treeview",
-            background=[("selected", "#3b3b3b")],
-            foreground=[("selected", "white")],
+            background=[("selected", THEME_COLORS["accent"])],
+            foreground=[("selected", THEME_COLORS["bg_primary"])],
         )
 
         # Create treeview

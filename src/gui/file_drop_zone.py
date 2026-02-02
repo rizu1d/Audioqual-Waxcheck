@@ -14,7 +14,7 @@ except ImportError:
     HAS_DND = False
 
 from ..utils.file_utils import get_audio_files_from_path
-from ..utils.constants import SUPPORTED_FORMATS
+from ..utils.constants import SUPPORTED_FORMATS, THEME_COLORS
 
 
 FileCallback = Callable[[List[str]], None]
@@ -44,11 +44,13 @@ class FileDropZone(ctk.CTkFrame):
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # Drop zone frame
+        # Drop zone frame - dark with subtle purple border
         self.drop_frame = ctk.CTkFrame(
             self,
-            fg_color=("gray90", "gray20"),
+            fg_color=THEME_COLORS["bg_tertiary"],
             corner_radius=10,
+            border_width=2,
+            border_color=THEME_COLORS["primary_dark"],
         )
         self.drop_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
         self.drop_frame.grid_columnconfigure(0, weight=1)
@@ -74,6 +76,7 @@ class FileDropZone(ctk.CTkFrame):
             self.content_frame,
             text="Arrastra archivos de audio aqui",
             font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=THEME_COLORS["text_primary"],
         )
         self.main_label.grid(row=1, column=0, pady=(0, 5))
 
@@ -83,7 +86,7 @@ class FileDropZone(ctk.CTkFrame):
             self.content_frame,
             text=f"Formatos soportados: {formats_str}",
             font=ctk.CTkFont(size=12),
-            text_color=("gray50", "gray60"),
+            text_color=THEME_COLORS["text_secondary"],
         )
         self.sub_label.grid(row=2, column=0, pady=(0, 15))
 
@@ -94,21 +97,27 @@ class FileDropZone(ctk.CTkFrame):
         )
         self.buttons_frame.grid(row=3, column=0)
 
-        # Select files button
+        # Select files button - purple style
         self.select_files_btn = ctk.CTkButton(
             self.buttons_frame,
             text="Seleccionar archivos",
             command=self._on_select_files,
             width=150,
+            fg_color=THEME_COLORS["primary"],
+            hover_color=THEME_COLORS["primary_dark"],
+            text_color=THEME_COLORS["text_primary"],
         )
         self.select_files_btn.grid(row=0, column=0, padx=5)
 
-        # Select folder button
+        # Select folder button - purple style
         self.select_folder_btn = ctk.CTkButton(
             self.buttons_frame,
             text="Seleccionar carpeta",
             command=self._on_select_folder,
             width=150,
+            fg_color=THEME_COLORS["primary"],
+            hover_color=THEME_COLORS["primary_dark"],
+            text_color=THEME_COLORS["text_primary"],
         )
         self.select_folder_btn.grid(row=0, column=1, padx=5)
 
@@ -163,8 +172,8 @@ class FileDropZone(ctk.CTkFrame):
         self._reset_drop_style()
 
     def _on_drag_enter(self, event):
-        """Handle drag enter event."""
-        self.drop_frame.configure(fg_color=("gray80", "gray30"))
+        """Handle drag enter event - golden border highlight."""
+        self.drop_frame.configure(border_color=THEME_COLORS["accent"])
 
     def _on_drag_leave(self, event):
         """Handle drag leave event."""
@@ -172,7 +181,7 @@ class FileDropZone(ctk.CTkFrame):
 
     def _reset_drop_style(self):
         """Reset drop zone to default style."""
-        self.drop_frame.configure(fg_color=("gray90", "gray20"))
+        self.drop_frame.configure(border_color=THEME_COLORS["primary_dark"])
 
     def _on_select_files(self):
         """Handle select files button click."""

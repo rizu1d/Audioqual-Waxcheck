@@ -46,7 +46,7 @@ class AudioQualApp:
 
         # Set appearance mode
         ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("blue")
+        ctk.set_default_color_theme("green")  # More neutral, will be overridden by custom colors
 
         # Configure grid
         self.root.grid_columnconfigure(0, weight=3)

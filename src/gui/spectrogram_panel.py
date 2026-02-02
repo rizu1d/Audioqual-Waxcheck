@@ -12,6 +12,7 @@ import numpy as np
 from PIL import Image
 
 from ..core.frequency_detector import FrequencyAnalysis
+from ..utils.constants import THEME_COLORS
 
 
 class SpectrogramPanel(ctk.CTkFrame):
@@ -33,11 +34,12 @@ class SpectrogramPanel(ctk.CTkFrame):
 
     def _setup_ui(self):
         """Set up the panel UI."""
+        self.configure(fg_color=THEME_COLORS["bg_primary"])
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
 
         # Title bar
-        self.title_frame = ctk.CTkFrame(self, height=40)
+        self.title_frame = ctk.CTkFrame(self, height=40, fg_color=THEME_COLORS["bg_frame"])
         self.title_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
         self.title_frame.grid_columnconfigure(0, weight=1)
 
@@ -45,6 +47,7 @@ class SpectrogramPanel(ctk.CTkFrame):
             self.title_frame,
             text="Espectrograma",
             font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=THEME_COLORS["text_primary"],
         )
         self.title_label.grid(row=0, column=0, padx=10, pady=5, sticky="w")
 
@@ -52,12 +55,12 @@ class SpectrogramPanel(ctk.CTkFrame):
             self.title_frame,
             text="",
             font=ctk.CTkFont(size=12),
-            text_color=("gray50", "gray60"),
+            text_color=THEME_COLORS["text_secondary"],
         )
         self.file_label.grid(row=0, column=1, padx=10, pady=5, sticky="e")
 
         # Figure container frame
-        self.figure_frame = ctk.CTkFrame(self)
+        self.figure_frame = ctk.CTkFrame(self, fg_color=THEME_COLORS["bg_frame"])
         self.figure_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
         self.figure_frame.grid_columnconfigure(0, weight=1)
         self.figure_frame.grid_rowconfigure(0, weight=1)
@@ -72,7 +75,7 @@ class SpectrogramPanel(ctk.CTkFrame):
         self._image_label.grid_remove()  # Initially hidden
 
         # Info panel
-        self.info_frame = ctk.CTkFrame(self, height=80)
+        self.info_frame = ctk.CTkFrame(self, height=80, fg_color=THEME_COLORS["bg_frame"])
         self.info_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
         self.info_frame.grid_columnconfigure((0, 1, 2), weight=1)
 
@@ -81,6 +84,7 @@ class SpectrogramPanel(ctk.CTkFrame):
             self.info_frame,
             text="Frec. de corte: -",
             font=ctk.CTkFont(size=14),
+            text_color=THEME_COLORS["text_primary"],
         )
         self.cutoff_label.grid(row=0, column=0, padx=10, pady=10)
 
@@ -89,6 +93,7 @@ class SpectrogramPanel(ctk.CTkFrame):
             self.info_frame,
             text="Frec. max: -",
             font=ctk.CTkFont(size=14),
+            text_color=THEME_COLORS["text_primary"],
         )
         self.max_freq_label.grid(row=0, column=1, padx=10, pady=10)
 
@@ -97,6 +102,7 @@ class SpectrogramPanel(ctk.CTkFrame):
             self.info_frame,
             text="Confianza: -",
             font=ctk.CTkFont(size=14),
+            text_color=THEME_COLORS["text_primary"],
         )
         self.confidence_label.grid(row=0, column=2, padx=10, pady=10)
 
@@ -105,7 +111,7 @@ class SpectrogramPanel(ctk.CTkFrame):
             self.figure_frame,
             text="Selecciona un archivo para ver el espectrograma",
             font=ctk.CTkFont(size=14),
-            text_color=("gray50", "gray60"),
+            text_color=THEME_COLORS["text_secondary"],
         )
         self.empty_label.place(relx=0.5, rely=0.5, anchor="center")
 
@@ -114,7 +120,7 @@ class SpectrogramPanel(ctk.CTkFrame):
             self.figure_frame,
             text="Cargando espectrograma...",
             font=ctk.CTkFont(size=14),
-            text_color=("gray50", "gray60"),
+            text_color=THEME_COLORS["text_secondary"],
         )
 
     def show_spectrogram(
@@ -200,7 +206,7 @@ class SpectrogramPanel(ctk.CTkFrame):
             fig = Figure(
                 figsize=(width / dpi, height / dpi),
                 dpi=dpi,
-                facecolor='#2b2b2b'
+                facecolor=THEME_COLORS["bg_primary"]
             )
             ax_spectrogram = fig.add_subplot(211)
             ax_energy = fig.add_subplot(212)
@@ -225,7 +231,7 @@ class SpectrogramPanel(ctk.CTkFrame):
 
             # Render to PIL image
             buf = io.BytesIO()
-            fig.savefig(buf, format='png', facecolor='#2b2b2b', bbox_inches='tight')
+            fig.savefig(buf, format='png', facecolor=THEME_COLORS["bg_primary"], bbox_inches='tight')
             buf.seek(0)
             image = Image.open(buf)
             # Make a copy since we're closing the buffer
@@ -253,6 +259,9 @@ class SpectrogramPanel(ctk.CTkFrame):
         # Create time axis (simplified)
         n_frames = spectrogram_db.shape[1]
 
+        # Set axes background
+        ax.set_facecolor(THEME_COLORS["bg_primary"])
+
         # Plot spectrogram
         ax.imshow(
             spectrogram_db,
@@ -264,19 +273,19 @@ class SpectrogramPanel(ctk.CTkFrame):
             vmax=0,
         )
 
-        # Add cutoff line
+        # Add cutoff line - golden color
         cutoff_khz = analysis.cutoff_frequency_khz
-        ax.axhline(y=cutoff_khz, color='cyan', linestyle='--', linewidth=1.5, alpha=0.8)
+        ax.axhline(y=cutoff_khz, color=THEME_COLORS["accent"], linestyle='--', linewidth=1.5, alpha=0.8)
 
-        # Labels
-        ax.set_xlabel('Tiempo (frames)', fontsize=10, color='white')
-        ax.set_ylabel('Frecuencia (kHz)', fontsize=10, color='white')
-        ax.set_title('Espectrograma', fontsize=12, color='white')
+        # Labels - cream color
+        ax.set_xlabel('Tiempo (frames)', fontsize=10, color=THEME_COLORS["text_primary"])
+        ax.set_ylabel('Frecuencia (kHz)', fontsize=10, color=THEME_COLORS["text_primary"])
+        ax.set_title('Espectrograma', fontsize=12, color=THEME_COLORS["text_primary"])
 
         # Limit y-axis to relevant range
         ax.set_ylim(0, min(24, frequencies[-1] / 1000))
 
-        ax.tick_params(colors='white', labelsize=8)
+        ax.tick_params(colors=THEME_COLORS["text_primary"], labelsize=8)
 
     def _plot_energy_on_axes(
         self, ax, analysis: FrequencyAnalysis, cutoff_khz: float
@@ -286,36 +295,39 @@ class SpectrogramPanel(ctk.CTkFrame):
         energy = analysis.energy_spectrum
         frequencies = analysis.frequencies / 1000  # Convert to kHz
 
-        # Plot energy curve
-        ax.fill_between(frequencies, energy, -80, alpha=0.3, color='cyan')
-        ax.plot(frequencies, energy, color='cyan', linewidth=1.5)
+        # Set axes background
+        ax.set_facecolor(THEME_COLORS["bg_primary"])
 
-        # Add cutoff line
-        ax.axvline(x=cutoff_khz, color='red', linestyle='--', linewidth=2, alpha=0.8)
+        # Plot energy curve - purple color
+        ax.fill_between(frequencies, energy, -80, alpha=0.3, color=THEME_COLORS["primary"])
+        ax.plot(frequencies, energy, color=THEME_COLORS["primary"], linewidth=1.5)
+
+        # Add cutoff line - golden color
+        ax.axvline(x=cutoff_khz, color=THEME_COLORS["accent"], linestyle='--', linewidth=2, alpha=0.8)
 
         # Add noise floor line
         ax.axhline(y=-60, color='gray', linestyle=':', linewidth=1, alpha=0.5)
 
-        # Add cutoff annotation
+        # Add cutoff annotation - golden color
         ax.annotate(
             f'{cutoff_khz:.1f} kHz',
             xy=(cutoff_khz, -30),
             xytext=(cutoff_khz + 1, -20),
             fontsize=10,
-            color='red',
-            arrowprops=dict(arrowstyle='->', color='red', alpha=0.7),
+            color=THEME_COLORS["accent"],
+            arrowprops=dict(arrowstyle='->', color=THEME_COLORS["accent"], alpha=0.7),
         )
 
-        # Labels
-        ax.set_xlabel('Frecuencia (kHz)', fontsize=10, color='white')
-        ax.set_ylabel('Energia (dB)', fontsize=10, color='white')
-        ax.set_title('Espectro de Energia Promedio', fontsize=12, color='white')
+        # Labels - cream color
+        ax.set_xlabel('Frecuencia (kHz)', fontsize=10, color=THEME_COLORS["text_primary"])
+        ax.set_ylabel('Energia (dB)', fontsize=10, color=THEME_COLORS["text_primary"])
+        ax.set_title('Espectro de Energia Promedio', fontsize=12, color=THEME_COLORS["text_primary"])
 
         # Set limits
         ax.set_xlim(0, min(24, frequencies[-1]))
         ax.set_ylim(-80, 0)
 
-        ax.tick_params(colors='white', labelsize=8)
+        ax.tick_params(colors=THEME_COLORS["text_primary"], labelsize=8)
         ax.grid(True, alpha=0.2)
 
     def _on_render_complete(

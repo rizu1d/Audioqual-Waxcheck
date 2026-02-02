@@ -13,6 +13,7 @@ from ..utils.constants import (
     WINDOW_HEIGHT,
     MIN_WINDOW_WIDTH,
     MIN_WINDOW_HEIGHT,
+    THEME_COLORS,
 )
 
 
@@ -29,7 +30,7 @@ class MainWindow(ctk.CTkFrame):
         on_export_requested=None,
         **kwargs
     ):
-        super().__init__(master, **kwargs)
+        super().__init__(master, fg_color=THEME_COLORS["bg_primary"], **kwargs)
 
         self.analyzer = analyzer
         self.on_result_selected = on_result_selected
@@ -54,7 +55,7 @@ class MainWindow(ctk.CTkFrame):
 
     def _setup_top_bar(self):
         """Set up the top bar with title and controls."""
-        self.top_bar = ctk.CTkFrame(self, height=50)
+        self.top_bar = ctk.CTkFrame(self, height=50, fg_color=THEME_COLORS["bg_primary"])
         self.top_bar.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 0))
         self.top_bar.grid_columnconfigure(1, weight=1)
 
@@ -63,6 +64,7 @@ class MainWindow(ctk.CTkFrame):
             self.top_bar,
             text="AudioQual",
             font=ctk.CTkFont(size=24, weight="bold"),
+            text_color=THEME_COLORS["text_primary"],
         )
         self.title_label.grid(row=0, column=0, padx=10, pady=10)
 
@@ -71,7 +73,7 @@ class MainWindow(ctk.CTkFrame):
             self.top_bar,
             text="Analizador de calidad de audio",
             font=ctk.CTkFont(size=12),
-            text_color=("gray50", "gray60"),
+            text_color=THEME_COLORS["text_secondary"],
         )
         self.subtitle_label.grid(row=0, column=1, padx=10, pady=10, sticky="w")
 
@@ -79,23 +81,29 @@ class MainWindow(ctk.CTkFrame):
         self.controls_frame = ctk.CTkFrame(self.top_bar, fg_color="transparent")
         self.controls_frame.grid(row=0, column=2, padx=10, pady=10)
 
-        # Clear button
+        # Clear button - secondary style with purple border
         self.clear_btn = ctk.CTkButton(
             self.controls_frame,
             text="Limpiar",
             command=self._on_clear,
             width=100,
-            fg_color=("gray70", "gray30"),
-            hover_color=("gray60", "gray40"),
+            fg_color="transparent",
+            border_width=2,
+            border_color=THEME_COLORS["primary"],
+            text_color=THEME_COLORS["text_primary"],
+            hover_color=THEME_COLORS["primary_dark"],
         )
         self.clear_btn.grid(row=0, column=0, padx=5)
 
-        # Export button
+        # Export button - primary purple style
         self.export_btn = ctk.CTkButton(
             self.controls_frame,
             text="Exportar",
             command=self._on_export,
             width=100,
+            fg_color=THEME_COLORS["primary"],
+            hover_color=THEME_COLORS["primary_dark"],
+            text_color=THEME_COLORS["text_primary"],
         )
         self.export_btn.grid(row=0, column=1, padx=5)
 
@@ -124,7 +132,12 @@ class MainWindow(ctk.CTkFrame):
 
     def _setup_status_bar(self):
         """Set up the bottom status bar."""
-        self.status_bar = ctk.CTkFrame(self, height=30)
+        self.status_bar = ctk.CTkFrame(
+            self,
+            height=30,
+            fg_color=THEME_COLORS["primary_dark"],
+            corner_radius=6,
+        )
         self.status_bar.grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 10))
         self.status_bar.grid_columnconfigure(1, weight=1)
 
@@ -133,11 +146,16 @@ class MainWindow(ctk.CTkFrame):
             self.status_bar,
             text="Listo",
             font=ctk.CTkFont(size=12),
+            text_color=THEME_COLORS["text_primary"],
         )
         self.status_label.grid(row=0, column=0, padx=10, pady=5)
 
         # Progress bar (hidden by default)
-        self.progress_bar = ctk.CTkProgressBar(self.status_bar, width=200)
+        self.progress_bar = ctk.CTkProgressBar(
+            self.status_bar,
+            width=200,
+            progress_color=THEME_COLORS["accent"],
+        )
         self.progress_bar.grid(row=0, column=1, padx=10, pady=5, sticky="e")
         self.progress_bar.set(0)
         self.progress_bar.grid_remove()
@@ -147,6 +165,7 @@ class MainWindow(ctk.CTkFrame):
             self.status_bar,
             text="0 archivos",
             font=ctk.CTkFont(size=12),
+            text_color=THEME_COLORS["text_primary"],
         )
         self.count_label.grid(row=0, column=2, padx=10, pady=5)
 
