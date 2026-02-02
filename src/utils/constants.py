@@ -102,6 +102,9 @@ THEME_COLORS = {
     "bg_secondary": "#0a0a0a",      # Negro ligeramente más claro - table bg
     "bg_tertiary": "#0f0f0f",       # Negro para drop zone
     "bg_frame": "#121212",          # Fondo de frames
+    "scrollbar_track": "#1a1a1a",      # Fondo del track
+    "scrollbar_thumb": "#5d5478",      # Thumb (morado desaturado)
+    "scrollbar_thumb_hover": "#7969A8", # Thumb en hover (morado principal)
 }
 
 # Colors for status - harmonized with theme palette

@@ -78,6 +78,30 @@ class ResultsTable(ctk.CTkFrame):
             foreground=[("selected", THEME_COLORS["bg_primary"])],
         )
 
+        # Estilo de scrollbars para tema oscuro
+        style.configure(
+            "Vertical.TScrollbar",
+            background=THEME_COLORS["scrollbar_thumb"],
+            troughcolor=THEME_COLORS["scrollbar_track"],
+            borderwidth=0,
+            relief="flat",
+        )
+        style.configure(
+            "Horizontal.TScrollbar",
+            background=THEME_COLORS["scrollbar_thumb"],
+            troughcolor=THEME_COLORS["scrollbar_track"],
+            borderwidth=0,
+            relief="flat",
+        )
+        style.map(
+            "Vertical.TScrollbar",
+            background=[("active", THEME_COLORS["scrollbar_thumb_hover"])],
+        )
+        style.map(
+            "Horizontal.TScrollbar",
+            background=[("active", THEME_COLORS["scrollbar_thumb_hover"])],
+        )
+
         # Create treeview
         columns = [col[0] for col in self.COLUMNS]
         self.tree = ttk.Treeview(

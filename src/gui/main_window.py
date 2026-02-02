@@ -63,7 +63,7 @@ class MainWindow(ctk.CTkFrame):
         self.title_label = ctk.CTkLabel(
             self.top_bar,
             text="AudioQual",
-            font=ctk.CTkFont(size=24, weight="bold"),
+            font=("Gothiks Black", 28),
             text_color=THEME_COLORS["text_primary"],
         )
         self.title_label.grid(row=0, column=0, padx=10, pady=10)
