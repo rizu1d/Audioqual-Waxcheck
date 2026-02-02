@@ -118,9 +118,24 @@ class ResultsTable(ctk.CTkFrame):
         # Bind selection event
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
 
+        # Ensure focus on click for reliable selection (fixes customtkinter + ttk interaction)
+        self.tree.bind("<Button-1>", self._on_click)
+
         # Create tags for status colors
         for status, color in STATUS_COLORS.items():
             self.tree.tag_configure(status, foreground=color)
+
+    def _on_click(self, event):
+        """Handle mouse click to ensure focus and reliable selection."""
+        # Set focus to treeview (required for reliable ttk inside customtkinter)
+        self.tree.focus_set()
+
+        # Identify which item was clicked
+        item = self.tree.identify_row(event.y)
+        if item:
+            # Explicitly set selection (makes clicks as reliable as keyboard)
+            self.tree.selection_set(item)
+            self.tree.focus(item)
 
     def _on_select(self, event):
         """Handle row selection."""

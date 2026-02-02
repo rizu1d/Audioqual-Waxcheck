@@ -9,7 +9,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 import numpy as np
-from PIL import Image, ImageTk
+from PIL import Image
 
 from ..core.frequency_detector import FrequencyAnalysis
 
@@ -331,8 +331,12 @@ class SpectrogramPanel(ctk.CTkFrame):
         if render_id != self._render_id:
             return  # Obsolete render, discard
 
-        # Convert to PhotoImage
-        self._photo_image = ImageTk.PhotoImage(image)
+        # Convert to CTkImage (handles HighDPI scaling)
+        self._photo_image = ctk.CTkImage(
+            light_image=image,
+            dark_image=image,
+            size=(image.width, image.height)
+        )
 
         # Hide loading, show image
         self._loading_label.place_forget()
