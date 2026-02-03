@@ -6,26 +6,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 AudioQual is a desktop application for analyzing the real quality of audio files through spectral analysis. It detects "fake" high-bitrate files (files upscaled/transcoded from lower quality sources) by examining frequency cutoff patterns.
 
+**Python version:** 3.9+
+
 ## Commands
 
-**Run the application:**
 ```bash
+# Run the application
 python src/main.py
-```
 
-**Install dependencies:**
-```bash
+# Install dependencies
 pip install -r requirements.txt
-```
 
-**Build standalone app (macOS):**
-```bash
-pyinstaller build/audioqual_macos.spec
-```
-
-**Build standalone app (Windows):**
-```bash
-pyinstaller build/audioqual_windows.spec
+# Build standalone app
+pyinstaller build/audioqual_macos.spec   # macOS
+pyinstaller build/audioqual_windows.spec  # Windows
 ```
 
 ## Architecture
@@ -54,24 +48,38 @@ Key insight: Musical content has high temporal variance (follows dynamics), whil
 
 Built with customtkinter and tkinterdnd2 for drag-and-drop support:
 - **main_window.py** - Main layout with drop zone, results table, progress bar
-- **spectrogram_panel.py** - Matplotlib-based visualization of frequency spectrum
+- **spectrogram_panel.py** - Renders spectrograms in background thread using matplotlib's Agg backend, displays as PIL Image to keep UI responsive
 - **file_drop_zone.py** - Drag-and-drop file input
-- **results_table.py** - Displays analysis results with status colors
-- **export_dialog.py** - Export results to CSV/TXT
+- **results_table.py** - Displays analysis results with status colors (uses ttk.Treeview)
+
+### Threading Patterns
+
+Two threading patterns are used for UI responsiveness:
+
+1. **Batch analysis** (`analyzer.py`): Uses `ThreadPoolExecutor` to process multiple files in parallel
+2. **Spectrogram rendering** (`spectrogram_panel.py`): Uses `threading.Thread` + `threading.Event` for cancellable background rendering. Incremental `_render_id` ensures only the latest render is displayed.
 
 ### Application Entry
 
 - `src/main.py` - Entry point
-- `src/app.py` - `AudioQualApp` class creates root window and wires components together
+- `src/app.py` - `AudioQualApp` class creates root window, wires components together, and manages the resizable panel divider between main content and spectrogram panel
 
 ## Key Constants (`src/utils/constants.py`)
 
-- **BITRATE_THRESHOLDS** - Frequency ranges (kHz) for each quality tier (128kbps: 15-16kHz, 192kbps: 17-18.5kHz, 320kbps: 19.5-20.5kHz, lossless: 20.5-22.5kHz)
+- **BITRATE_THRESHOLDS** - Frequency ranges (kHz) for quality tiers: low (<13kHz), 96kbps (13-15kHz), 128kbps (15-16kHz), 160kbps (16-17kHz), 192kbps (17-18.5kHz), 256kbps (18.5-19.5kHz), 320kbps (19.5-20.5kHz), lossless (20.5-22.5kHz)
 - **FFT_SIZE=4096, HOP_LENGTH=512, SAMPLE_RATE=44100** - Spectral analysis parameters
 - **TRANSITION_*** - Parameters for transition detection (min drop: 8dB, variance drop ratio: 30%, band width: 500Hz)
 - **SEGMENT_COUNT=50, PREDOMINANT_PERCENTILE=85** - Segment analysis parameters
-- **SUPPORTED_FORMATS** - .mp3, .wav, .flac, .m4a, .aac, .ogg, .wma
+- **CONFIDENCE_HIGH=0.7, CONFIDENCE_LOW=0.5** - Thresholds for certain vs uncertain results
+- **SUPPORTED_FORMATS** - .mp3, .wav, .flac, .m4a, .aac, .ogg, .wma, .aiff, .aif
+- **THEME_COLORS, STATUS_COLORS** - UI color palette (purple/gold/dark gray theme)
+- **FONT_FAMILY, FONT_SIZES** - Typography constants (Inter font family)
 
 ## Language
 
 The UI text and status messages are in Spanish (e.g., "Transcode detectado", "Analizando...").
+
+## Notes
+
+- No test suite exists currently
+- The codebase uses matplotlib's Agg backend (non-interactive) for spectrogram rendering to avoid GUI conflicts with tkinter
