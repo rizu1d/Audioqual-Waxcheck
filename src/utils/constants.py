@@ -126,7 +126,3 @@ STATUS_COLORS = {
     STATUS_UNCERTAIN: "#F1C40F",    # Amarillo - uncertain result
     STATUS_VARIABLE: "#E67E22",     # Naranja - variable quality
 }
-
-# Export formats
-EXPORT_CSV = "csv"
-EXPORT_TXT = "txt"

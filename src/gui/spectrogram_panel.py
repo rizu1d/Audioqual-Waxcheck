@@ -25,10 +25,15 @@ class SpectrogramPanel(ctk.CTkFrame):
         super().__init__(master, **kwargs)
 
         self._current_analysis: Optional[FrequencyAnalysis] = None
+        self._current_filename: Optional[str] = None
+        self._current_cutoff_khz: Optional[float] = None
         self._render_thread: Optional[threading.Thread] = None
         self._render_cancelled = threading.Event()
         self._render_id = 0  # Incremental ID for tracking renders
         self._photo_image = None  # Keep reference to prevent garbage collection
+        self._resize_timer = None  # For debounced resize handling
+        self._last_render_size = (0, 0)  # Track last render dimensions
+        self._resize_paused = False  # Pause resize handling during drag operations
 
         self._setup_ui()
 
@@ -123,6 +128,9 @@ class SpectrogramPanel(ctk.CTkFrame):
             text_color=THEME_COLORS["text_secondary"],
         )
 
+        # Bind resize event for responsive spectrogram
+        self.figure_frame.bind("<Configure>", self._on_resize)
+
     def show_spectrogram(
         self,
         analysis: FrequencyAnalysis,
@@ -138,6 +146,11 @@ class SpectrogramPanel(ctk.CTkFrame):
             filename: Name of the file being displayed
             cutoff_khz: Detected cutoff frequency in kHz
         """
+        # Store current analysis data for re-renders on resize
+        self._current_analysis = analysis
+        self._current_filename = filename
+        self._current_cutoff_khz = cutoff_khz
+
         # 1. Cancel any in-progress render
         self._render_cancelled.set()
         self._render_id += 1
@@ -148,8 +161,9 @@ class SpectrogramPanel(ctk.CTkFrame):
 
         # 3. Get dimensions for rendering
         self.update_idletasks()
-        width = max(self.figure_frame.winfo_width(), 600)
-        height = max(self.figure_frame.winfo_height(), 400)
+        width = max(self.figure_frame.winfo_width(), 300)
+        height = max(self.figure_frame.winfo_height(), 200)
+        self._last_render_size = (width, height)
 
         # 4. Reset cancellation flag for new render
         self._render_cancelled.clear()
@@ -164,8 +178,6 @@ class SpectrogramPanel(ctk.CTkFrame):
 
     def _show_loading(self, filename: str):
         """Show loading indicator immediately."""
-        self._current_analysis = None
-
         # Hide empty state and image
         self.empty_label.place_forget()
         self._image_label.grid_remove()
@@ -181,6 +193,64 @@ class SpectrogramPanel(ctk.CTkFrame):
 
         # Force visual update
         self.update_idletasks()
+
+    def _on_resize(self, event):
+        """Handle container resize with debouncing."""
+        # Skip if resize is paused (during drag operations)
+        if self._resize_paused:
+            return
+
+        # Only re-render if we have an analysis to display
+        if self._current_analysis is None:
+            return
+
+        # Cancel previous resize timer
+        if self._resize_timer:
+            self.after_cancel(self._resize_timer)
+
+        # Set new timer (debounce 200ms)
+        self._resize_timer = self.after(200, self._handle_resize)
+
+    def pause_resize(self):
+        """Pause resize handling during divider drag."""
+        self._resize_paused = True
+        # Cancel any pending resize timer
+        if self._resize_timer:
+            self.after_cancel(self._resize_timer)
+            self._resize_timer = None
+        # Unbind Configure event to prevent event cascade during drag
+        self.figure_frame.unbind("<Configure>")
+
+    def resume_resize(self):
+        """Resume resize handling after divider drag."""
+        self._resize_paused = False
+        # Rebind Configure event
+        self.figure_frame.bind("<Configure>", self._on_resize)
+        # Trigger resize to update spectrogram to new size
+        self._handle_resize()
+
+    def _handle_resize(self):
+        """Re-render spectrogram at new size."""
+        self._resize_timer = None
+
+        if self._current_analysis is None:
+            return
+
+        # Get new dimensions
+        new_width = self.figure_frame.winfo_width()
+        new_height = self.figure_frame.winfo_height()
+
+        # Only re-render if size changed significantly (>20px difference)
+        old_width, old_height = self._last_render_size
+        if abs(new_width - old_width) < 20 and abs(new_height - old_height) < 20:
+            return
+
+        # Re-render with current analysis data
+        self.show_spectrogram(
+            self._current_analysis,
+            self._current_filename,
+            self._current_cutoff_khz,
+        )
 
     def _render_in_background(
         self,
@@ -364,8 +434,6 @@ class SpectrogramPanel(ctk.CTkFrame):
             text=f"Confianza: {analysis.confidence * 100:.0f}%"
         )
 
-        self._current_analysis = analysis
-
     def clear(self):
         """Clear the spectrogram display."""
         # Cancel any in-progress render
@@ -373,7 +441,10 @@ class SpectrogramPanel(ctk.CTkFrame):
         self._render_id += 1
 
         self._current_analysis = None
+        self._current_filename = None
+        self._current_cutoff_khz = None
         self._photo_image = None
+        self._last_render_size = (0, 0)
 
         # Hide image and loading
         self._image_label.grid_remove()

@@ -27,15 +27,16 @@ class MainWindow(ctk.CTkFrame):
         master,
         analyzer: AudioAnalyzer,
         on_result_selected=None,
-        on_export_requested=None,
+        on_toggle_panel=None,
         **kwargs
     ):
         super().__init__(master, fg_color=THEME_COLORS["bg_primary"], **kwargs)
 
         self.analyzer = analyzer
         self.on_result_selected = on_result_selected
-        self.on_export_requested = on_export_requested
+        self.on_toggle_panel = on_toggle_panel
         self._analysis_thread: Optional[threading.Thread] = None
+        self._panel_visible = False
 
         self._setup_ui()
 
@@ -68,18 +69,9 @@ class MainWindow(ctk.CTkFrame):
         )
         self.title_label.grid(row=0, column=0, padx=10, pady=10)
 
-        # Subtitle
-        self.subtitle_label = ctk.CTkLabel(
-            self.top_bar,
-            text="Analizador de calidad de audio",
-            font=ctk.CTkFont(size=12),
-            text_color=THEME_COLORS["text_secondary"],
-        )
-        self.subtitle_label.grid(row=0, column=1, padx=10, pady=10, sticky="w")
-
         # Controls frame
         self.controls_frame = ctk.CTkFrame(self.top_bar, fg_color="transparent")
-        self.controls_frame.grid(row=0, column=2, padx=10, pady=10)
+        self.controls_frame.grid(row=0, column=1, padx=10, pady=10)
 
         # Clear button - secondary style with purple border
         self.clear_btn = ctk.CTkButton(
@@ -95,17 +87,19 @@ class MainWindow(ctk.CTkFrame):
         )
         self.clear_btn.grid(row=0, column=0, padx=5)
 
-        # Export button - primary purple style
-        self.export_btn = ctk.CTkButton(
+        # Toggle spectrogram panel button
+        self.toggle_panel_btn = ctk.CTkButton(
             self.controls_frame,
-            text="Exportar",
-            command=self._on_export,
-            width=100,
-            fg_color=THEME_COLORS["primary"],
-            hover_color=THEME_COLORS["primary_dark"],
+            text="◀",
+            command=self._on_toggle_panel,
+            width=40,
+            fg_color="transparent",
+            border_width=2,
+            border_color=THEME_COLORS["primary"],
             text_color=THEME_COLORS["text_primary"],
+            hover_color=THEME_COLORS["primary_dark"],
         )
-        self.export_btn.grid(row=0, column=1, padx=5)
+        self.toggle_panel_btn.grid(row=0, column=1, padx=5)
 
     def _setup_content_area(self):
         """Set up the main content area."""
@@ -222,12 +216,10 @@ class MainWindow(ctk.CTkFrame):
             self.progress_bar.grid()
             self.progress_bar.set(0)
             self.drop_zone.set_enabled(False)
-            self.export_btn.configure(state="disabled")
         else:
             self.progress_bar.grid_remove()
             self.status_label.configure(text="Listo")
             self.drop_zone.set_enabled(True)
-            self.export_btn.configure(state="normal")
 
     def _on_selection_changed(self, result: Optional[AnalysisResult]):
         """Handle result selection change."""
@@ -245,14 +237,18 @@ class MainWindow(ctk.CTkFrame):
         if self.on_result_selected:
             self.on_result_selected(None)
 
-    def _on_export(self):
-        """Handle export button click."""
-        results = self.results_table.get_all_results()
-        if results and self.on_export_requested:
-            self.on_export_requested(results)
-
     def _update_count(self):
         """Update the file count label."""
         count = self.results_table.get_results_count()
         text = f"{count} archivo{'s' if count != 1 else ''}"
         self.count_label.configure(text=text)
+
+    def _on_toggle_panel(self):
+        """Handle toggle panel button click."""
+        if self.on_toggle_panel:
+            self.on_toggle_panel()
+
+    def set_panel_visible(self, visible: bool):
+        """Update toggle button to reflect panel state."""
+        self._panel_visible = visible
+        self.toggle_panel_btn.configure(text="▶" if visible else "◀")

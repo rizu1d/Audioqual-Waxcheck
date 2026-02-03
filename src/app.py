@@ -1,6 +1,6 @@
 """Main application class integrating core and GUI."""
 
-from typing import List, Optional
+from typing import Optional
 
 import customtkinter as ctk
 
@@ -13,7 +13,6 @@ except ImportError:
 from .core.analyzer import AnalysisResult, AudioAnalyzer
 from .gui.main_window import MainWindow
 from .gui.spectrogram_panel import SpectrogramPanel
-from .gui.export_dialog import ExportDialog
 from .utils.constants import (
     WINDOW_WIDTH,
     WINDOW_HEIGHT,
@@ -72,7 +71,6 @@ class AudioQualApp:
             self.root,
             analyzer=self.analyzer,
             on_result_selected=self._on_result_selected,
-            on_export_requested=self._on_export_requested,
             on_toggle_panel=self._toggle_spectrum_panel,
         )
 
@@ -92,6 +90,8 @@ class AudioQualApp:
         """Configure mouse events for the draggable divider."""
         self._drag_start_x = None
         self._drag_start_panel_width = None
+        self._drag_update_scheduled = False  # Throttle flag
+        self._pending_spectrum_width = None  # Pending width to apply
 
         # Cursor change on hover
         self.divider.bind("<Enter>", lambda e: self.divider.configure(cursor="sb_h_double_arrow"))
@@ -106,6 +106,8 @@ class AudioQualApp:
         """Start divider drag."""
         self._drag_start_x = event.x_root
         self._drag_start_panel_width = self._current_panel_width
+        # Pause spectrogram resize handling during drag
+        self.spectrogram_panel.pause_resize()
 
     def _on_divider_drag(self, event):
         """Handle divider dragging - redistribute space between panels."""
@@ -128,21 +130,43 @@ class AudioQualApp:
         # Aplicar límites mínimos para ambos paneles
         if new_spectrum_width < MIN_SPECTRUM_WIDTH:
             new_spectrum_width = MIN_SPECTRUM_WIDTH
-            new_main_width = total_content_width - new_spectrum_width
         if new_main_width < MIN_MAIN_WIDTH:
-            new_main_width = MIN_MAIN_WIDTH
-            new_spectrum_width = total_content_width - new_main_width
+            new_spectrum_width = total_content_width - MIN_MAIN_WIDTH
 
-        # Actualizar panel width
-        self._current_panel_width = new_spectrum_width
-        self.root.grid_columnconfigure(2, minsize=new_spectrum_width)
+        # Guardar valor pendiente
+        self._pending_spectrum_width = new_spectrum_width
 
-        # NO cambiar el tamaño de la ventana - solo redistribuir espacio
+        # Throttle: solo programar actualización si no hay una pendiente
+        if not self._drag_update_scheduled:
+            self._drag_update_scheduled = True
+            self.root.after(30, self._apply_drag_update)  # 30ms ≈ 33fps
+
+    def _apply_drag_update(self):
+        """Apply pending drag update (throttled)."""
+        self._drag_update_scheduled = False
+
+        if self._pending_spectrum_width is None:
+            return
+
+        # Aplicar el cambio de tamaño
+        self._current_panel_width = self._pending_spectrum_width
+        self.root.grid_columnconfigure(2, minsize=self._pending_spectrum_width)
 
     def _on_divider_release(self, event):
         """End divider drag."""
+        # Aplicar cualquier actualización pendiente inmediatamente
+        if self._pending_spectrum_width is not None:
+            self._current_panel_width = self._pending_spectrum_width
+            self.root.grid_columnconfigure(2, minsize=self._pending_spectrum_width)
+
+        # Limpiar estado
         self._drag_start_x = None
         self._drag_start_panel_width = None
+        self._pending_spectrum_width = None
+        self._drag_update_scheduled = False
+
+        # Resume spectrogram resize handling and trigger re-render
+        self.spectrogram_panel.resume_resize()
 
     def _setup_layout(self):
         """Set up the main layout."""
@@ -175,6 +199,10 @@ class AudioQualApp:
     def _on_result_selected(self, result: Optional[AnalysisResult]):
         """Handle result selection from the table."""
         if result and result.frequency_analysis:
+            # Auto-abrir panel si está cerrado
+            if not self._spectrum_panel_visible:
+                self._toggle_spectrum_panel()
+
             self.spectrogram_panel.show_spectrogram(
                 result.frequency_analysis,
                 result.filename,
@@ -182,11 +210,6 @@ class AudioQualApp:
             )
         else:
             self.spectrogram_panel.clear()
-
-    def _on_export_requested(self, results: List[AnalysisResult]):
-        """Handle export request."""
-        dialog = ExportDialog(self.root, results)
-        dialog.grab_set()
 
     def run(self):
         """Start the application main loop."""
