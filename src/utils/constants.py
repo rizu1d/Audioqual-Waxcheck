@@ -92,6 +92,11 @@ WINDOW_HEIGHT = 800
 MIN_WINDOW_WIDTH = 900
 MIN_WINDOW_HEIGHT = 600
 
+# Panel resize constraints (draggable divider)
+MIN_MAIN_WIDTH = 500         # Ancho mínimo del panel principal (selector de archivos)
+MIN_SPECTRUM_WIDTH = 300     # Ancho mínimo del panel de espectrogramas
+DIVIDER_WIDTH = 6            # Ancho del divisor arrastrable (px)
+
 # Theme colors - Premium purple/gold/black palette
 THEME_COLORS = {
     "primary": "#7969A8",           # Morado Principal - buttons, headers, accents
