@@ -1,9 +1,11 @@
 """Main application window."""
 
+import os
 import threading
 from typing import List, Optional
 
 import customtkinter as ctk
+from PIL import Image
 
 from .file_drop_zone import FileDropZone
 from .results_table import ResultsTable
@@ -73,30 +75,50 @@ class MainWindow(ctk.CTkFrame):
         self.controls_frame = ctk.CTkFrame(self.top_bar, fg_color="transparent")
         self.controls_frame.grid(row=0, column=1, padx=10, pady=10)
 
-        # Clear button - secondary style with purple border
+        # Unified button/icon sizes
+        ICON_SIZE = 32
+        BUTTON_SIZE = 48
+
+        # Load clean icon
+        clean_icon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "clean.jpg")
+        clean_icon_image = Image.open(clean_icon_path)
+        self._clean_icon = ctk.CTkImage(
+            light_image=clean_icon_image,
+            dark_image=clean_icon_image,
+            size=(ICON_SIZE, ICON_SIZE)
+        )
+
+        # Clear button with icon
         self.clear_btn = ctk.CTkButton(
             self.controls_frame,
-            text="Limpiar",
+            text="",
+            image=self._clean_icon,
             command=self._on_clear,
-            width=100,
+            width=BUTTON_SIZE,
+            height=BUTTON_SIZE,
             fg_color="transparent",
-            border_width=2,
-            border_color=THEME_COLORS["primary"],
-            text_color=THEME_COLORS["text_primary"],
             hover_color=THEME_COLORS["primary_dark"],
         )
         self.clear_btn.grid(row=0, column=0, padx=5)
 
+        # Load spectrogram icon
+        icon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "spectrum.jpg")
+        icon_image = Image.open(icon_path)
+        self._toggle_icon = ctk.CTkImage(
+            light_image=icon_image,
+            dark_image=icon_image,
+            size=(ICON_SIZE, ICON_SIZE)
+        )
+
         # Toggle spectrogram panel button
         self.toggle_panel_btn = ctk.CTkButton(
             self.controls_frame,
-            text="◀",
+            text="",
+            image=self._toggle_icon,
             command=self._on_toggle_panel,
-            width=40,
+            width=BUTTON_SIZE,
+            height=BUTTON_SIZE,
             fg_color="transparent",
-            border_width=2,
-            border_color=THEME_COLORS["primary"],
-            text_color=THEME_COLORS["text_primary"],
             hover_color=THEME_COLORS["primary_dark"],
         )
         self.toggle_panel_btn.grid(row=0, column=1, padx=5)
@@ -251,4 +273,3 @@ class MainWindow(ctk.CTkFrame):
     def set_panel_visible(self, visible: bool):
         """Update toggle button to reflect panel state."""
         self._panel_visible = visible
-        self.toggle_panel_btn.configure(text="▶" if visible else "◀")
