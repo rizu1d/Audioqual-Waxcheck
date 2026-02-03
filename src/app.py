@@ -19,6 +19,7 @@ from .utils.constants import (
     WINDOW_HEIGHT,
     MIN_WINDOW_WIDTH,
     MIN_WINDOW_HEIGHT,
+    PANEL_WIDTH,
 )
 
 
@@ -34,6 +35,7 @@ class AudioQualApp:
         else:
             self.root = ctk.CTk()
 
+        self._spectrum_panel_visible = False  # Hidden by default
         self._setup_window()
         self._setup_components()
         self._setup_layout()
@@ -41,6 +43,7 @@ class AudioQualApp:
     def _setup_window(self):
         """Configure the main window."""
         self.root.title("AudioQual - Analizador de Calidad de Audio")
+        # Start with compact size (panel hidden)
         self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
         self.root.minsize(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)
 
@@ -48,9 +51,9 @@ class AudioQualApp:
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("green")  # More neutral, will be overridden by custom colors
 
-        # Configure grid
-        self.root.grid_columnconfigure(0, weight=3)
-        self.root.grid_columnconfigure(1, weight=2)
+        # Configure grid - fixed column sizes, no weights
+        self.root.grid_columnconfigure(0, weight=1)  # Main content expands to fill
+        self.root.grid_columnconfigure(1, weight=0, minsize=0)  # Panel column (hidden initially)
         self.root.grid_rowconfigure(0, weight=1)
 
     def _setup_components(self):
@@ -64,6 +67,7 @@ class AudioQualApp:
             analyzer=self.analyzer,
             on_result_selected=self._on_result_selected,
             on_export_requested=self._on_export_requested,
+            on_toggle_panel=self._toggle_spectrum_panel,
         )
 
         # Create spectrogram panel (right panel)
@@ -71,8 +75,26 @@ class AudioQualApp:
 
     def _setup_layout(self):
         """Set up the main layout."""
-        self.main_window.grid(row=0, column=0, sticky="nsew", padx=(10, 5), pady=10)
-        self.spectrogram_panel.grid(row=0, column=1, sticky="nsew", padx=(5, 10), pady=10)
+        # Main window takes full width initially (panel hidden)
+        self.main_window.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        # Spectrogram panel is NOT gridded initially (hidden by default)
+
+    def _toggle_spectrum_panel(self):
+        """Toggle the spectrogram panel visibility by resizing the window."""
+        if self._spectrum_panel_visible:
+            # Hide panel - shrink window
+            self.spectrogram_panel.grid_remove()
+            self.root.grid_columnconfigure(1, minsize=0)
+            self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
+        else:
+            # Show panel - expand window
+            self.spectrogram_panel.grid(row=0, column=1, sticky="nsew", padx=(0, 10), pady=10)
+            self.root.grid_columnconfigure(1, weight=0, minsize=PANEL_WIDTH)
+            new_width = WINDOW_WIDTH + PANEL_WIDTH
+            self.root.geometry(f"{new_width}x{WINDOW_HEIGHT}")
+
+        self._spectrum_panel_visible = not self._spectrum_panel_visible
+        self.main_window.set_panel_visible(self._spectrum_panel_visible)
 
     def _on_result_selected(self, result: Optional[AnalysisResult]):
         """Handle result selection from the table."""

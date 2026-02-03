@@ -86,7 +86,8 @@ TRANSITION_MIN_PRE_VARIANCE = 0.4     # Pre-transition band must have at least 4
 SUPPORTED_FORMATS = {".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".wma", ".aiff", ".aif"}
 
 # GUI constants
-WINDOW_WIDTH = 1200
+WINDOW_WIDTH = 900           # Main window only (when panel closed)
+PANEL_WIDTH = 450            # Spectrogram panel width
 WINDOW_HEIGHT = 800
 MIN_WINDOW_WIDTH = 900
 MIN_WINDOW_HEIGHT = 600
@@ -105,6 +106,7 @@ THEME_COLORS = {
     "scrollbar_track": "#1a1a1a",      # Fondo del track
     "scrollbar_thumb": "#5d5478",      # Thumb (morado desaturado)
     "scrollbar_thumb_hover": "#7969A8", # Thumb en hover (morado principal)
+    "row_selected": "#2a2a2a",          # Blanco desaturado para selección de filas
 }
 
 # Colors for status - harmonized with theme palette
