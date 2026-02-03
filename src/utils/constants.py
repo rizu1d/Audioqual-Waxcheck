@@ -97,32 +97,62 @@ MIN_MAIN_WIDTH = 500         # Ancho mínimo del panel principal (selector de ar
 MIN_SPECTRUM_WIDTH = 300     # Ancho mínimo del panel de espectrogramas
 DIVIDER_WIDTH = 6            # Ancho del divisor arrastrable (px)
 
-# Theme colors - Premium purple/gold/black palette
+# Theme colors - Premium purple/gold/black palette (refined)
 THEME_COLORS = {
-    "primary": "#7969A8",           # Morado Principal - buttons, headers, accents
-    "primary_dark": "#524479",      # Morado Oscuro - hover states, borders, status bar
-    "accent": "#FCC844",            # Amarillo Dorado - selection, highlights
-    "text_primary": "#F3F1E5",      # Crema - main text
-    "text_secondary": "#DCDDE1",    # Gris Claro - secondary text
-    "bg_primary": "#080808",        # Negro - main background
-    "bg_secondary": "#0a0a0a",      # Negro ligeramente más claro - table bg
-    "bg_tertiary": "#0f0f0f",       # Negro para drop zone
-    "bg_frame": "#121212",          # Fondo de frames
-    "scrollbar_track": "#1a1a1a",      # Fondo del track
-    "scrollbar_thumb": "#5d5478",      # Thumb (morado desaturado)
-    "scrollbar_thumb_hover": "#7969A8", # Thumb en hover (morado principal)
-    "row_selected": "#2a2a2a",          # Blanco desaturado para selección de filas
+    # Violeta refinado
+    "primary": "#8B7EC8",           # Violeta más luminoso
+    "primary_dark": "#5D5478",      # Violeta para hover/bordes
+    "primary_muted": "#3D3650",     # Violeta muy suave para fondos
+
+    # Acento
+    "accent": "#F5C842",            # Dorado
+
+    # Texto
+    "text_primary": "#F5F3E8",      # Crema cálido
+    "text_secondary": "#9A9A9A",    # Gris medio para subtítulos
+    "text_muted": "#666666",        # Gris suave para headers tabla
+
+    # Fondos (NO negro puro)
+    "bg_primary": "#121214",        # Gris muy oscuro (base)
+    "bg_secondary": "#18181C",      # Gris para tabla
+    "bg_tertiary": "#1E1E24",       # Gris para drop zone
+    "bg_elevated": "#252530",       # Gris para elementos elevados
+    "bg_frame": "#1A1A20",          # Frames
+
+    # Scrollbar
+    "scrollbar_track": "#1E1E24",
+    "scrollbar_thumb": "#5D5478",
+    "scrollbar_thumb_hover": "#8B7EC8",
+
+    # Filas
+    "row_selected": "#2D2D38",
+    "row_hover": "#222228",
 }
 
-# Colors for status - harmonized with theme palette
+# Colors for status - softened premium palette
 STATUS_COLORS = {
-    STATUS_OK: "#6FCF97",           # Verde armonizado
-    STATUS_LOSSLESS: "#7969A8",     # Morado principal
-    STATUS_TRANSCODE: "#E74C3C",    # Rojo warning (mantener)
-    STATUS_LOW_QUALITY: "#F39C12",  # Naranja (mantener)
-    STATUS_ERROR: "#6B6B6B",        # Gris oscuro
-    STATUS_PENDING: "#4A4A4A",      # Gris medio
-    STATUS_ANALYZING: "#FCC844",    # Dorado
-    STATUS_UNCERTAIN: "#F1C40F",    # Amarillo - uncertain result
-    STATUS_VARIABLE: "#E67E22",     # Naranja - variable quality
+    STATUS_OK: "#5DB88C",           # Esmeralda suave (no neón)
+    STATUS_LOSSLESS: "#8B7EC8",     # Violeta principal
+    STATUS_TRANSCODE: "#E05555",    # Coral/bermellón
+    STATUS_LOW_QUALITY: "#E09650",  # Naranja cálido
+    STATUS_ERROR: "#7A7A7A",        # Gris
+    STATUS_PENDING: "#555555",      # Gris medio
+    STATUS_ANALYZING: "#F5C842",    # Dorado
+    STATUS_UNCERTAIN: "#D4B84A",    # Amarillo suave
+    STATUS_VARIABLE: "#D08A45",     # Naranja terroso
+}
+
+# Typography (Inter - fuente geométrica moderna)
+FONT_FAMILY = "Inter"
+FONT_SIZES = {
+    "title": 28,
+    "heading": 18,
+    "body": 14,
+    "caption": 12,
+    "small": 11,
+}
+FONT_WEIGHTS = {
+    "bold": "bold",
+    "medium": "normal",  # CTkFont no soporta "medium"
+    "regular": "normal",
 }

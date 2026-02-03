@@ -1,6 +1,7 @@
 """Spectrogram visualization panel with background threading."""
 
 import io
+import os
 import threading
 from typing import Optional
 
@@ -12,7 +13,7 @@ import numpy as np
 from PIL import Image
 
 from ..core.frequency_detector import FrequencyAnalysis
-from ..utils.constants import THEME_COLORS
+from ..utils.constants import THEME_COLORS, FONT_FAMILY, FONT_SIZES
 
 
 class SpectrogramPanel(ctk.CTkFrame):
@@ -44,29 +45,29 @@ class SpectrogramPanel(ctk.CTkFrame):
         self.grid_rowconfigure(1, weight=1)
 
         # Title bar
-        self.title_frame = ctk.CTkFrame(self, height=40, fg_color=THEME_COLORS["bg_frame"])
-        self.title_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
+        self.title_frame = ctk.CTkFrame(self, height=48, fg_color=THEME_COLORS["bg_frame"], corner_radius=8)
+        self.title_frame.grid(row=0, column=0, sticky="ew", padx=12, pady=(12, 8))
         self.title_frame.grid_columnconfigure(0, weight=1)
 
         self.title_label = ctk.CTkLabel(
             self.title_frame,
             text="Espectrograma",
-            font=ctk.CTkFont(size=16, weight="bold"),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["heading"], weight="bold"),
             text_color=THEME_COLORS["text_primary"],
         )
-        self.title_label.grid(row=0, column=0, padx=10, pady=5, sticky="w")
+        self.title_label.grid(row=0, column=0, padx=16, pady=10, sticky="w")
 
         self.file_label = ctk.CTkLabel(
             self.title_frame,
             text="",
-            font=ctk.CTkFont(size=12),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
             text_color=THEME_COLORS["text_secondary"],
         )
-        self.file_label.grid(row=0, column=1, padx=10, pady=5, sticky="e")
+        self.file_label.grid(row=0, column=1, padx=16, pady=10, sticky="e")
 
         # Figure container frame
-        self.figure_frame = ctk.CTkFrame(self, fg_color=THEME_COLORS["bg_frame"])
-        self.figure_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
+        self.figure_frame = ctk.CTkFrame(self, fg_color=THEME_COLORS["bg_frame"], corner_radius=8)
+        self.figure_frame.grid(row=1, column=0, sticky="nsew", padx=12, pady=8)
         self.figure_frame.grid_columnconfigure(0, weight=1)
         self.figure_frame.grid_rowconfigure(0, weight=1)
 
@@ -79,52 +80,86 @@ class SpectrogramPanel(ctk.CTkFrame):
         self._image_label.grid(row=0, column=0, sticky="nsew")
         self._image_label.grid_remove()  # Initially hidden
 
-        # Info panel
-        self.info_frame = ctk.CTkFrame(self, height=80, fg_color=THEME_COLORS["bg_frame"])
-        self.info_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
+        # Info panel with elevated background
+        self.info_frame = ctk.CTkFrame(
+            self,
+            height=60,
+            fg_color=THEME_COLORS["bg_elevated"],
+            corner_radius=8,
+        )
+        self.info_frame.grid(row=2, column=0, sticky="ew", padx=12, pady=(8, 12))
         self.info_frame.grid_columnconfigure((0, 1, 2), weight=1)
 
         # Cutoff frequency info
         self.cutoff_label = ctk.CTkLabel(
             self.info_frame,
             text="Frec. de corte: -",
-            font=ctk.CTkFont(size=14),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["body"]),
             text_color=THEME_COLORS["text_primary"],
         )
-        self.cutoff_label.grid(row=0, column=0, padx=10, pady=10)
+        self.cutoff_label.grid(row=0, column=0, padx=16, pady=14)
 
         # Max frequency info
         self.max_freq_label = ctk.CTkLabel(
             self.info_frame,
             text="Frec. max: -",
-            font=ctk.CTkFont(size=14),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["body"]),
             text_color=THEME_COLORS["text_primary"],
         )
-        self.max_freq_label.grid(row=0, column=1, padx=10, pady=10)
+        self.max_freq_label.grid(row=0, column=1, padx=16, pady=14)
 
         # Confidence info
         self.confidence_label = ctk.CTkLabel(
             self.info_frame,
             text="Confianza: -",
-            font=ctk.CTkFont(size=14),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["body"]),
             text_color=THEME_COLORS["text_primary"],
         )
-        self.confidence_label.grid(row=0, column=2, padx=10, pady=10)
+        self.confidence_label.grid(row=0, column=2, padx=16, pady=14)
+
+        # Empty state container (centered in figure_frame)
+        self.empty_container = ctk.CTkFrame(
+            self.figure_frame,
+            fg_color="transparent",
+        )
+        self.empty_container.place(relx=0.5, rely=0.5, anchor="center")
+
+        # Load wave icon
+        self._wave_icon = None
+        wave_icon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "wave-icon.png")
+        if os.path.exists(wave_icon_path):
+            wave_icon_image = Image.open(wave_icon_path)
+            self._wave_icon = ctk.CTkImage(
+                light_image=wave_icon_image,
+                dark_image=wave_icon_image,
+                size=(80, 80)
+            )
+
+        # Empty state icon (wave icon or fallback emoji)
+        self.empty_icon = ctk.CTkLabel(
+            self.empty_container,
+            text="" if self._wave_icon else "〰️",
+            image=self._wave_icon,
+            font=ctk.CTkFont(size=64),
+            text_color=THEME_COLORS["text_muted"],
+        )
+        self.empty_icon.grid(row=0, column=0, pady=(0, 12))
 
         # Empty state message
         self.empty_label = ctk.CTkLabel(
-            self.figure_frame,
-            text="Selecciona un archivo para ver el espectrograma",
-            font=ctk.CTkFont(size=14),
-            text_color=THEME_COLORS["text_secondary"],
+            self.empty_container,
+            text="Selecciona un archivo\npara ver el espectrograma",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["body"]),
+            text_color=THEME_COLORS["text_muted"],
+            justify="center",
         )
-        self.empty_label.place(relx=0.5, rely=0.5, anchor="center")
+        self.empty_label.grid(row=1, column=0)
 
         # Loading indicator
         self._loading_label = ctk.CTkLabel(
             self.figure_frame,
             text="Cargando espectrograma...",
-            font=ctk.CTkFont(size=14),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["body"]),
             text_color=THEME_COLORS["text_secondary"],
         )
 
@@ -178,8 +213,8 @@ class SpectrogramPanel(ctk.CTkFrame):
 
     def _show_loading(self, filename: str):
         """Show loading indicator immediately."""
-        # Hide empty state and image
-        self.empty_label.place_forget()
+        # Hide empty state container and image
+        self.empty_container.place_forget()
         self._image_label.grid_remove()
 
         # Show loading label
@@ -450,8 +485,8 @@ class SpectrogramPanel(ctk.CTkFrame):
         self._image_label.grid_remove()
         self._loading_label.place_forget()
 
-        # Show empty state
-        self.empty_label.place(relx=0.5, rely=0.5, anchor="center")
+        # Show empty state container
+        self.empty_container.place(relx=0.5, rely=0.5, anchor="center")
 
         # Reset labels
         self.file_label.configure(text="")

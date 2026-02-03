@@ -7,7 +7,7 @@ from typing import Callable, Dict, List, Optional
 import customtkinter as ctk
 
 from ..core.analyzer import AnalysisResult
-from ..utils.constants import STATUS_COLORS, THEME_COLORS
+from ..utils.constants import STATUS_COLORS, THEME_COLORS, FONT_FAMILY, FONT_SIZES
 from ..utils.file_utils import format_duration
 
 
@@ -58,24 +58,30 @@ class ResultsTable(ctk.CTkFrame):
         style = ttk.Style()
         style.theme_use("default")
 
-        # Configure treeview colors - new premium palette
+        # Configure treeview colors - premium palette with increased row height
         style.configure(
             "Results.Treeview",
             background=THEME_COLORS["bg_secondary"],
             foreground=THEME_COLORS["text_primary"],
             fieldbackground=THEME_COLORS["bg_secondary"],
-            rowheight=28,
+            rowheight=40,
+            font=(FONT_FAMILY, FONT_SIZES["body"] - 1),
         )
         style.configure(
             "Results.Treeview.Heading",
-            background=THEME_COLORS["primary_dark"],
-            foreground=THEME_COLORS["text_primary"],
+            background=THEME_COLORS["bg_frame"],
+            foreground=THEME_COLORS["text_muted"],
             relief="flat",
+            font=(FONT_FAMILY, FONT_SIZES["caption"]),
+        )
+        style.map(
+            "Results.Treeview.Heading",
+            background=[("active", THEME_COLORS["bg_elevated"])],
         )
         style.map(
             "Results.Treeview",
-            background=[("selected", THEME_COLORS["accent"])],
-            foreground=[("selected", THEME_COLORS["bg_primary"])],
+            background=[("selected", THEME_COLORS["row_selected"])],
+            foreground=[("selected", THEME_COLORS["text_primary"])],
         )
 
         # Estilo de scrollbars para tema oscuro
@@ -199,6 +205,9 @@ class ResultsTable(ctk.CTkFrame):
         else:
             cutoff_display = "-"
 
+        # Format status with indicator dot
+        status_display = f"● {result.status}"
+
         # Format values
         values = (
             result.filename,
@@ -207,7 +216,7 @@ class ResultsTable(ctk.CTkFrame):
             f"{result.declared_bitrate} kbps" if result.declared_bitrate else "-",
             cutoff_display,
             quality_display,
-            result.status,
+            status_display,
         )
 
         # Check if item exists

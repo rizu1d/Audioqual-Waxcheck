@@ -16,6 +16,8 @@ from ..utils.constants import (
     MIN_WINDOW_WIDTH,
     MIN_WINDOW_HEIGHT,
     THEME_COLORS,
+    FONT_FAMILY,
+    FONT_SIZES,
 )
 
 
@@ -58,25 +60,25 @@ class MainWindow(ctk.CTkFrame):
 
     def _setup_top_bar(self):
         """Set up the top bar with title and controls."""
-        self.top_bar = ctk.CTkFrame(self, height=50, fg_color=THEME_COLORS["bg_primary"])
-        self.top_bar.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 0))
+        self.top_bar = ctk.CTkFrame(self, height=60, fg_color=THEME_COLORS["bg_primary"])
+        self.top_bar.grid(row=0, column=0, sticky="ew", padx=16, pady=(16, 0))
         self.top_bar.grid_columnconfigure(1, weight=1)
 
         # Title
         self.title_label = ctk.CTkLabel(
             self.top_bar,
             text="AudioQual",
-            font=("Gothiks Black", 28),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["title"], weight="bold"),
             text_color=THEME_COLORS["text_primary"],
         )
-        self.title_label.grid(row=0, column=0, padx=10, pady=10)
+        self.title_label.grid(row=0, column=0, padx=16, pady=12)
 
-        # Controls frame
+        # Controls frame (aligned right)
         self.controls_frame = ctk.CTkFrame(self.top_bar, fg_color="transparent")
-        self.controls_frame.grid(row=0, column=1, padx=10, pady=10)
+        self.controls_frame.grid(row=0, column=2, padx=16, pady=12, sticky="e")
 
         # Unified button/icon sizes
-        ICON_SIZE = 32
+        ICON_SIZE = 28
         BUTTON_SIZE = 48
 
         # Load clean icon
@@ -88,7 +90,7 @@ class MainWindow(ctk.CTkFrame):
             size=(ICON_SIZE, ICON_SIZE)
         )
 
-        # Clear button with icon
+        # Clear button with elevated background
         self.clear_btn = ctk.CTkButton(
             self.controls_frame,
             text="",
@@ -96,10 +98,11 @@ class MainWindow(ctk.CTkFrame):
             command=self._on_clear,
             width=BUTTON_SIZE,
             height=BUTTON_SIZE,
-            fg_color="transparent",
+            corner_radius=12,
+            fg_color=THEME_COLORS["bg_elevated"],
             hover_color=THEME_COLORS["primary_dark"],
         )
-        self.clear_btn.grid(row=0, column=0, padx=5)
+        self.clear_btn.grid(row=0, column=0, padx=6)
 
         # Load spectrogram icon
         icon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "spectrum.jpg")
@@ -110,7 +113,7 @@ class MainWindow(ctk.CTkFrame):
             size=(ICON_SIZE, ICON_SIZE)
         )
 
-        # Toggle spectrogram panel button
+        # Toggle spectrogram panel button with elevated background
         self.toggle_panel_btn = ctk.CTkButton(
             self.controls_frame,
             text="",
@@ -118,15 +121,16 @@ class MainWindow(ctk.CTkFrame):
             command=self._on_toggle_panel,
             width=BUTTON_SIZE,
             height=BUTTON_SIZE,
-            fg_color="transparent",
+            corner_radius=12,
+            fg_color=THEME_COLORS["bg_elevated"],
             hover_color=THEME_COLORS["primary_dark"],
         )
-        self.toggle_panel_btn.grid(row=0, column=1, padx=5)
+        self.toggle_panel_btn.grid(row=0, column=1, padx=6)
 
     def _setup_content_area(self):
         """Set up the main content area."""
         self.content_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.content_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
+        self.content_frame.grid(row=1, column=0, sticky="nsew", padx=16, pady=16)
         self.content_frame.grid_columnconfigure(0, weight=1)
         self.content_frame.grid_rowconfigure(0, weight=0)
         self.content_frame.grid_rowconfigure(1, weight=1)
@@ -135,7 +139,7 @@ class MainWindow(ctk.CTkFrame):
         self.drop_zone = FileDropZone(
             self.content_frame,
             on_files_added=self._on_files_added,
-            height=200,
+            height=220,
         )
         self.drop_zone.grid(row=0, column=0, sticky="ew")
 
@@ -144,35 +148,37 @@ class MainWindow(ctk.CTkFrame):
             self.content_frame,
             on_selection_changed=self._on_selection_changed,
         )
-        self.results_table.grid(row=1, column=0, sticky="nsew", pady=(10, 0))
+        self.results_table.grid(row=1, column=0, sticky="nsew", pady=(12, 0))
 
     def _setup_status_bar(self):
         """Set up the bottom status bar."""
         self.status_bar = ctk.CTkFrame(
             self,
-            height=30,
+            height=36,
             fg_color=THEME_COLORS["primary_dark"],
-            corner_radius=6,
+            corner_radius=8,
         )
-        self.status_bar.grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 10))
+        self.status_bar.grid(row=2, column=0, sticky="ew", padx=16, pady=(0, 16))
         self.status_bar.grid_columnconfigure(1, weight=1)
 
         # Status label
         self.status_label = ctk.CTkLabel(
             self.status_bar,
             text="Listo",
-            font=ctk.CTkFont(size=12),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
             text_color=THEME_COLORS["text_primary"],
         )
-        self.status_label.grid(row=0, column=0, padx=10, pady=5)
+        self.status_label.grid(row=0, column=0, padx=16, pady=8)
 
         # Progress bar (hidden by default)
         self.progress_bar = ctk.CTkProgressBar(
             self.status_bar,
             width=200,
+            height=6,
+            corner_radius=3,
             progress_color=THEME_COLORS["accent"],
         )
-        self.progress_bar.grid(row=0, column=1, padx=10, pady=5, sticky="e")
+        self.progress_bar.grid(row=0, column=1, padx=16, pady=8, sticky="e")
         self.progress_bar.set(0)
         self.progress_bar.grid_remove()
 
@@ -180,10 +186,10 @@ class MainWindow(ctk.CTkFrame):
         self.count_label = ctk.CTkLabel(
             self.status_bar,
             text="0 archivos",
-            font=ctk.CTkFont(size=12),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
             text_color=THEME_COLORS["text_primary"],
         )
-        self.count_label.grid(row=0, column=2, padx=10, pady=5)
+        self.count_label.grid(row=0, column=2, padx=16, pady=8)
 
     def _on_files_added(self, files: List[str]):
         """Handle files being added via drop or selection."""

@@ -1,11 +1,13 @@
 """Drag and drop zone for audio files."""
 
+import os
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog
 from typing import Callable, List, Optional
 
 import customtkinter as ctk
+from PIL import Image
 
 try:
     from tkinterdnd2 import DND_FILES, TkinterDnD
@@ -14,7 +16,7 @@ except ImportError:
     HAS_DND = False
 
 from ..utils.file_utils import get_audio_files_from_path
-from ..utils.constants import SUPPORTED_FORMATS, THEME_COLORS
+from ..utils.constants import SUPPORTED_FORMATS, THEME_COLORS, FONT_FAMILY, FONT_SIZES
 
 
 FileCallback = Callable[[List[str]], None]
@@ -44,51 +46,64 @@ class FileDropZone(ctk.CTkFrame):
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # Drop zone frame - dark with subtle purple border
+        # Drop zone frame - dark with subtle muted purple border, more rounded
         self.drop_frame = ctk.CTkFrame(
             self,
             fg_color=THEME_COLORS["bg_tertiary"],
-            corner_radius=10,
+            corner_radius=16,
             border_width=2,
-            border_color=THEME_COLORS["primary_dark"],
+            border_color=THEME_COLORS["primary_muted"],
         )
-        self.drop_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        self.drop_frame.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
         self.drop_frame.grid_columnconfigure(0, weight=1)
         self.drop_frame.grid_rowconfigure(0, weight=1)
 
-        # Inner content frame
+        # Inner content frame with generous padding
         self.content_frame = ctk.CTkFrame(
             self.drop_frame,
             fg_color="transparent",
         )
-        self.content_frame.grid(row=0, column=0)
+        self.content_frame.grid(row=0, column=0, padx=32, pady=32)
 
-        # Icon/emoji label
+        # Load drop icon
+        self._drop_icon = None
+        drop_icon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "drop-icon.png")
+        if os.path.exists(drop_icon_path):
+            drop_icon_image = Image.open(drop_icon_path)
+            self._drop_icon = ctk.CTkImage(
+                light_image=drop_icon_image,
+                dark_image=drop_icon_image,
+                size=(64, 64)
+            )
+
+        # Icon label - use image or fallback to emoji
         self.icon_label = ctk.CTkLabel(
             self.content_frame,
-            text="",
-            font=ctk.CTkFont(size=48),
+            text="" if self._drop_icon else "📂",
+            image=self._drop_icon,
+            font=ctk.CTkFont(size=56),
         )
-        self.icon_label.grid(row=0, column=0, pady=(0, 10))
+        self.icon_label.grid(row=0, column=0, pady=(0, 16))
 
-        # Main instruction label
+        # Main instruction label - larger and bolder
         self.main_label = ctk.CTkLabel(
             self.content_frame,
-            text="Arrastra archivos de audio aqui",
-            font=ctk.CTkFont(size=16, weight="bold"),
+            text="Arrastra archivos de audio aquí",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["heading"], weight="bold"),
             text_color=THEME_COLORS["text_primary"],
         )
-        self.main_label.grid(row=1, column=0, pady=(0, 5))
+        self.main_label.grid(row=1, column=0, pady=(0, 8))
 
-        # Sub label
-        formats_str = ", ".join(sorted(f.upper().lstrip(".") for f in SUPPORTED_FORMATS))
+        # Sub label - more subtle with muted color
+        formats_list = ["MP3", "WAV", "FLAC", "M4A", "AAC", "OGG"]
+        formats_str = ", ".join(formats_list)
         self.sub_label = ctk.CTkLabel(
             self.content_frame,
-            text=f"Formatos soportados: {formats_str}",
-            font=ctk.CTkFont(size=12),
-            text_color=THEME_COLORS["text_secondary"],
+            text=formats_str,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
+            text_color=THEME_COLORS["text_muted"],
         )
-        self.sub_label.grid(row=2, column=0, pady=(0, 15))
+        self.sub_label.grid(row=2, column=0, pady=(0, 20))
 
         # Buttons frame
         self.buttons_frame = ctk.CTkFrame(
@@ -97,29 +112,35 @@ class FileDropZone(ctk.CTkFrame):
         )
         self.buttons_frame.grid(row=3, column=0)
 
-        # Select files button - purple style
+        # Select files button - premium style with rounded corners
         self.select_files_btn = ctk.CTkButton(
             self.buttons_frame,
             text="Seleccionar archivos",
             command=self._on_select_files,
-            width=150,
+            width=180,
+            height=44,
+            corner_radius=12,
             fg_color=THEME_COLORS["primary"],
             hover_color=THEME_COLORS["primary_dark"],
             text_color=THEME_COLORS["text_primary"],
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["body"], weight="bold"),
         )
-        self.select_files_btn.grid(row=0, column=0, padx=5)
+        self.select_files_btn.grid(row=0, column=0, padx=8)
 
-        # Select folder button - purple style
+        # Select folder button - premium style
         self.select_folder_btn = ctk.CTkButton(
             self.buttons_frame,
             text="Seleccionar carpeta",
             command=self._on_select_folder,
-            width=150,
+            width=180,
+            height=44,
+            corner_radius=12,
             fg_color=THEME_COLORS["primary"],
             hover_color=THEME_COLORS["primary_dark"],
             text_color=THEME_COLORS["text_primary"],
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["body"], weight="bold"),
         )
-        self.select_folder_btn.grid(row=0, column=1, padx=5)
+        self.select_folder_btn.grid(row=0, column=1, padx=8)
 
     def _setup_dnd(self):
         """Set up drag and drop if available."""
@@ -181,7 +202,7 @@ class FileDropZone(ctk.CTkFrame):
 
     def _reset_drop_style(self):
         """Reset drop zone to default style."""
-        self.drop_frame.configure(border_color=THEME_COLORS["primary_dark"])
+        self.drop_frame.configure(border_color=THEME_COLORS["primary_muted"])
 
     def _on_select_files(self):
         """Handle select files button click."""
