@@ -21,7 +21,12 @@ from ..utils.file_utils import get_filename
 
 @dataclass
 class AnalysisResult:
-    """Complete analysis result for a single file."""
+    """Complete analysis result for a single file.
+
+    Note: frequency_analysis is only populated temporarily during analysis
+    and passed to the UI for visualization. It's NOT stored permanently
+    to avoid memory accumulation (~4MB per file).
+    """
     filepath: str
     filename: str
     format: str
@@ -33,8 +38,7 @@ class AnalysisResult:
     confidence: float
     details: str
     error: Optional[str] = None
-    frequency_analysis: Optional[FrequencyAnalysis] = None
-    audio_data: Optional[AudioData] = None
+    frequency_analysis: Optional[FrequencyAnalysis] = None  # Transient - cleared after UI display
     is_uncertain: bool = False  # True if result should be verified manually
     uncertainty_reason: str = ""  # Explanation for uncertainty
     display_cutoff_override: Optional[str] = None  # e.g., ">20 kHz" for genuine lossless
@@ -110,8 +114,7 @@ class AudioAnalyzer:
                 status=quality.status,
                 confidence=quality.confidence,
                 details=quality.details,
-                frequency_analysis=frequency_analysis,
-                audio_data=audio_data,
+                frequency_analysis=frequency_analysis,  # Passed for UI, cleared later
                 is_uncertain=quality.is_uncertain,
                 uncertainty_reason=quality.uncertainty_reason,
                 display_cutoff_override=quality.display_cutoff_override,
@@ -188,14 +191,37 @@ class AudioAnalyzer:
 
                 results.append(result)
 
+                # Capture values inside lock to avoid race condition
                 with self._state.lock:
                     self._state.completed_files += 1
-                    self._state.results[filepath] = result
+                    completed = self._state.completed_files
+                    total = self._state.total_files
+                    # Store result WITHOUT frequency_analysis to save memory
+                    # Create a lightweight copy for storage
+                    stored_result = AnalysisResult(
+                        filepath=result.filepath,
+                        filename=result.filename,
+                        format=result.format,
+                        duration=result.duration,
+                        declared_bitrate=result.declared_bitrate,
+                        detected_quality=result.detected_quality,
+                        cutoff_frequency_khz=result.cutoff_frequency_khz,
+                        status=result.status,
+                        confidence=result.confidence,
+                        details=result.details,
+                        error=result.error,
+                        frequency_analysis=None,  # Don't store - saves ~4MB per file
+                        is_uncertain=result.is_uncertain,
+                        uncertainty_reason=result.uncertainty_reason,
+                        display_cutoff_override=result.display_cutoff_override,
+                    )
+                    self._state.results[filepath] = stored_result
 
                 if progress_callback:
+                    # Pass full result with frequency_analysis for UI display
                     progress_callback(
-                        self._state.completed_files,
-                        self._state.total_files,
+                        completed,
+                        total,
                         result.filename,
                         result,
                     )

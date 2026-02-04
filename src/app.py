@@ -1,8 +1,17 @@
 """Main application class integrating core and GUI."""
 
-from typing import Optional
+import time
+from collections import OrderedDict
+from typing import Dict, Optional
 
 import customtkinter as ctk
+
+# Configure matplotlib ONCE at module load, before any imports that might use it
+# This avoids the overhead of calling matplotlib.use('Agg') and plt.style.use() on every render
+import matplotlib
+matplotlib.use('Agg')  # Non-interactive backend (thread-safe)
+import matplotlib.pyplot as plt
+plt.style.use('dark_background')
 
 try:
     from tkinterdnd2 import TkinterDnD
@@ -11,6 +20,7 @@ except ImportError:
     HAS_DND = False
 
 from .core.analyzer import AnalysisResult, AudioAnalyzer
+from .core.frequency_detector import FrequencyAnalysis
 from .gui.main_window import MainWindow
 from .gui.spectrogram_panel import SpectrogramPanel
 from .utils.constants import (
@@ -24,6 +34,9 @@ from .utils.constants import (
     DIVIDER_WIDTH,
     THEME_COLORS,
 )
+
+# Maximum number of spectrograms to cache in memory (LRU)
+MAX_SPECTROGRAM_CACHE = 10
 
 
 class AudioQualApp:
@@ -40,6 +53,9 @@ class AudioQualApp:
 
         self._spectrum_panel_visible = False  # Hidden by default
         self._current_panel_width = PANEL_WIDTH  # Track current panel width for resizing
+        # LRU cache for frequency analysis data (filepath -> FrequencyAnalysis)
+        # This keeps the last N spectrograms in memory for quick re-display
+        self._spectrogram_cache: OrderedDict[str, tuple] = OrderedDict()
         self._setup_window()
         self._setup_components()
         self._setup_layout()
@@ -72,6 +88,7 @@ class AudioQualApp:
             analyzer=self.analyzer,
             on_result_selected=self._on_result_selected,
             on_toggle_panel=self._toggle_spectrum_panel,
+            on_clear=self.clear_spectrogram_cache,
         )
 
         # Create spectrogram panel (right panel)
@@ -198,18 +215,62 @@ class AudioQualApp:
 
     def _on_result_selected(self, result: Optional[AnalysisResult]):
         """Handle result selection from the table."""
-        if result and result.frequency_analysis:
-            # Auto-abrir panel si está cerrado
-            if not self._spectrum_panel_visible:
-                self._toggle_spectrum_panel()
+        if not result:
+            self.spectrogram_panel.clear()
+            return
 
-            self.spectrogram_panel.show_spectrogram(
+        # Check if result has frequency_analysis (fresh result)
+        if result.frequency_analysis:
+            # Cache the frequency analysis for later re-selection
+            self._cache_spectrogram(
+                result.filepath,
                 result.frequency_analysis,
                 result.filename,
                 result.cutoff_frequency_khz,
             )
+            freq_analysis = result.frequency_analysis
+            filename = result.filename
+            cutoff_khz = result.cutoff_frequency_khz
         else:
-            self.spectrogram_panel.clear()
+            # Try to get from cache (re-selection of previously viewed file)
+            cached = self._spectrogram_cache.get(result.filepath)
+            if cached:
+                freq_analysis, filename, cutoff_khz = cached
+                # Move to end (most recently used)
+                self._spectrogram_cache.move_to_end(result.filepath)
+            else:
+                # No cached data available
+                self.spectrogram_panel.clear()
+                return
+
+        # Auto-abrir panel si está cerrado
+        if not self._spectrum_panel_visible:
+            self._toggle_spectrum_panel()
+
+        self.spectrogram_panel.show_spectrogram(
+            freq_analysis,
+            filename,
+            cutoff_khz,
+        )
+
+    def _cache_spectrogram(
+        self,
+        filepath: str,
+        analysis: FrequencyAnalysis,
+        filename: str,
+        cutoff_khz: float,
+    ):
+        """Cache spectrogram data with LRU eviction."""
+        # Remove oldest if at capacity
+        while len(self._spectrogram_cache) >= MAX_SPECTROGRAM_CACHE:
+            self._spectrogram_cache.popitem(last=False)
+
+        # Add/update cache entry
+        self._spectrogram_cache[filepath] = (analysis, filename, cutoff_khz)
+
+    def clear_spectrogram_cache(self):
+        """Clear the spectrogram cache (called when clearing results)."""
+        self._spectrogram_cache.clear()
 
     def run(self):
         """Start the application main loop."""

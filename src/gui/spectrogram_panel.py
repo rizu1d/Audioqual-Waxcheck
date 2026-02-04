@@ -1,13 +1,12 @@
 """Spectrogram visualization panel with background threading."""
 
-import io
 import os
 import threading
+import tkinter as tk
 from typing import Optional
 
 import customtkinter as ctk
-import matplotlib
-import matplotlib.pyplot as plt
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
 import numpy as np
 from PIL import Image
@@ -194,10 +193,12 @@ class SpectrogramPanel(ctk.CTkFrame):
         # 2. Show loading state immediately
         self._show_loading(filename)
 
-        # 3. Get dimensions for rendering
-        self.update_idletasks()
-        width = max(self.figure_frame.winfo_width(), 300)
-        height = max(self.figure_frame.winfo_height(), 200)
+        # 3. Get dimensions for rendering (use cached values if available)
+        width = self.figure_frame.winfo_width()
+        height = self.figure_frame.winfo_height()
+        # Use minimum dimensions if widget not yet sized
+        width = max(width, 300) if width > 1 else 300
+        height = max(height, 200) if height > 1 else 200
         self._last_render_size = (width, height)
 
         # 4. Reset cancellation flag for new render
@@ -226,9 +227,6 @@ class SpectrogramPanel(ctk.CTkFrame):
         self.max_freq_label.configure(text="Frec. max: -")
         self.confidence_label.configure(text="Confianza: -")
 
-        # Force visual update
-        self.update_idletasks()
-
     def _on_resize(self, event):
         """Handle container resize with debouncing."""
         # Skip if resize is paused (during drag operations)
@@ -243,8 +241,8 @@ class SpectrogramPanel(ctk.CTkFrame):
         if self._resize_timer:
             self.after_cancel(self._resize_timer)
 
-        # Set new timer (debounce 200ms)
-        self._resize_timer = self.after(200, self._handle_resize)
+        # Set new timer (debounce 400ms - longer to reduce re-renders during resize)
+        self._resize_timer = self.after(400, self._handle_resize)
 
     def pause_resize(self):
         """Pause resize handling during divider drag."""
@@ -275,9 +273,10 @@ class SpectrogramPanel(ctk.CTkFrame):
         new_width = self.figure_frame.winfo_width()
         new_height = self.figure_frame.winfo_height()
 
-        # Only re-render if size changed significantly (>20px difference)
+        # Only re-render if size changed significantly (>50px difference)
+        # This prevents unnecessary re-renders during minor size changes
         old_width, old_height = self._last_render_size
-        if abs(new_width - old_width) < 20 and abs(new_height - old_height) < 20:
+        if abs(new_width - old_width) < 50 and abs(new_height - old_height) < 50:
             return
 
         # Re-render with current analysis data
@@ -302,11 +301,8 @@ class SpectrogramPanel(ctk.CTkFrame):
             return
 
         try:
-            # Use non-interactive backend (thread-safe)
-            matplotlib.use('Agg')
-            plt.style.use('dark_background')
-
             # Create new figure (don't reuse to avoid state issues)
+            # Note: matplotlib backend and style are configured once in app.py
             dpi = 100
             fig = Figure(
                 figsize=(width / dpi, height / dpi),
@@ -318,7 +314,6 @@ class SpectrogramPanel(ctk.CTkFrame):
 
             # Check for cancellation
             if self._render_cancelled.is_set() or render_id != self._render_id:
-                plt.close(fig)
                 return
 
             # Plot spectrogram
@@ -331,19 +326,26 @@ class SpectrogramPanel(ctk.CTkFrame):
 
             # Check for cancellation after plotting
             if self._render_cancelled.is_set() or render_id != self._render_id:
-                plt.close(fig)
                 return
 
-            # Render to PIL image
-            buf = io.BytesIO()
-            fig.savefig(buf, format='png', facecolor=THEME_COLORS["bg_primary"], bbox_inches='tight')
-            buf.seek(0)
-            image = Image.open(buf)
-            # Make a copy since we're closing the buffer
-            image = image.copy()
-            buf.close()
+            # Render to PIL image using direct canvas rendering (faster than savefig)
+            # This avoids PNG compression overhead
+            canvas = FigureCanvasAgg(fig)
+            canvas.draw()
 
-            plt.close(fig)  # Free memory
+            # Get raw RGBA buffer and convert to PIL Image
+            buf = canvas.buffer_rgba()
+            image = Image.frombuffer(
+                'RGBA',
+                (int(fig.get_figwidth() * dpi), int(fig.get_figheight() * dpi)),
+                buf,
+                'raw',
+                'RGBA',
+                0,
+                1
+            )
+            # Make a copy since the buffer is tied to the canvas
+            image = image.copy()
 
             # Send result to main thread
             self.after(0, lambda: self._on_render_complete(
@@ -353,7 +355,6 @@ class SpectrogramPanel(ctk.CTkFrame):
         except Exception as e:
             # Log error but don't crash
             print(f"Error rendering spectrogram: {e}")
-            plt.close('all')
 
     def _plot_spectrogram_on_axes(self, ax, analysis: FrequencyAnalysis):
         """Plot the spectrogram on given axes."""
@@ -448,26 +449,35 @@ class SpectrogramPanel(ctk.CTkFrame):
         if render_id != self._render_id:
             return  # Obsolete render, discard
 
-        # Convert to CTkImage (handles HighDPI scaling)
-        self._photo_image = ctk.CTkImage(
-            light_image=image,
-            dark_image=image,
-            size=(image.width, image.height)
-        )
+        try:
+            # Clean up previous image to prevent memory leak
+            if self._photo_image is not None:
+                self._image_label.configure(image=None)
+                self._photo_image = None
 
-        # Hide loading, show image
-        self._loading_label.place_forget()
-        self._image_label.configure(image=self._photo_image, text="")
-        self._image_label.grid()
+            # Convert to CTkImage (handles HighDPI scaling)
+            self._photo_image = ctk.CTkImage(
+                light_image=image,
+                dark_image=image,
+                size=(image.width, image.height)
+            )
 
-        # Update info labels
-        self.cutoff_label.configure(text=f"Frec. de corte: {cutoff_khz:.1f} kHz")
-        self.max_freq_label.configure(
-            text=f"Frec. max: {analysis.max_frequency_hz / 1000:.1f} kHz"
-        )
-        self.confidence_label.configure(
-            text=f"Confianza: {analysis.confidence * 100:.0f}%"
-        )
+            # Hide loading, show image
+            self._loading_label.place_forget()
+            self._image_label.configure(image=self._photo_image, text="")
+            self._image_label.grid()
+
+            # Update info labels
+            self.cutoff_label.configure(text=f"Frec. de corte: {cutoff_khz:.1f} kHz")
+            self.max_freq_label.configure(
+                text=f"Frec. max: {analysis.max_frequency_hz / 1000:.1f} kHz"
+            )
+            self.confidence_label.configure(
+                text=f"Confianza: {analysis.confidence * 100:.0f}%"
+            )
+        except tk.TclError:
+            # Image was destroyed by another render, ignore silently
+            pass
 
     def clear(self):
         """Clear the spectrogram display."""

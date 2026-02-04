@@ -79,6 +79,7 @@ class ResultRow(ctk.CTkFrame):
         self._cells: Dict[str, ctk.CTkLabel] = {}
         self._cell_frames: Dict[str, ctk.CTkFrame] = {}
         self._badge: Optional[StatusBadge] = None
+        self._hover_state = False  # Track current hover state to avoid redundant configure calls
 
         # Prevent frame from shrinking
         self.pack_propagate(False)
@@ -103,9 +104,6 @@ class ResultRow(ctk.CTkFrame):
                 # Badge for status
                 self._badge = StatusBadge(cell_frame, result.status)
                 self._badge.place(x=8, rely=0.5, anchor="w")
-                # Bind click to badge and its children
-                self._badge.bind("<Button-1>", self._handle_click)
-                self._badge.label.bind("<Button-1>", self._handle_click)
             else:
                 # Normal label for other columns
                 cell = ctk.CTkLabel(
@@ -118,20 +116,18 @@ class ResultRow(ctk.CTkFrame):
                 )
                 cell.place(x=8, rely=0.5, anchor="w")
                 self._cells[col_id] = cell
-                # Bind click to cell
-                cell.bind("<Button-1>", self._handle_click)
-
-            # Bind click to cell frame
-            cell_frame.bind("<Button-1>", self._handle_click)
 
         # Configure column weights - all fixed width
         for i, (col_id, _, width) in enumerate(columns):
             self.grid_columnconfigure(i, weight=0, minsize=width)
 
-        # Bind click and hover events to row
+        # Bind click/hover events to the row
         self.bind("<Button-1>", self._handle_click)
         self.bind("<Enter>", self._on_enter)
         self.bind("<Leave>", self._on_leave)
+
+        # Bind click events to all descendants (needed for CTk widgets with internal structure)
+        self._bind_click_recursive(self)
 
     def _get_value(self, col_id: str, width: int) -> str:
         """Get the display value for a column, truncated if necessary."""
@@ -164,24 +160,34 @@ class ResultRow(ctk.CTkFrame):
 
         return value
 
+    def _bind_click_recursive(self, widget):
+        """Bind click events to all descendants of the widget."""
+        for child in widget.winfo_children():
+            child.bind("<Button-1>", self._handle_click)
+            self._bind_click_recursive(child)
+
     def _handle_click(self, event):
         """Handle click on row or its children."""
         if self.on_click:
             self.on_click(self)
+        return "break"  # Prevent event from bubbling to other handlers
 
     def _on_enter(self, event):
         """Handle mouse enter (hover)."""
-        if not self._selected:
+        if not self._selected and not self._hover_state:
+            self._hover_state = True
             self.configure(fg_color=THEME_COLORS["row_hover"])
 
     def _on_leave(self, event):
         """Handle mouse leave."""
-        if not self._selected:
+        if not self._selected and self._hover_state:
+            self._hover_state = False
             self.configure(fg_color="transparent")
 
     def set_selected(self, selected: bool):
         """Set the selection state of the row."""
         self._selected = selected
+        self._hover_state = False  # Reset hover state on selection change
         if selected:
             self.configure(fg_color=THEME_COLORS["row_selected"])
         else:
@@ -334,13 +340,32 @@ class ResultsTable(ctk.CTkFrame):
 
     def clear(self):
         """Clear all results from the table."""
-        # Destroy all row widgets
-        for row in self._rows.values():
-            row.destroy()
+        # Get all rows to destroy
+        rows_to_destroy = list(self._rows.values())
 
+        # Clear data structures immediately for responsiveness
         self._rows.clear()
         self._results.clear()
         self._selected_row = None
+
+        # Batch destroy widgets - do it in chunks to avoid long UI freeze
+        if len(rows_to_destroy) <= 50:
+            # Small batch: destroy all at once
+            for row in rows_to_destroy:
+                row.destroy()
+        else:
+            # Large batch: destroy in chunks using after() to keep UI responsive
+            self._destroy_rows_batched(rows_to_destroy, 0)
+
+    def _destroy_rows_batched(self, rows: list, index: int, batch_size: int = 20):
+        """Destroy rows in batches to keep UI responsive."""
+        end_index = min(index + batch_size, len(rows))
+        for i in range(index, end_index):
+            rows[i].destroy()
+
+        if end_index < len(rows):
+            # Schedule next batch
+            self.after(1, lambda: self._destroy_rows_batched(rows, end_index, batch_size))
 
     def get_selected_result(self) -> Optional[AnalysisResult]:
         """Get the currently selected result."""

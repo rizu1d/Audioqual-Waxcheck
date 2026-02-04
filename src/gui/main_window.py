@@ -2,6 +2,7 @@
 
 import os
 import threading
+import time
 import tkinter as tk
 from tkinter import filedialog
 from typing import List, Optional
@@ -41,6 +42,7 @@ class MainWindow(ctk.CTkFrame):
         analyzer: AudioAnalyzer,
         on_result_selected=None,
         on_toggle_panel=None,
+        on_clear=None,
         **kwargs
     ):
         super().__init__(master, fg_color=THEME_COLORS["bg_primary"], **kwargs)
@@ -48,8 +50,12 @@ class MainWindow(ctk.CTkFrame):
         self.analyzer = analyzer
         self.on_result_selected = on_result_selected
         self.on_toggle_panel = on_toggle_panel
+        self.on_clear = on_clear
         self._analysis_thread: Optional[threading.Thread] = None
         self._panel_visible = False
+        # Rate limiting for progress updates (100ms minimum between updates)
+        self._last_progress_update = 0
+        self._pending_progress_update = None  # Store pending update for final flush
 
         self._setup_ui()
 
@@ -319,22 +325,8 @@ class MainWindow(ctk.CTkFrame):
             # Unix format - space separated
             files = data.split()
 
-        # Process the files
-        all_audio_files = []
-        for path in files:
-            audio_files = get_audio_files_from_path(path)
-            all_audio_files.extend(audio_files)
-
-        # Remove duplicates
-        seen = set()
-        unique_files = []
-        for f in all_audio_files:
-            if f not in seen:
-                seen.add(f)
-                unique_files.append(f)
-
-        if unique_files:
-            self._on_files_added(unique_files)
+        # Process files in background thread to avoid UI blocking
+        self._process_paths_async(files)
 
     def _on_add_files_click(self):
         """Handle add files button click - show menu."""
@@ -371,23 +363,38 @@ class MainWindow(ctk.CTkFrame):
             self._process_paths([folder])
 
     def _process_paths(self, paths: List[str]):
-        """Process a list of file/folder paths."""
-        all_files = []
+        """Process a list of file/folder paths (sync version for file dialog)."""
+        self._process_paths_async(paths)
 
-        for path in paths:
-            files = get_audio_files_from_path(path)
-            all_files.extend(files)
+    def _process_paths_async(self, paths: List[str]):
+        """Process paths in background thread to avoid UI blocking."""
+        # Show loading status
+        self.status_label.configure(text="Escaneando archivos...")
 
-        # Remove duplicates while preserving order
-        seen = set()
-        unique_files = []
-        for f in all_files:
-            if f not in seen:
-                seen.add(f)
-                unique_files.append(f)
+        def scan_files():
+            all_files = []
+            for path in paths:
+                files = get_audio_files_from_path(path)
+                all_files.extend(files)
 
-        if unique_files:
-            self._on_files_added(unique_files)
+            # Remove duplicates while preserving order
+            seen = set()
+            unique_files = []
+            for f in all_files:
+                if f not in seen:
+                    seen.add(f)
+                    unique_files.append(f)
+
+            # Return to main thread
+            self.after(0, lambda: self._on_files_scanned(unique_files))
+
+        threading.Thread(target=scan_files, daemon=True).start()
+
+    def _on_files_scanned(self, files: List[str]):
+        """Handle completion of file scanning (main thread)."""
+        self.status_label.configure(text="Listo")
+        if files:
+            self._on_files_added(files)
 
     def _on_files_added(self, files: List[str]):
         """Handle files being added via drop or selection."""
@@ -423,7 +430,13 @@ class MainWindow(ctk.CTkFrame):
         current_file: str,
         result: Optional[AnalysisResult],
     ):
-        """Handle analysis progress updates (called from worker thread)."""
+        """Handle analysis progress updates (called from worker thread).
+
+        Rate-limited to max 1 UI update per 100ms to prevent event loop saturation.
+        """
+        current_time = time.time() * 1000  # ms
+        is_final = completed >= total
+
         def update_ui():
             if result:
                 self.results_table.add_result(result)
@@ -434,8 +447,21 @@ class MainWindow(ctk.CTkFrame):
                 text=f"Analizando: {current_file} ({completed}/{total})"
             )
             self._update_count()
+            self._last_progress_update = time.time() * 1000
 
-        self.after(0, update_ui)
+        # Always process the final update immediately
+        if is_final:
+            self.after(0, update_ui)
+            return
+
+        # Rate limit: only update UI if 100ms has passed since last update
+        if current_time - self._last_progress_update >= 100:
+            self.after(0, update_ui)
+        else:
+            # Store pending update - will be flushed on final or next allowed update
+            # Still add result to table immediately to not lose data
+            if result:
+                self.after(0, lambda r=result: self.results_table.add_result(r))
 
     def _set_analyzing_state(self, is_analyzing: bool):
         """Set UI state for analyzing/ready."""
@@ -464,6 +490,9 @@ class MainWindow(ctk.CTkFrame):
 
         if self.on_result_selected:
             self.on_result_selected(None)
+
+        if self.on_clear:
+            self.on_clear()
 
     def _update_empty_state_visibility(self):
         """Update empty state visibility based on file count."""
