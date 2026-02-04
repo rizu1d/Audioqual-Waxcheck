@@ -105,18 +105,11 @@ class FileDropZone(ctk.CTkFrame):
         )
         self.sub_label.grid(row=2, column=0, pady=(0, 20))
 
-        # Buttons frame
-        self.buttons_frame = ctk.CTkFrame(
+        # Select button - single button with dropdown menu
+        self.select_btn = ctk.CTkButton(
             self.content_frame,
-            fg_color="transparent",
-        )
-        self.buttons_frame.grid(row=3, column=0)
-
-        # Select files button - premium style with rounded corners
-        self.select_files_btn = ctk.CTkButton(
-            self.buttons_frame,
-            text="Seleccionar archivos",
-            command=self._on_select_files,
+            text="Seleccionar",
+            command=self._on_select_click,
             width=180,
             height=44,
             corner_radius=12,
@@ -125,22 +118,7 @@ class FileDropZone(ctk.CTkFrame):
             text_color=THEME_COLORS["text_primary"],
             font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["body"], weight="bold"),
         )
-        self.select_files_btn.grid(row=0, column=0, padx=8)
-
-        # Select folder button - premium style
-        self.select_folder_btn = ctk.CTkButton(
-            self.buttons_frame,
-            text="Seleccionar carpeta",
-            command=self._on_select_folder,
-            width=180,
-            height=44,
-            corner_radius=12,
-            fg_color=THEME_COLORS["primary"],
-            hover_color=THEME_COLORS["primary_dark"],
-            text_color=THEME_COLORS["text_primary"],
-            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["body"], weight="bold"),
-        )
-        self.select_folder_btn.grid(row=0, column=1, padx=8)
+        self.select_btn.grid(row=3, column=0)
 
     def _setup_dnd(self):
         """Set up drag and drop if available."""
@@ -204,6 +182,36 @@ class FileDropZone(ctk.CTkFrame):
         """Reset drop zone to default style."""
         self.drop_frame.configure(border_color=THEME_COLORS["primary_muted"])
 
+    def _on_select_click(self, event=None):
+        """Show context menu with selection options."""
+        menu = tk.Menu(self, tearoff=0)
+        menu.add_command(label="Archivos", command=self._on_select_files)
+        menu.add_command(label="Carpeta", command=self._on_select_folder)
+
+        # Position menu below the button
+        btn = self.select_btn
+        x = btn.winfo_rootx()
+        y = btn.winfo_rooty() + btn.winfo_height()
+        menu.tk_popup(x, y)
+
+    def show_select_menu(self, button):
+        """Show the select menu positioned below the given button."""
+        menu = tk.Menu(self, tearoff=0)
+        menu.add_command(label="Archivos", command=self._on_select_files)
+        menu.add_command(label="Carpeta", command=self._on_select_folder)
+
+        x = button.winfo_rootx()
+        y = button.winfo_rooty() + button.winfo_height()
+        menu.tk_popup(x, y)
+
+    def select_files(self):
+        """Public method to open file selection dialog."""
+        self._on_select_files()
+
+    def select_folder(self):
+        """Public method to open folder selection dialog."""
+        self._on_select_folder()
+
     def _on_select_files(self):
         """Handle select files button click."""
         filetypes = [
@@ -250,5 +258,4 @@ class FileDropZone(ctk.CTkFrame):
     def set_enabled(self, enabled: bool):
         """Enable or disable the drop zone."""
         state = "normal" if enabled else "disabled"
-        self.select_files_btn.configure(state=state)
-        self.select_folder_btn.configure(state=state)
+        self.select_btn.configure(state=state)

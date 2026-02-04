@@ -2,12 +2,19 @@
 
 import os
 import threading
+import tkinter as tk
+from tkinter import filedialog
 from typing import List, Optional
 
 import customtkinter as ctk
 from PIL import Image
 
-from .file_drop_zone import FileDropZone
+try:
+    from tkinterdnd2 import DND_FILES
+    HAS_DND = True
+except ImportError:
+    HAS_DND = False
+
 from .results_table import ResultsTable
 from ..core.analyzer import AnalysisResult, AudioAnalyzer, create_pending_result
 from ..utils.constants import (
@@ -18,7 +25,9 @@ from ..utils.constants import (
     THEME_COLORS,
     FONT_FAMILY,
     FONT_SIZES,
+    SUPPORTED_FORMATS,
 )
+from ..utils.file_utils import get_audio_files_from_path
 
 
 class MainWindow(ctk.CTkFrame):
@@ -81,6 +90,29 @@ class MainWindow(ctk.CTkFrame):
         ICON_SIZE = 28
         BUTTON_SIZE = 48
 
+        # Load add files icon (using drop-icon.png)
+        add_icon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "drop-icon.png")
+        add_icon_image = Image.open(add_icon_path)
+        self._add_icon = ctk.CTkImage(
+            light_image=add_icon_image,
+            dark_image=add_icon_image,
+            size=(ICON_SIZE, ICON_SIZE)
+        )
+
+        # Add files button (always visible)
+        self.add_files_btn = ctk.CTkButton(
+            self.controls_frame,
+            text="",
+            image=self._add_icon,
+            command=self._on_add_files_click,
+            width=BUTTON_SIZE,
+            height=BUTTON_SIZE,
+            corner_radius=12,
+            fg_color=THEME_COLORS["bg_elevated"],
+            hover_color=THEME_COLORS["primary_dark"],
+        )
+        self.add_files_btn.grid(row=0, column=0, padx=6)
+
         # Load clean icon
         clean_icon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "clean.jpg")
         clean_icon_image = Image.open(clean_icon_path)
@@ -102,7 +134,7 @@ class MainWindow(ctk.CTkFrame):
             fg_color=THEME_COLORS["bg_elevated"],
             hover_color=THEME_COLORS["primary_dark"],
         )
-        self.clear_btn.grid(row=0, column=0, padx=6)
+        self.clear_btn.grid(row=0, column=1, padx=6)
 
         # Load spectrogram icon
         icon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "spectrum.jpg")
@@ -125,30 +157,27 @@ class MainWindow(ctk.CTkFrame):
             fg_color=THEME_COLORS["bg_elevated"],
             hover_color=THEME_COLORS["primary_dark"],
         )
-        self.toggle_panel_btn.grid(row=0, column=1, padx=6)
+        self.toggle_panel_btn.grid(row=0, column=2, padx=6)
 
     def _setup_content_area(self):
         """Set up the main content area."""
         self.content_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.content_frame.grid(row=1, column=0, sticky="nsew", padx=16, pady=16)
         self.content_frame.grid_columnconfigure(0, weight=1)
-        self.content_frame.grid_rowconfigure(0, weight=0)
-        self.content_frame.grid_rowconfigure(1, weight=1)
-
-        # Drop zone (collapsible when files are loaded)
-        self.drop_zone = FileDropZone(
-            self.content_frame,
-            on_files_added=self._on_files_added,
-            height=220,
-        )
-        self.drop_zone.grid(row=0, column=0, sticky="ew")
+        self.content_frame.grid_rowconfigure(0, weight=1)
 
         # Results table
         self.results_table = ResultsTable(
             self.content_frame,
             on_selection_changed=self._on_selection_changed,
         )
-        self.results_table.grid(row=1, column=0, sticky="nsew", pady=(12, 0))
+        self.results_table.grid(row=0, column=0, sticky="nsew")
+
+        # Empty state overlay (shown when no files)
+        self._setup_empty_state()
+
+        # Set up drag-and-drop on content frame
+        self._setup_dnd()
 
     def _setup_status_bar(self):
         """Set up the bottom status bar."""
@@ -191,6 +220,175 @@ class MainWindow(ctk.CTkFrame):
         )
         self.count_label.grid(row=0, column=2, padx=16, pady=8)
 
+    def _setup_empty_state(self):
+        """Set up the empty state overlay shown when no files are loaded."""
+        # Load drop icon
+        self._drop_icon = None
+        drop_icon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "drop-icon.png")
+        if os.path.exists(drop_icon_path):
+            drop_icon_image = Image.open(drop_icon_path)
+            self._drop_icon = ctk.CTkImage(
+                light_image=drop_icon_image,
+                dark_image=drop_icon_image,
+                size=(64, 64)
+            )
+
+        # Empty state frame - overlays the results table area
+        self.empty_state = ctk.CTkFrame(
+            self.content_frame,
+            fg_color=THEME_COLORS["bg_secondary"],
+            corner_radius=0,
+        )
+        self.empty_state.grid(row=0, column=0, sticky="nsew")
+        self.empty_state.grid_columnconfigure(0, weight=1)
+        self.empty_state.grid_rowconfigure(0, weight=1)
+
+        # Center content
+        center_frame = ctk.CTkFrame(self.empty_state, fg_color="transparent")
+        center_frame.grid(row=0, column=0)
+
+        # Icon
+        icon_label = ctk.CTkLabel(
+            center_frame,
+            text="" if self._drop_icon else "",
+            image=self._drop_icon,
+            font=ctk.CTkFont(size=56),
+        )
+        icon_label.grid(row=0, column=0, pady=(0, 16))
+
+        # Main text
+        main_label = ctk.CTkLabel(
+            center_frame,
+            text="Arrastra archivos de audio aquí",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["heading"], weight="bold"),
+            text_color=THEME_COLORS["text_primary"],
+        )
+        main_label.grid(row=1, column=0, pady=(0, 8))
+
+        # Formats text
+        formats_list = ["MP3", "WAV", "FLAC", "M4A", "AAC", "OGG"]
+        formats_str = ", ".join(formats_list)
+        sub_label = ctk.CTkLabel(
+            center_frame,
+            text=formats_str,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
+            text_color=THEME_COLORS["text_muted"],
+        )
+        sub_label.grid(row=2, column=0)
+
+    def _setup_dnd(self):
+        """Set up drag-and-drop on content frame."""
+        if not HAS_DND:
+            return
+
+        try:
+            self.content_frame.drop_target_register(DND_FILES)
+            self.content_frame.dnd_bind("<<Drop>>", self._on_drop)
+        except Exception:
+            pass
+
+    def _on_drop(self, event):
+        """Handle file drop on content frame."""
+        data = event.data
+
+        # Parse dropped files (format varies by platform)
+        if data.startswith("{"):
+            # Windows format with braces
+            files = []
+            in_brace = False
+            current = ""
+            for char in data:
+                if char == "{":
+                    in_brace = True
+                elif char == "}":
+                    in_brace = False
+                    if current:
+                        files.append(current)
+                    current = ""
+                elif in_brace:
+                    current += char
+                elif char == " " and not in_brace:
+                    if current:
+                        files.append(current)
+                    current = ""
+                else:
+                    current += char
+            if current:
+                files.append(current)
+        else:
+            # Unix format - space separated
+            files = data.split()
+
+        # Process the files
+        all_audio_files = []
+        for path in files:
+            audio_files = get_audio_files_from_path(path)
+            all_audio_files.extend(audio_files)
+
+        # Remove duplicates
+        seen = set()
+        unique_files = []
+        for f in all_audio_files:
+            if f not in seen:
+                seen.add(f)
+                unique_files.append(f)
+
+        if unique_files:
+            self._on_files_added(unique_files)
+
+    def _on_add_files_click(self):
+        """Handle add files button click - show menu."""
+        menu = tk.Menu(self, tearoff=0)
+        menu.add_command(label="Archivos", command=self._on_select_files)
+        menu.add_command(label="Carpeta", command=self._on_select_folder)
+
+        x = self.add_files_btn.winfo_rootx()
+        y = self.add_files_btn.winfo_rooty() + self.add_files_btn.winfo_height()
+        menu.tk_popup(x, y)
+
+    def _on_select_files(self):
+        """Open file selection dialog."""
+        filetypes = [
+            ("Audio files", " ".join(f"*{ext}" for ext in SUPPORTED_FORMATS)),
+            ("All files", "*.*"),
+        ]
+
+        files = filedialog.askopenfilenames(
+            title="Seleccionar archivos de audio",
+            filetypes=filetypes,
+        )
+
+        if files:
+            self._process_paths(list(files))
+
+    def _on_select_folder(self):
+        """Open folder selection dialog."""
+        folder = filedialog.askdirectory(
+            title="Seleccionar carpeta con archivos de audio",
+        )
+
+        if folder:
+            self._process_paths([folder])
+
+    def _process_paths(self, paths: List[str]):
+        """Process a list of file/folder paths."""
+        all_files = []
+
+        for path in paths:
+            files = get_audio_files_from_path(path)
+            all_files.extend(files)
+
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_files = []
+        for f in all_files:
+            if f not in seen:
+                seen.add(f)
+                unique_files.append(f)
+
+        if unique_files:
+            self._on_files_added(unique_files)
+
     def _on_files_added(self, files: List[str]):
         """Handle files being added via drop or selection."""
         # Add pending results to table
@@ -198,6 +396,7 @@ class MainWindow(ctk.CTkFrame):
             self.results_table.add_result(create_pending_result(filepath))
 
         self._update_count()
+        self._update_empty_state_visibility()
         self._start_analysis(files)
 
     def _start_analysis(self, files: List[str]):
@@ -243,11 +442,11 @@ class MainWindow(ctk.CTkFrame):
         if is_analyzing:
             self.progress_bar.grid()
             self.progress_bar.set(0)
-            self.drop_zone.set_enabled(False)
+            self.add_files_btn.configure(state="disabled")
         else:
             self.progress_bar.grid_remove()
             self.status_label.configure(text="Listo")
-            self.drop_zone.set_enabled(True)
+            self.add_files_btn.configure(state="normal")
 
     def _on_selection_changed(self, result: Optional[AnalysisResult]):
         """Handle result selection change."""
@@ -261,9 +460,22 @@ class MainWindow(ctk.CTkFrame):
 
         self.results_table.clear()
         self._update_count()
+        self._update_empty_state_visibility()
 
         if self.on_result_selected:
             self.on_result_selected(None)
+
+    def _update_empty_state_visibility(self):
+        """Update empty state visibility based on file count."""
+        count = self.results_table.get_results_count()
+        if count > 0:
+            # Files loaded: hide empty state, show results table
+            self.empty_state.grid_remove()
+            self.results_table.grid()
+        else:
+            # No files: show empty state over results table
+            self.results_table.grid()
+            self.empty_state.grid(row=0, column=0, sticky="nsew")
 
     def _update_count(self):
         """Update the file count label."""
