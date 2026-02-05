@@ -1,5 +1,6 @@
 """Audio playback engine with threading pattern for responsive UI."""
 
+import time
 import threading
 from enum import Enum
 from typing import Callable, Optional
@@ -12,7 +13,13 @@ try:
 except ImportError:
     HAS_SOUNDDEVICE = False
 
-import librosa
+try:
+    import soundfile as sf
+    HAS_SOUNDFILE = True
+except ImportError:
+    HAS_SOUNDFILE = False
+
+from scipy import signal
 
 from ..utils.constants import SAMPLE_RATE
 
@@ -93,6 +100,7 @@ class AudioPlayer:
         Args:
             filepath: Path to the audio file
         """
+        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | Audio load iniciado: {filepath}")
         if not HAS_SOUNDDEVICE:
             self._schedule_callback(self._on_load_error, "sounddevice no instalado")
             return
@@ -117,14 +125,46 @@ class AudioPlayer:
         self._load_thread.start()
 
     def _load_in_background(self, filepath: str):
-        """Load audio file in background thread."""
+        """Load audio file in background thread using soundfile (low GIL contention)."""
         try:
             # Check if this is still the file we want
             if filepath != self._current_filepath:
                 return
 
-            # Load with librosa (handles all formats)
-            samples, sr = librosa.load(filepath, sr=self._sample_rate, mono=True)
+            # Determine file extension for format-specific handling
+            ext = filepath.lower().rsplit('.', 1)[-1] if '.' in filepath else ''
+
+            # Formats supported by soundfile (libsndfile)
+            soundfile_formats = {'wav', 'flac', 'ogg', 'aiff', 'aif'}
+
+            if HAS_SOUNDFILE and ext in soundfile_formats:
+                # Use soundfile - releases GIL during I/O, much faster
+                print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | soundfile.read inicio")
+                samples, file_sr = sf.read(filepath, dtype='float32', always_2d=True)
+
+                # Convert to mono if stereo (average channels)
+                if samples.shape[1] > 1:
+                    samples = np.mean(samples, axis=1)
+                else:
+                    samples = samples[:, 0]
+
+                # Resample if needed
+                if file_sr != self._sample_rate:
+                    print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | resampling {file_sr} -> {self._sample_rate}")
+                    # Use scipy's resample_poly for efficient resampling
+                    from math import gcd
+                    g = gcd(self._sample_rate, file_sr)
+                    up = self._sample_rate // g
+                    down = file_sr // g
+                    samples = signal.resample_poly(samples, up, down).astype(np.float32)
+
+                print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | soundfile.read fin")
+            else:
+                # Fallback to librosa for MP3, M4A, AAC, WMA and other formats
+                print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | librosa.load inicio (format: {ext})")
+                import librosa
+                samples, _ = librosa.load(filepath, sr=self._sample_rate, mono=True)
+                print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | librosa.load fin")
 
             # Check again if this is still the file we want
             if filepath != self._current_filepath:
@@ -136,6 +176,7 @@ class AudioPlayer:
                 self._position = 0
 
             duration_seconds = len(samples) / self._sample_rate
+            print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | audio load callback")
             self._set_state(PlayerState.STOPPED)
             self._schedule_callback(self._on_track_loaded, duration_seconds)
 

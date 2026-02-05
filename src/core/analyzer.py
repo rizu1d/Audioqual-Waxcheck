@@ -1,5 +1,6 @@
 """Batch audio analysis engine with threading support."""
 
+import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -174,6 +175,7 @@ class AudioAnalyzer:
                 filepath = futures[future]
                 try:
                     result = future.result()
+                    print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | Análisis completado: {result.filename}")
                 except Exception as e:
                     result = AnalysisResult(
                         filepath=filepath,
@@ -219,6 +221,7 @@ class AudioAnalyzer:
 
                 if progress_callback:
                     # Pass full result with frequency_analysis for UI display
+                    print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | Invocando callback para: {result.filename}")
                     progress_callback(
                         completed,
                         total,

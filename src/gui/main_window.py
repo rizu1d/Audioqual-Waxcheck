@@ -220,10 +220,12 @@ class MainWindow(ctk.CTkFrame):
 
     def _play_track(self, result: AnalysisResult):
         """Load and play a track."""
+        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | _play_track inicio: {result.filename}")
         if self._audio_player and result:
             self._audio_player.load(result.filepath)
             # Auto-play after a brief delay to allow loading
             self.after(100, self._audio_player.play)
+        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | _play_track fin")
 
     def _setup_status_bar(self):
         """Set up the bottom status bar."""
@@ -476,10 +478,12 @@ class MainWindow(ctk.CTkFrame):
 
         Rate-limited to max 1 UI update per 100ms to prevent event loop saturation.
         """
+        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | Callback recibido: {current_file}")
         current_time = time.time() * 1000  # ms
         is_final = completed >= total
 
         def update_ui():
+            print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | Actualizando tabla: {current_file}")
             if result:
                 self.results_table.add_result(result)
 
@@ -518,12 +522,15 @@ class MainWindow(ctk.CTkFrame):
 
     def _on_selection_changed(self, result: Optional[AnalysisResult]):
         """Handle result selection change."""
+        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | _on_selection_changed inicio: {result.filename if result else 'None'}")
         if self.on_result_selected:
             self.on_result_selected(result)
 
         # Load and play the selected track
         if result and self._audio_player:
+            print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | _on_selection_changed -> _play_track")
             self._play_track(result)
+        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | _on_selection_changed fin")
 
     def _on_clear(self):
         """Handle clear button click."""

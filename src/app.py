@@ -1,5 +1,7 @@
 """Main application class integrating core and GUI."""
 
+import time
+import threading
 from collections import OrderedDict
 from typing import Optional
 
@@ -73,6 +75,30 @@ class AudioQualApp:
         self.root.grid_columnconfigure(0, weight=1)
         self.root.grid_rowconfigure(0, weight=1)
 
+        # === DIAGNOSTIC: Click monitor ===
+        self._last_click_time = time.time()
+
+        def _on_global_click(event):
+            now = time.time()
+            delta = now - self._last_click_time
+            print(f"[CLICK] {now:.3f} | pos=({event.x},{event.y}) | delta={delta:.3f}s | widget={event.widget}")
+            self._last_click_time = now
+
+        self.root.bind_all("<Button-1>", _on_global_click, add="+")
+
+        # === DIAGNOSTIC: Heartbeat monitor (detects main thread blocks) ===
+        self._last_heartbeat = time.time()
+
+        def _heartbeat():
+            now = time.time()
+            delta = now - self._last_heartbeat
+            if delta > 0.2:  # >200ms = bloqueo
+                print(f"[BLOCK] {now:.3f} | Main thread bloqueado {delta:.3f}s")
+            self._last_heartbeat = now
+            self.root.after(100, _heartbeat)
+
+        _heartbeat()
+
     def _setup_components(self):
         """Create application components."""
         # Create analyzer
@@ -98,6 +124,7 @@ class AudioQualApp:
 
     def _on_result_selected(self, result: Optional[AnalysisResult]):
         """Handle result selection from the table."""
+        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | _on_result_selected inicio: {result.filename if result else 'None'}")
         self._selected_result = result
 
         if not result:
@@ -115,7 +142,9 @@ class AudioQualApp:
 
         # If spectrogram window is open, update it
         if self._spectrogram_window and self._spectrogram_window.is_open():
+            print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | _update_spectrogram_window llamado")
             self._update_spectrogram_window()
+        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | _on_result_selected fin")
 
     def _show_spectrogram_window(self):
         """Show or update the spectrogram window."""

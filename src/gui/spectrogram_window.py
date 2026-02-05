@@ -92,7 +92,19 @@ class SpectrogramWindow(ctk.CTkToplevel):
             font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["body"]),
             text_color=THEME_COLORS["text_secondary"],
         )
-        self._loading_label.place(relx=0.5, rely=0.5, anchor="center")
+        self._loading_label.place(relx=0.5, rely=0.45, anchor="center")
+
+        # Progress bar for loading animation
+        self._progress_bar = ctk.CTkProgressBar(
+            self.figure_frame,
+            width=200,
+            height=4,
+            progress_color=THEME_COLORS["accent"],
+            fg_color=THEME_COLORS["bg_elevated"],
+            mode="indeterminate",
+        )
+        self._progress_bar.place(relx=0.5, rely=0.55, anchor="center")
+        self._progress_bar.start()
 
         # Info panel at the bottom
         self.info_frame = ctk.CTkFrame(
@@ -148,6 +160,7 @@ class SpectrogramWindow(ctk.CTkToplevel):
             filename: Name of the file being displayed
             cutoff_khz: Detected cutoff frequency in kHz
         """
+        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | update_spectrogram inicio: {filename}")
         self._current_analysis = analysis
         self._current_filename = filename
         self._current_cutoff_khz = cutoff_khz
@@ -172,15 +185,19 @@ class SpectrogramWindow(ctk.CTkToplevel):
         # Cancel any in-progress render
         self._render_cancelled.set()
 
-        # Show loading state
+        # Show loading state with progress bar
         self._image_label.grid_remove()
-        self._loading_label.place(relx=0.5, rely=0.5, anchor="center")
+        self._loading_label.place(relx=0.5, rely=0.45, anchor="center")
+        self._progress_bar.place(relx=0.5, rely=0.55, anchor="center")
+        self._progress_bar.start()
 
         # Schedule render after a brief delay
         self._render_timer = self.after(100, self._start_render)
+        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | update_spectrogram fin")
 
     def _on_resize(self, event):
         """Handle window resize with debouncing."""
+        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | _on_resize event: {event.width}x{event.height}")
         if self._current_analysis is None:
             return
 
@@ -193,21 +210,26 @@ class SpectrogramWindow(ctk.CTkToplevel):
 
     def _handle_resize(self):
         """Re-render spectrogram at new size."""
+        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | _handle_resize inicio")
         self._resize_timer = None
 
         if self._current_analysis is None:
+            print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | _handle_resize skip: no analysis")
             return
 
         # Skip if render just completed
         if time.time() - self._last_render_time < 0.5:
+            print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | _handle_resize skip: render reciente")
             return
 
         # Skip if render timer is pending
         if self._render_timer is not None:
+            print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | _handle_resize skip: timer pendiente")
             return
 
         # Skip if render is in progress
         if self._render_thread is not None and self._render_thread.is_alive():
+            print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | _handle_resize skip: render en progreso, reprogramando")
             self._resize_timer = self.after(500, self._handle_resize)
             return
 
@@ -218,12 +240,15 @@ class SpectrogramWindow(ctk.CTkToplevel):
         # Only re-render if size changed significantly (>50px)
         old_width, old_height = self._last_render_size
         if abs(new_width - old_width) < 50 and abs(new_height - old_height) < 50:
+            print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | _handle_resize skip: cambio pequeño")
             return
 
+        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | _handle_resize -> _start_render")
         self._start_render()
 
     def _start_render(self):
         """Start the background render."""
+        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | Spectrogram render iniciado")
         self._render_timer = None
 
         if self._current_analysis is None:
@@ -274,8 +299,10 @@ class SpectrogramWindow(ctk.CTkToplevel):
                 return
 
             # Render to PIL image
+            print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | canvas.draw inicio")
             canvas = FigureCanvasAgg(fig)
             canvas.draw()
+            print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | canvas.draw fin")
 
             buf = canvas.buffer_rgba()
             image = Image.frombuffer(
@@ -297,6 +324,7 @@ class SpectrogramWindow(ctk.CTkToplevel):
 
     def _plot_spectrogram(self, ax, analysis: FrequencyAnalysis):
         """Plot the spectrogram on given axes."""
+        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | _plot_spectrogram inicio")
         spectrogram_db = analysis.spectrogram_db
         frequencies = analysis.frequencies
 
@@ -333,31 +361,83 @@ class SpectrogramWindow(ctk.CTkToplevel):
         ax.set_ylim(0, min(24, frequencies[-1] / 1000))
 
         ax.tick_params(colors=THEME_COLORS["text_primary"], labelsize=8)
+        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | _plot_spectrogram fin")
 
     def _on_render_complete(self, render_id: int, image: Image.Image):
         """Handle render completion in main thread."""
+        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | Spectrogram render completo")
         if render_id != self._render_id:
             return
 
         try:
-            self._photo_image = ctk.CTkImage(
-                light_image=image,
-                dark_image=image,
-                size=(image.width, image.height),
-            )
-
-            # Hide loading, show image
+            # Stop and hide progress bar
+            self._progress_bar.stop()
+            self._progress_bar.place_forget()
             self._loading_label.place_forget()
 
-            self._image_label.configure(image=self._photo_image, text="")
-            self._image_label.grid(row=0, column=0, sticky="nsew")
-            self._image_label.lift()
-
-            self._last_render_time = time.time()
+            # Start progressive reveal
+            self._reveal_progressive(image, render_id)
 
         except tk.TclError:
             # Widget was destroyed during render
             pass
+
+    def _reveal_progressive(self, full_image: Image.Image, render_id: int):
+        """Reveal image progressively from left to right."""
+        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | _reveal_progressive inicio")
+        n_steps = 12
+        step_delay = 25  # ms between steps
+
+        def update_reveal(step: int):
+            if render_id != self._render_id:
+                return  # Cancelled
+
+            try:
+                step_start = time.time()
+                # Calculate visible width
+                visible_width = int(full_image.width * step / n_steps)
+
+                # Create cropped image
+                cropped = full_image.crop((0, 0, visible_width, full_image.height))
+
+                # Create padded image (full size, black on right)
+                revealed = Image.new('RGBA', full_image.size, (26, 26, 31, 255))  # bg_primary color
+                revealed.paste(cropped, (0, 0))
+
+                # Update display
+                self._photo_image = ctk.CTkImage(
+                    light_image=revealed,
+                    dark_image=revealed,
+                    size=(revealed.width, revealed.height),
+                )
+                self._image_label.configure(image=self._photo_image, text="")
+                self._image_label.grid(row=0, column=0, sticky="nsew")
+                self._image_label.lift()
+
+                step_duration = (time.time() - step_start) * 1000
+                if step_duration > 50:  # Solo loguear pasos lentos (>50ms)
+                    print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | _reveal step {step}/{n_steps} tomó {step_duration:.1f}ms")
+
+                # Schedule next step
+                if step < n_steps:
+                    self.after(step_delay, lambda: update_reveal(step + 1))
+                else:
+                    # Final step: show complete image
+                    self._photo_image = ctk.CTkImage(
+                        light_image=full_image,
+                        dark_image=full_image,
+                        size=(full_image.width, full_image.height),
+                    )
+                    self._image_label.configure(image=self._photo_image, text="")
+                    self._last_render_time = time.time()
+                    print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | _reveal_progressive fin")
+
+            except tk.TclError:
+                # Widget was destroyed
+                pass
+
+        # Start reveal animation
+        update_reveal(1)
 
     def _on_close(self):
         """Handle window close."""

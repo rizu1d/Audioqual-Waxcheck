@@ -1,5 +1,7 @@
 """Audio player controls widget."""
 
+import time
+import threading
 import os
 from typing import Callable, Optional
 
@@ -261,6 +263,9 @@ class PlayerControls(ctk.CTkFrame):
                 self._play_btn.configure(image=self._pause_icon, text="")
             else:
                 self._play_btn.configure(text="⏸")
+            # Restart position update timer when playback starts
+            if self._update_timer is None:
+                self._update_position()
         else:
             if self._play_icon:
                 self._play_btn.configure(image=self._play_icon, text="")
@@ -280,13 +285,16 @@ class PlayerControls(ctk.CTkFrame):
 
     def _on_track_loaded(self, duration: float):
         """Handle track loaded."""
+        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | _on_track_loaded inicio")
         self._duration = duration
         self._update_time_display(0)
 
         # Pass audio samples to waveform display
         samples = self._player.get_samples()
         if samples is not None:
+            print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | _on_track_loaded -> set_audio_data")
             self._waveform.set_audio_data(samples, SAMPLE_RATE)
+        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | _on_track_loaded fin")
 
     def _update_time_display(self, position: float):
         """Update the time display label."""
@@ -300,14 +308,19 @@ class PlayerControls(ctk.CTkFrame):
 
     def _update_position(self):
         """Periodically update position display."""
-        if self._player.get_state() == PlayerState.PLAYING and not self._is_seeking:
+        state = self._player.get_state()
+
+        if state == PlayerState.PLAYING and not self._is_seeking:
             position = self._player.get_position()
             self._update_time_display(position)
             if self._duration > 0:
                 self._waveform.set_position(position / self._duration)
 
-        # Schedule next update (100ms = 10 updates/second)
-        self._update_timer = self.after(100, self._update_position)
+            # Only schedule next update while playing (100ms = 10 updates/second)
+            self._update_timer = self.after(100, self._update_position)
+        else:
+            # Stop scheduling updates when not playing - saves CPU
+            self._update_timer = None
 
     def update_track_info(self, filepath: str, filename: str):
         """Update the displayed track information."""

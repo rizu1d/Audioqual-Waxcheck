@@ -1,5 +1,6 @@
 """DJ-style waveform display with playhead and seeking."""
 
+import time
 import threading
 import tkinter as tk
 from typing import Callable, Optional
@@ -57,6 +58,7 @@ class WaveformDisplay(ctk.CTkFrame):
         # UI state
         self._is_seeking: bool = False
         self._photo_image = None
+        self._last_playhead_x: int = 0  # Track last playhead position for skip optimization
 
         self._setup_ui()
 
@@ -92,6 +94,7 @@ class WaveformDisplay(ctk.CTkFrame):
             samples: Audio samples (1D numpy array)
             sample_rate: Sample rate in Hz
         """
+        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | set_audio_data inicio ({len(samples)} samples)")
         self._samples = samples
         self._sample_rate = sample_rate
         self._duration = len(samples) / sample_rate if sample_rate > 0 else 0.0
@@ -101,6 +104,7 @@ class WaveformDisplay(ctk.CTkFrame):
 
         # Start rendering
         self._start_render()
+        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | set_audio_data fin")
 
     def set_position(self, ratio: float):
         """
@@ -113,6 +117,11 @@ class WaveformDisplay(ctk.CTkFrame):
 
         # Update display if we have a base image
         if self._base_image is not None and not self._is_seeking:
+            # Skip update if playhead moved less than 2 pixels (reduces ~10 updates/s to ~2-3/s)
+            if self._last_width > 0:
+                new_x = int(self._current_position * self._last_width)
+                if abs(new_x - self._last_playhead_x) < 2:
+                    return
             self._update_display()
 
     def clear(self):
@@ -159,6 +168,7 @@ class WaveformDisplay(ctk.CTkFrame):
 
     def _start_render(self):
         """Start background render of waveform."""
+        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | Waveform render iniciado")
         if self._samples is None:
             return
 
@@ -302,6 +312,7 @@ class WaveformDisplay(ctk.CTkFrame):
 
     def _on_render_complete(self, render_id: int, peaks: np.ndarray, base_image: Image.Image):
         """Handle render completion on main thread."""
+        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | Waveform render completo")
         if render_id != self._render_id:
             return
 
@@ -324,6 +335,9 @@ class WaveformDisplay(ctk.CTkFrame):
 
             # Calculate playhead position
             playhead_x = int(self._current_position * width)
+
+            # Store for skip optimization
+            self._last_playhead_x = playhead_x
 
             # Overdraw played portion in lighter color
             if playhead_x > 0:
