@@ -41,7 +41,7 @@ class MainWindow(ctk.CTkFrame):
         master,
         analyzer: AudioAnalyzer,
         on_result_selected=None,
-        on_toggle_panel=None,
+        on_show_spectrogram=None,
         on_clear=None,
         **kwargs
     ):
@@ -49,10 +49,9 @@ class MainWindow(ctk.CTkFrame):
 
         self.analyzer = analyzer
         self.on_result_selected = on_result_selected
-        self.on_toggle_panel = on_toggle_panel
+        self.on_show_spectrogram = on_show_spectrogram
         self.on_clear = on_clear
         self._analysis_thread: Optional[threading.Thread] = None
-        self._panel_visible = False
         # Rate limiting for progress updates (100ms minimum between updates)
         self._last_progress_update = 0
         self._pending_progress_update = None  # Store pending update for final flush
@@ -151,19 +150,19 @@ class MainWindow(ctk.CTkFrame):
             size=(ICON_SIZE, ICON_SIZE)
         )
 
-        # Toggle spectrogram panel button with elevated background
-        self.toggle_panel_btn = ctk.CTkButton(
+        # Spectrogram window button with elevated background
+        self.spectrogram_btn = ctk.CTkButton(
             self.controls_frame,
             text="",
             image=self._toggle_icon,
-            command=self._on_toggle_panel,
+            command=self._on_show_spectrogram,
             width=BUTTON_SIZE,
             height=BUTTON_SIZE,
             corner_radius=12,
             fg_color=THEME_COLORS["bg_elevated"],
             hover_color=THEME_COLORS["primary_dark"],
         )
-        self.toggle_panel_btn.grid(row=0, column=2, padx=6)
+        self.spectrogram_btn.grid(row=0, column=2, padx=6)
 
     def _setup_content_area(self):
         """Set up the main content area."""
@@ -191,7 +190,7 @@ class MainWindow(ctk.CTkFrame):
             self,
             height=36,
             fg_color=THEME_COLORS["primary_dark"],
-            corner_radius=8,
+            corner_radius=0,
         )
         self.status_bar.grid(row=2, column=0, sticky="ew", padx=16, pady=(0, 16))
         self.status_bar.grid_columnconfigure(1, weight=1)
@@ -512,11 +511,7 @@ class MainWindow(ctk.CTkFrame):
         text = f"{count} archivo{'s' if count != 1 else ''}"
         self.count_label.configure(text=text)
 
-    def _on_toggle_panel(self):
-        """Handle toggle panel button click."""
-        if self.on_toggle_panel:
-            self.on_toggle_panel()
-
-    def set_panel_visible(self, visible: bool):
-        """Update toggle button to reflect panel state."""
-        self._panel_visible = visible
+    def _on_show_spectrogram(self):
+        """Handle spectrogram button click."""
+        if self.on_show_spectrogram:
+            self.on_show_spectrogram()

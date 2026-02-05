@@ -1,8 +1,7 @@
 """Main application class integrating core and GUI."""
 
-import time
 from collections import OrderedDict
-from typing import Dict, Optional
+from typing import Optional
 
 import customtkinter as ctk
 
@@ -22,16 +21,12 @@ except ImportError:
 from .core.analyzer import AnalysisResult, AudioAnalyzer
 from .core.frequency_detector import FrequencyAnalysis
 from .gui.main_window import MainWindow
-from .gui.spectrogram_panel import SpectrogramPanel
+from .gui.spectrogram_window import SpectrogramWindow
 from .utils.constants import (
     WINDOW_WIDTH,
     WINDOW_HEIGHT,
     MIN_WINDOW_WIDTH,
     MIN_WINDOW_HEIGHT,
-    PANEL_WIDTH,
-    MIN_MAIN_WIDTH,
-    MIN_SPECTRUM_WIDTH,
-    DIVIDER_WIDTH,
     THEME_COLORS,
 )
 
@@ -51,11 +46,14 @@ class AudioQualApp:
         else:
             self.root = ctk.CTk()
 
-        self._spectrum_panel_visible = False  # Hidden by default
-        self._current_panel_width = PANEL_WIDTH  # Track current panel width for resizing
         # LRU cache for frequency analysis data (filepath -> FrequencyAnalysis)
         # This keeps the last N spectrograms in memory for quick re-display
         self._spectrogram_cache: OrderedDict[str, tuple] = OrderedDict()
+        # Reference to the spectrogram window (None if closed)
+        self._spectrogram_window: Optional[SpectrogramWindow] = None
+        # Currently selected result (for spectrogram display)
+        self._selected_result: Optional[AnalysisResult] = None
+
         self._setup_window()
         self._setup_components()
         self._setup_layout()
@@ -63,7 +61,6 @@ class AudioQualApp:
     def _setup_window(self):
         """Configure the main window."""
         self.root.title("AudioQual - Analizador de Calidad de Audio")
-        # Start with compact size (panel hidden)
         self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
         self.root.minsize(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)
 
@@ -71,10 +68,8 @@ class AudioQualApp:
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("green")  # More neutral, will be overridden by custom colors
 
-        # Configure grid - 3 columns: main | divider | panel
-        self.root.grid_columnconfigure(0, weight=1)  # Main content expands to fill
-        self.root.grid_columnconfigure(1, weight=0, minsize=0)  # Divider column (hidden initially)
-        self.root.grid_columnconfigure(2, weight=0, minsize=0)  # Panel column (hidden initially)
+        # Configure grid - single column layout
+        self.root.grid_columnconfigure(0, weight=1)
         self.root.grid_rowconfigure(0, weight=1)
 
     def _setup_components(self):
@@ -82,141 +77,24 @@ class AudioQualApp:
         # Create analyzer
         self.analyzer = AudioAnalyzer()
 
-        # Create main window (left panel)
+        # Create main window
         self.main_window = MainWindow(
             self.root,
             analyzer=self.analyzer,
             on_result_selected=self._on_result_selected,
-            on_toggle_panel=self._toggle_spectrum_panel,
-            on_clear=self.clear_spectrogram_cache,
+            on_show_spectrogram=self._show_spectrogram_window,
+            on_clear=self._on_clear,
         )
-
-        # Create spectrogram panel (right panel)
-        self.spectrogram_panel = SpectrogramPanel(self.root)
-
-        # Create draggable divider
-        self.divider = ctk.CTkFrame(
-            self.root,
-            width=DIVIDER_WIDTH,
-            fg_color=THEME_COLORS["bg_frame"],
-            corner_radius=0,
-        )
-        self._setup_divider_events()
-
-    def _setup_divider_events(self):
-        """Configure mouse events for the draggable divider."""
-        self._drag_start_x = None
-        self._drag_start_panel_width = None
-        self._drag_update_scheduled = False  # Throttle flag
-        self._pending_spectrum_width = None  # Pending width to apply
-
-        # Cursor change on hover
-        self.divider.bind("<Enter>", lambda e: self.divider.configure(cursor="sb_h_double_arrow"))
-        self.divider.bind("<Leave>", lambda e: self.divider.configure(cursor=""))
-
-        # Drag events
-        self.divider.bind("<Button-1>", self._on_divider_press)
-        self.divider.bind("<B1-Motion>", self._on_divider_drag)
-        self.divider.bind("<ButtonRelease-1>", self._on_divider_release)
-
-    def _on_divider_press(self, event):
-        """Start divider drag."""
-        self._drag_start_x = event.x_root
-        self._drag_start_panel_width = self._current_panel_width
-        # Pause spectrogram resize handling during drag
-        self.spectrogram_panel.pause_resize()
-
-    def _on_divider_drag(self, event):
-        """Handle divider dragging - redistribute space between panels."""
-        if self._drag_start_x is None:
-            return
-
-        # Calcular delta (positivo = arrastrar derecha, negativo = arrastrar izquierda)
-        delta = event.x_root - self._drag_start_x
-
-        # Calcular nuevo ancho del panel de espectros
-        # Arrastrar derecha (delta positivo) = espectros se reducen
-        # Arrastrar izquierda (delta negativo) = espectros crecen
-        new_spectrum_width = self._drag_start_panel_width - delta
-
-        # Calcular ancho disponible para el panel principal
-        # Tamaño fijo de ventana expandida (padding: 10 izq + 10 der = 20)
-        total_content_width = WINDOW_WIDTH + PANEL_WIDTH
-        new_main_width = total_content_width - new_spectrum_width
-
-        # Aplicar límites mínimos para ambos paneles
-        if new_spectrum_width < MIN_SPECTRUM_WIDTH:
-            new_spectrum_width = MIN_SPECTRUM_WIDTH
-        if new_main_width < MIN_MAIN_WIDTH:
-            new_spectrum_width = total_content_width - MIN_MAIN_WIDTH
-
-        # Guardar valor pendiente
-        self._pending_spectrum_width = new_spectrum_width
-
-        # Throttle: solo programar actualización si no hay una pendiente
-        if not self._drag_update_scheduled:
-            self._drag_update_scheduled = True
-            self.root.after(30, self._apply_drag_update)  # 30ms ≈ 33fps
-
-    def _apply_drag_update(self):
-        """Apply pending drag update (throttled)."""
-        self._drag_update_scheduled = False
-
-        if self._pending_spectrum_width is None:
-            return
-
-        # Aplicar el cambio de tamaño
-        self._current_panel_width = self._pending_spectrum_width
-        self.root.grid_columnconfigure(2, minsize=self._pending_spectrum_width)
-
-    def _on_divider_release(self, event):
-        """End divider drag."""
-        # Aplicar cualquier actualización pendiente inmediatamente
-        if self._pending_spectrum_width is not None:
-            self._current_panel_width = self._pending_spectrum_width
-            self.root.grid_columnconfigure(2, minsize=self._pending_spectrum_width)
-
-        # Limpiar estado
-        self._drag_start_x = None
-        self._drag_start_panel_width = None
-        self._pending_spectrum_width = None
-        self._drag_update_scheduled = False
-
-        # Resume spectrogram resize handling and trigger re-render
-        self.spectrogram_panel.resume_resize()
 
     def _setup_layout(self):
         """Set up the main layout."""
-        # Main window takes full width initially (panel hidden)
         self.main_window.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
-        # Divider and spectrogram panel are NOT gridded initially (hidden by default)
-
-    def _toggle_spectrum_panel(self):
-        """Toggle the spectrogram panel visibility."""
-        if self._spectrum_panel_visible:
-            # Hide panel and divider - shrink window
-            self.divider.grid_remove()
-            self.spectrogram_panel.grid_remove()
-            self.root.grid_columnconfigure(1, minsize=0)
-            self.root.grid_columnconfigure(2, minsize=0)
-            self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
-        else:
-            # Show divider and panel - expand window to fixed size
-            self.divider.grid(row=0, column=1, sticky="ns", pady=10)
-            self.spectrogram_panel.grid(row=0, column=2, sticky="nsew", padx=(0, 10), pady=10)
-            self._current_panel_width = PANEL_WIDTH  # Reset a tamaño default
-            self.root.grid_columnconfigure(1, minsize=DIVIDER_WIDTH)
-            self.root.grid_columnconfigure(2, minsize=PANEL_WIDTH)
-            expanded_width = WINDOW_WIDTH + DIVIDER_WIDTH + PANEL_WIDTH
-            self.root.geometry(f"{expanded_width}x{WINDOW_HEIGHT}")
-
-        self._spectrum_panel_visible = not self._spectrum_panel_visible
-        self.main_window.set_panel_visible(self._spectrum_panel_visible)
 
     def _on_result_selected(self, result: Optional[AnalysisResult]):
         """Handle result selection from the table."""
+        self._selected_result = result
+
         if not result:
-            self.spectrogram_panel.clear()
             return
 
         # Check if result has frequency_analysis (fresh result)
@@ -228,30 +106,71 @@ class AudioQualApp:
                 result.filename,
                 result.cutoff_frequency_khz,
             )
-            freq_analysis = result.frequency_analysis
-            filename = result.filename
-            cutoff_khz = result.cutoff_frequency_khz
-        else:
-            # Try to get from cache (re-selection of previously viewed file)
-            cached = self._spectrogram_cache.get(result.filepath)
-            if cached:
-                freq_analysis, filename, cutoff_khz = cached
-                # Move to end (most recently used)
-                self._spectrogram_cache.move_to_end(result.filepath)
-            else:
-                # No cached data available
-                self.spectrogram_panel.clear()
-                return
 
-        # Auto-abrir panel si está cerrado
-        if not self._spectrum_panel_visible:
-            self._toggle_spectrum_panel()
+        # If spectrogram window is open, update it
+        if self._spectrogram_window and self._spectrogram_window.is_open():
+            self._update_spectrogram_window()
 
-        self.spectrogram_panel.show_spectrogram(
-            freq_analysis,
-            filename,
-            cutoff_khz,
+    def _show_spectrogram_window(self):
+        """Show or update the spectrogram window."""
+        if not self._selected_result:
+            return
+
+        # Get frequency analysis data
+        freq_analysis, filename, cutoff_khz = self._get_analysis_data(
+            self._selected_result
         )
+
+        if not freq_analysis:
+            return
+
+        # Check if window exists and is open
+        if self._spectrogram_window and self._spectrogram_window.is_open():
+            # Update existing window
+            self._spectrogram_window.update_spectrogram(
+                freq_analysis, filename, cutoff_khz
+            )
+            self._spectrogram_window.focus()
+        else:
+            # Create new window
+            self._spectrogram_window = SpectrogramWindow(
+                self.root,
+                freq_analysis,
+                filename,
+                cutoff_khz,
+            )
+
+    def _update_spectrogram_window(self):
+        """Update spectrogram window with currently selected result."""
+        if not self._selected_result:
+            return
+
+        freq_analysis, filename, cutoff_khz = self._get_analysis_data(
+            self._selected_result
+        )
+
+        if freq_analysis and self._spectrogram_window:
+            self._spectrogram_window.update_spectrogram(
+                freq_analysis, filename, cutoff_khz
+            )
+
+    def _get_analysis_data(self, result: AnalysisResult):
+        """Get frequency analysis data from result or cache."""
+        if result.frequency_analysis:
+            return (
+                result.frequency_analysis,
+                result.filename,
+                result.cutoff_frequency_khz,
+            )
+
+        # Try cache
+        cached = self._spectrogram_cache.get(result.filepath)
+        if cached:
+            # Move to end (most recently used)
+            self._spectrogram_cache.move_to_end(result.filepath)
+            return cached
+
+        return (None, None, None)
 
     def _cache_spectrogram(
         self,
@@ -268,9 +187,10 @@ class AudioQualApp:
         # Add/update cache entry
         self._spectrogram_cache[filepath] = (analysis, filename, cutoff_khz)
 
-    def clear_spectrogram_cache(self):
-        """Clear the spectrogram cache (called when clearing results)."""
+    def _on_clear(self):
+        """Handle clear action - clear cache."""
         self._spectrogram_cache.clear()
+        self._selected_result = None
 
     def run(self):
         """Start the application main loop."""
