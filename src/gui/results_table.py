@@ -224,7 +224,7 @@ class ResultsTable(ctk.CTkFrame):
         ("declared_bitrate", "Bitrate", 80),
         ("cutoff_frequency", "Frec. Corte", 100),
         ("detected_quality", "Calidad Det.", 100),
-        ("status", "Estado", 150),
+        ("status", "Estado", 170),
     ]
 
     def __init__(
