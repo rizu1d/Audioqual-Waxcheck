@@ -519,6 +519,14 @@ class MainWindow(ctk.CTkFrame):
             self.progress_bar.grid_remove()
             self.status_label.configure(text="Listo")
             self.add_files_btn.configure(state="normal")
+            # Force event loop to process pending events (fixes macOS tkinter freeze)
+            # Schedule multiple update_idletasks to ensure event loop wakes up
+            print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | Análisis completado, forzando wakeup del event loop")
+            root = self.winfo_toplevel()
+            root.update_idletasks()
+            # Schedule additional wakeups to ensure event loop stays active
+            for i in range(5):
+                self.after(100 * (i + 1), root.update_idletasks)
 
     def _on_selection_changed(self, result: Optional[AnalysisResult]):
         """Handle result selection change."""
