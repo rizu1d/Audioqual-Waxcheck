@@ -7,7 +7,8 @@ import customtkinter as ctk
 from PIL import Image
 
 from .audio_player import AudioPlayer, PlayerState
-from ..utils.constants import THEME_COLORS, FONT_FAMILY, FONT_SIZES
+from .waveform_display import WaveformDisplay
+from ..utils.constants import THEME_COLORS, FONT_FAMILY, FONT_SIZES, SAMPLE_RATE
 
 
 def format_time(seconds: float) -> str:
@@ -169,27 +170,12 @@ class PlayerControls(ctk.CTkFrame):
         )
         self._time_label.grid(row=0, column=1, padx=8, pady=8)
 
-        # Progress bar frame (for click handling)
-        progress_frame = ctk.CTkFrame(self, fg_color="transparent", height=36)
-        progress_frame.grid(row=0, column=3, sticky="ew", padx=8, pady=8)
-        progress_frame.grid_columnconfigure(0, weight=1)
-        progress_frame.grid_rowconfigure(0, weight=1)
-
-        # Progress bar
-        self._progress_bar = ctk.CTkProgressBar(
-            progress_frame,
-            height=8,
-            corner_radius=4,
-            progress_color=THEME_COLORS["accent"],
-            fg_color=THEME_COLORS["primary_muted"],
+        # Waveform display (replaces progress bar)
+        self._waveform = WaveformDisplay(
+            self,
+            on_seek=self._on_waveform_seek,
         )
-        self._progress_bar.grid(row=0, column=0, sticky="ew", pady=14)
-        self._progress_bar.set(0)
-
-        # Bind click on progress bar for seeking
-        self._progress_bar.bind("<Button-1>", self._on_progress_click)
-        self._progress_bar.bind("<B1-Motion>", self._on_progress_drag)
-        self._progress_bar.bind("<ButtonRelease-1>", self._on_progress_release)
+        self._waveform.grid(row=0, column=3, sticky="ew", padx=8, pady=8)
 
         # Volume controls
         volume_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -246,39 +232,12 @@ class PlayerControls(ctk.CTkFrame):
         else:
             self._volume_label.configure(text="🔊")
 
-    def _on_progress_click(self, event):
-        """Handle click on progress bar for seeking."""
-        self._is_seeking = True
-        self._seek_to_position(event)
-
-    def _on_progress_drag(self, event):
-        """Handle drag on progress bar."""
-        if self._is_seeking:
-            self._seek_to_position(event)
-
-    def _on_progress_release(self, event):
-        """Handle release after seeking."""
-        if self._is_seeking:
-            self._seek_to_position(event)
-            self._is_seeking = False
-
-    def _seek_to_position(self, event):
-        """Seek to position based on click/drag event."""
+    def _on_waveform_seek(self, position_seconds: float):
+        """Handle seek from waveform display."""
         if self._duration <= 0:
             return
 
-        # Calculate position from click
-        bar_width = self._progress_bar.winfo_width()
-        if bar_width <= 0:
-            return
-
-        # Clamp x position
-        x = max(0, min(event.x, bar_width))
-        ratio = x / bar_width
-        position_seconds = ratio * self._duration
-
-        # Update progress bar immediately for responsiveness
-        self._progress_bar.set(ratio)
+        self._is_seeking = True
 
         # Seek in player
         self._player.seek(position_seconds)
@@ -286,12 +245,14 @@ class PlayerControls(ctk.CTkFrame):
         # Update time display
         self._update_time_display(position_seconds)
 
+        self._is_seeking = False
+
     def _on_position_changed(self, position: float):
         """Handle position change from player."""
         if not self._is_seeking:
             self._update_time_display(position)
             if self._duration > 0:
-                self._progress_bar.set(position / self._duration)
+                self._waveform.set_position(position / self._duration)
 
     def _on_state_changed(self, state: PlayerState):
         """Handle state change from player."""
@@ -321,7 +282,11 @@ class PlayerControls(ctk.CTkFrame):
         """Handle track loaded."""
         self._duration = duration
         self._update_time_display(0)
-        self._progress_bar.set(0)
+
+        # Pass audio samples to waveform display
+        samples = self._player.get_samples()
+        if samples is not None:
+            self._waveform.set_audio_data(samples, SAMPLE_RATE)
 
     def _update_time_display(self, position: float):
         """Update the time display label."""
@@ -339,7 +304,7 @@ class PlayerControls(ctk.CTkFrame):
             position = self._player.get_position()
             self._update_time_display(position)
             if self._duration > 0:
-                self._progress_bar.set(position / self._duration)
+                self._waveform.set_position(position / self._duration)
 
         # Schedule next update (100ms = 10 updates/second)
         self._update_timer = self.after(100, self._update_position)
@@ -351,7 +316,7 @@ class PlayerControls(ctk.CTkFrame):
     def reset(self):
         """Reset the controls to initial state."""
         self._duration = 0.0
-        self._progress_bar.set(0)
+        self._waveform.clear()
         self._update_time_display(0)
         self._on_state_changed(PlayerState.STOPPED)
 
@@ -360,3 +325,4 @@ class PlayerControls(ctk.CTkFrame):
         if self._update_timer:
             self.after_cancel(self._update_timer)
             self._update_timer = None
+        self._waveform.cleanup()

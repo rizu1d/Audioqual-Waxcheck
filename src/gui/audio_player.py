@@ -233,6 +233,10 @@ class AudioPlayer:
         """Check if a track is loaded."""
         return self._samples is not None
 
+    def get_samples(self) -> Optional[np.ndarray]:
+        """Get loaded audio samples for visualization."""
+        return self._samples
+
     def _start_stream(self):
         """Start the audio output stream."""
         if self._stream is not None:
