@@ -386,3 +386,74 @@ class ResultsTable(ctk.CTkFrame):
         if self._rows:
             first_row = list(self._rows.values())[0]
             self._on_row_click(first_row)
+
+    def select_next(self) -> Optional[AnalysisResult]:
+        """
+        Select the next item in the table.
+
+        Returns:
+            The newly selected result, or None if at end or no items.
+        """
+        if not self._rows:
+            return None
+
+        rows_list = list(self._rows.values())
+
+        if self._selected_row is None:
+            # Nothing selected, select first
+            self._on_row_click(rows_list[0])
+            return rows_list[0].result
+
+        # Find current index
+        try:
+            current_index = rows_list.index(self._selected_row)
+        except ValueError:
+            return None
+
+        # Select next if available
+        next_index = current_index + 1
+        if next_index < len(rows_list):
+            self._on_row_click(rows_list[next_index])
+            return rows_list[next_index].result
+
+        return None  # At end of list
+
+    def select_previous(self) -> Optional[AnalysisResult]:
+        """
+        Select the previous item in the table.
+
+        Returns:
+            The newly selected result, or None if at start or no items.
+        """
+        if not self._rows:
+            return None
+
+        rows_list = list(self._rows.values())
+
+        if self._selected_row is None:
+            # Nothing selected, select last
+            self._on_row_click(rows_list[-1])
+            return rows_list[-1].result
+
+        # Find current index
+        try:
+            current_index = rows_list.index(self._selected_row)
+        except ValueError:
+            return None
+
+        # Select previous if available
+        prev_index = current_index - 1
+        if prev_index >= 0:
+            self._on_row_click(rows_list[prev_index])
+            return rows_list[prev_index].result
+
+        return None  # At start of list
+
+    def get_ordered_filepaths(self) -> List[str]:
+        """
+        Get all filepaths in display order.
+
+        Returns:
+            List of filepaths in the order they appear in the table.
+        """
+        return [row.result.filepath for row in self._rows.values()]

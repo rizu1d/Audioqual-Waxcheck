@@ -17,6 +17,8 @@ except ImportError:
     HAS_DND = False
 
 from .results_table import ResultsTable
+from .audio_player import AudioPlayer
+from .player_controls import PlayerControls
 from ..core.analyzer import AnalysisResult, AudioAnalyzer, create_pending_result
 from ..utils.constants import (
     WINDOW_WIDTH,
@@ -40,6 +42,7 @@ class MainWindow(ctk.CTkFrame):
         self,
         master,
         analyzer: AudioAnalyzer,
+        audio_player: Optional[AudioPlayer] = None,
         on_result_selected=None,
         on_show_spectrogram=None,
         on_clear=None,
@@ -48,6 +51,7 @@ class MainWindow(ctk.CTkFrame):
         super().__init__(master, fg_color=THEME_COLORS["bg_primary"], **kwargs)
 
         self.analyzer = analyzer
+        self._audio_player = audio_player
         self.on_result_selected = on_result_selected
         self.on_show_spectrogram = on_show_spectrogram
         self.on_clear = on_clear
@@ -68,6 +72,9 @@ class MainWindow(ctk.CTkFrame):
 
         # Main content area
         self._setup_content_area()
+
+        # Player controls (above status bar)
+        self._setup_player_controls()
 
         # Bottom status bar
         self._setup_status_bar()
@@ -184,6 +191,40 @@ class MainWindow(ctk.CTkFrame):
         # Set up drag-and-drop on content frame
         self._setup_dnd()
 
+    def _setup_player_controls(self):
+        """Set up the audio player controls."""
+        if self._audio_player:
+            self._player_controls = PlayerControls(
+                self,
+                audio_player=self._audio_player,
+                on_prev=self._on_player_prev,
+                on_next=self._on_player_next,
+                height=50,
+                corner_radius=8,
+            )
+            self._player_controls.grid(row=2, column=0, sticky="ew", padx=16, pady=(0, 8))
+        else:
+            self._player_controls = None
+
+    def _on_player_prev(self):
+        """Handle previous track button."""
+        result = self.results_table.select_previous()
+        if result:
+            self._play_track(result)
+
+    def _on_player_next(self):
+        """Handle next track button."""
+        result = self.results_table.select_next()
+        if result:
+            self._play_track(result)
+
+    def _play_track(self, result: AnalysisResult):
+        """Load and play a track."""
+        if self._audio_player and result:
+            self._audio_player.load(result.filepath)
+            # Auto-play after a brief delay to allow loading
+            self.after(100, self._audio_player.play)
+
     def _setup_status_bar(self):
         """Set up the bottom status bar."""
         self.status_bar = ctk.CTkFrame(
@@ -192,7 +233,9 @@ class MainWindow(ctk.CTkFrame):
             fg_color=THEME_COLORS["primary_dark"],
             corner_radius=0,
         )
-        self.status_bar.grid(row=2, column=0, sticky="ew", padx=16, pady=(0, 16))
+        # Adjust row number since player controls is now row 2
+        status_row = 3 if self._audio_player else 2
+        self.status_bar.grid(row=status_row, column=0, sticky="ew", padx=16, pady=(0, 16))
         self.status_bar.grid_columnconfigure(1, weight=1)
 
         # Status label
@@ -478,10 +521,20 @@ class MainWindow(ctk.CTkFrame):
         if self.on_result_selected:
             self.on_result_selected(result)
 
+        # Load and play the selected track
+        if result and self._audio_player:
+            self._play_track(result)
+
     def _on_clear(self):
         """Handle clear button click."""
         if self.analyzer.is_running():
             self.analyzer.cancel()
+
+        # Stop playback and reset player
+        if self._audio_player:
+            self._audio_player.stop()
+        if self._player_controls:
+            self._player_controls.reset()
 
         self.results_table.clear()
         self._update_count()

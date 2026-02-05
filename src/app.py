@@ -22,6 +22,7 @@ from .core.analyzer import AnalysisResult, AudioAnalyzer
 from .core.frequency_detector import FrequencyAnalysis
 from .gui.main_window import MainWindow
 from .gui.spectrogram_window import SpectrogramWindow
+from .gui.audio_player import AudioPlayer
 from .utils.constants import (
     WINDOW_WIDTH,
     WINDOW_HEIGHT,
@@ -77,10 +78,15 @@ class AudioQualApp:
         # Create analyzer
         self.analyzer = AudioAnalyzer()
 
+        # Create audio player
+        self.audio_player = AudioPlayer()
+        self.audio_player.set_tk_root(self.root)
+
         # Create main window
         self.main_window = MainWindow(
             self.root,
             analyzer=self.analyzer,
+            audio_player=self.audio_player,
             on_result_selected=self._on_result_selected,
             on_show_spectrogram=self._show_spectrogram_window,
             on_clear=self._on_clear,
@@ -191,10 +197,25 @@ class AudioQualApp:
         """Handle clear action - clear cache."""
         self._spectrogram_cache.clear()
         self._selected_result = None
+        # Stop audio playback
+        if self.audio_player:
+            self.audio_player.stop()
+
+    def _cleanup(self):
+        """Clean up resources before closing."""
+        if self.audio_player:
+            self.audio_player.cleanup()
 
     def run(self):
         """Start the application main loop."""
+        # Set up cleanup on window close
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.mainloop()
+
+    def _on_close(self):
+        """Handle application close."""
+        self._cleanup()
+        self.root.destroy()
 
 
 def create_app() -> AudioQualApp:
