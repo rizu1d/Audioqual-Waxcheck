@@ -82,6 +82,37 @@ TRANSITION_VARIANCE_DROP_RATIO = 0.30 # Variance must drop by at least 30% betwe
 TRANSITION_RECOVERY_THRESHOLD_DB = 3.0  # If energy rises >3dB after drop, it's not a real cutoff
 TRANSITION_MIN_PRE_VARIANCE = 0.4     # Pre-transition band must have at least 40% of reference variance (musical content)
 
+# Frequency-dependent variance threshold interpolation range (Layer 2)
+# At lower frequencies, musical content has higher variance; at higher frequencies
+# (near codec cutoff), even real content has lower variance (especially acapellas).
+# Interpolate TRANSITION_MIN_PRE_VARIANCE from base value at low freq to reduced value at high freq.
+TRANSITION_VARIANCE_FREQ_LOW_HZ = 14000   # Below this: use full TRANSITION_MIN_PRE_VARIANCE
+TRANSITION_VARIANCE_FREQ_HIGH_HZ = 20000  # Above this: use reduced minimum variance
+TRANSITION_MIN_PRE_VARIANCE_HIGH_FREQ = 0.25  # Reduced variance threshold at high frequencies
+
+# Cumulative drop detection (Layer 2): detect gradual codec rolloff
+# If N consecutive bands sum > threshold in total drop, treat as cutoff
+TRANSITION_CUMULATIVE_BANDS = 3           # Number of consecutive bands to sum
+TRANSITION_CUMULATIVE_DROP_DB = 12.0      # Total dB drop across those bands
+
+# Anti-sibilance recovery check (Layer 2)
+# Require multiple consecutive bands with energy AND variance to consider "recovery"
+TRANSITION_RECOVERY_CONSECUTIVE_BANDS = 2  # Must have 2 consecutive bands with real content
+TRANSITION_RECOVERY_MIN_VARIANCE = 0.3     # Each recovery band must have variance >= this
+
+# MP3 bitrate → maximum physically possible cutoff frequency (kHz)
+# Based on LAME and other MP3 encoder low-pass filter behavior.
+# Used as a safety net: if detected cutoff exceeds this, it's physically impossible.
+MP3_BITRATE_MAX_CUTOFF_KHZ = {
+    (0, 95):     15.0,   # <96kbps
+    (96, 127):   16.0,   # 96kbps
+    (128, 159):  17.0,   # 128kbps (real ~16kHz + 1kHz margin)
+    (160, 191):  18.0,   # 160kbps
+    (192, 255):  19.5,   # 192kbps
+    (256, 279):  20.5,   # 256kbps
+    (280, 320):  21.0,   # 320kbps
+}
+
 # Supported audio formats
 SUPPORTED_FORMATS = {".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".wma", ".aiff", ".aif"}
 

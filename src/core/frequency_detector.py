@@ -41,6 +41,13 @@ from ..utils.constants import (
     TRANSITION_VARIANCE_DROP_RATIO,
     TRANSITION_RECOVERY_THRESHOLD_DB,
     TRANSITION_MIN_PRE_VARIANCE,
+    TRANSITION_VARIANCE_FREQ_LOW_HZ,
+    TRANSITION_VARIANCE_FREQ_HIGH_HZ,
+    TRANSITION_MIN_PRE_VARIANCE_HIGH_FREQ,
+    TRANSITION_CUMULATIVE_BANDS,
+    TRANSITION_CUMULATIVE_DROP_DB,
+    TRANSITION_RECOVERY_CONSECUTIVE_BANDS,
+    TRANSITION_RECOVERY_MIN_VARIANCE,
 )
 
 
@@ -1161,12 +1168,39 @@ def find_cutoff_by_transition(
         return nyquist_hz, 0.3  # Not enough bands to analyze
 
     # Helper function: check if energy recovers after a given band index
+    # Anti-sibilance: require TRANSITION_RECOVERY_CONSECUTIVE_BANDS consecutive bands
+    # with high energy AND variance >= TRANSITION_RECOVERY_MIN_VARIANCE.
+    # Isolated sibilance (S/T/CH sounds) creates intermittent high-energy bands
+    # but doesn't sustain across multiple consecutive bands with musical variance.
     def energy_recovers_after(band_index: int, post_energy: float) -> bool:
+        consecutive_recovery = 0
         for j in range(band_index + 2, len(band_stats)):
-            _, future_energy, _ = band_stats[j]
-            if future_energy > post_energy + TRANSITION_RECOVERY_THRESHOLD_DB:
-                return True
+            _, future_energy, future_variance = band_stats[j]
+            if (future_energy > post_energy + TRANSITION_RECOVERY_THRESHOLD_DB
+                    and future_variance >= TRANSITION_RECOVERY_MIN_VARIANCE):
+                consecutive_recovery += 1
+                if consecutive_recovery >= TRANSITION_RECOVERY_CONSECUTIVE_BANDS:
+                    return True
+            else:
+                consecutive_recovery = 0
         return False
+
+    # Helper function: compute frequency-dependent variance threshold (2A)
+    # At lower frequencies (14kHz), use full TRANSITION_MIN_PRE_VARIANCE (0.4)
+    # At higher frequencies (20kHz), use reduced threshold (0.25)
+    # Acapellas have lower variance at ~16kHz (~0.35), which the fixed 0.4 misses
+    def get_min_pre_variance(freq_hz: float) -> float:
+        if freq_hz <= TRANSITION_VARIANCE_FREQ_LOW_HZ:
+            return TRANSITION_MIN_PRE_VARIANCE
+        if freq_hz >= TRANSITION_VARIANCE_FREQ_HIGH_HZ:
+            return TRANSITION_MIN_PRE_VARIANCE_HIGH_FREQ
+        # Linear interpolation
+        t = (freq_hz - TRANSITION_VARIANCE_FREQ_LOW_HZ) / (
+            TRANSITION_VARIANCE_FREQ_HIGH_HZ - TRANSITION_VARIANCE_FREQ_LOW_HZ
+        )
+        return TRANSITION_MIN_PRE_VARIANCE + t * (
+            TRANSITION_MIN_PRE_VARIANCE_HIGH_FREQ - TRANSITION_MIN_PRE_VARIANCE
+        )
 
     # ==========================================================================
     # PHASE 1: Find the FIRST transition with MUSICAL content before it
@@ -1184,9 +1218,10 @@ def find_cutoff_by_transition(
         drop = energy_low - energy_high
 
         # Check if pre-transition band has MUSICAL content (high variance)
-        # Musical content has variance >= TRANSITION_MIN_PRE_VARIANCE (0.4)
-        # Transcode noise has low variance (typically < 0.3)
-        is_musical_content = variance_low >= TRANSITION_MIN_PRE_VARIANCE
+        # Uses frequency-dependent threshold: 0.4 at 14kHz → 0.25 at 20kHz
+        # This catches acapellas where variance at ~16kHz is ~0.35 (below fixed 0.4)
+        min_variance = get_min_pre_variance(freq_low)
+        is_musical_content = variance_low >= min_variance
 
         # Method 1a: Significant energy drop with musical content before
         # NOTE: We do NOT require min_energy_db threshold because high variance
@@ -1221,7 +1256,26 @@ def find_cutoff_by_transition(
 
         is_variance_transition = is_musical_content and (has_absolute_variance_drop or has_relative_variance_drop or has_two_band_transition) and drop > 0
 
-        if is_musical_content and (has_significant_drop or is_variance_transition):
+        # Method 1c: Cumulative drop detection (2B)
+        # Detects gradual codec rolloff (e.g., AAC→MP3 double encoding)
+        # If TRANSITION_CUMULATIVE_BANDS consecutive bands sum > TRANSITION_CUMULATIVE_DROP_DB
+        # in total drop, treat as cutoff even if individual drops are < min_drop_db
+        has_cumulative_drop = False
+        if is_musical_content and i + TRANSITION_CUMULATIVE_BANDS < len(band_stats):
+            cumulative_drop = 0.0
+            all_dropping = True
+            for k in range(TRANSITION_CUMULATIVE_BANDS):
+                _, e_curr, _ = band_stats[i + k]
+                _, e_next, _ = band_stats[i + k + 1]
+                band_drop = e_curr - e_next
+                if band_drop <= 0:
+                    all_dropping = False
+                    break
+                cumulative_drop += band_drop
+            if all_dropping and cumulative_drop >= TRANSITION_CUMULATIVE_DROP_DB:
+                has_cumulative_drop = True
+
+        if is_musical_content and (has_significant_drop or is_variance_transition or has_cumulative_drop):
             # Verify energy doesn't recover after the drop
             if not energy_recovers_after(i, energy_high):
                 # Found the FIRST transition where musical content ends!
@@ -1229,6 +1283,9 @@ def find_cutoff_by_transition(
                 if has_significant_drop:
                     # Higher confidence for clear energy drops
                     confidence = min(0.95, 0.6 + (drop / 20.0) * 0.2 + variance_low * 0.15)
+                elif has_cumulative_drop:
+                    # Medium-high confidence for cumulative drops
+                    confidence = min(0.90, 0.55 + (cumulative_drop / 20.0) * 0.2 + variance_low * 0.15)
                 else:
                     # Slightly lower confidence for variance-only transitions
                     confidence = min(0.90, 0.55 + (drop / 20.0) * 0.15 + variance_low * 0.15)

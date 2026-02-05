@@ -1,7 +1,7 @@
 """Bitrate classification based on frequency cutoff analysis."""
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
 
 from .frequency_detector import FrequencyAnalysis
 from .audio_loader import AudioMetadata
@@ -15,6 +15,7 @@ from ..utils.constants import (
     STATUS_UNCERTAIN,
     CONFIDENCE_HIGH,
     CONFIDENCE_LOW,
+    MP3_BITRATE_MAX_CUTOFF_KHZ,
 )
 
 
@@ -57,6 +58,50 @@ def classify_by_frequency(cutoff_khz: float) -> str:
 
     # Default to nearest match based on proximity
     return "unknown"
+
+
+def check_bitrate_plausibility(
+    cutoff_khz: float,
+    declared_bitrate: Optional[int],
+    file_format: str,
+) -> Tuple[float, bool, str]:
+    """
+    Validate that detected cutoff is physically plausible for the declared bitrate.
+
+    MP3 encoders apply a fixed low-pass filter per bitrate. If the detected cutoff
+    exceeds the physical maximum for the declared bitrate, cap it and flag as uncertain.
+
+    Only applies to MP3 files with known bitrate.
+
+    Args:
+        cutoff_khz: Detected cutoff frequency in kHz
+        declared_bitrate: Bitrate from file metadata (kbps), or None
+        file_format: File format string (e.g., "MP3", "FLAC")
+
+    Returns:
+        Tuple of (adjusted_cutoff_khz, was_adjusted, reason)
+    """
+    if file_format.upper() != "MP3" or declared_bitrate is None:
+        return cutoff_khz, False, ""
+
+    # Find the maximum plausible cutoff for this bitrate
+    max_cutoff_khz = None
+    for (br_min, br_max), max_khz in MP3_BITRATE_MAX_CUTOFF_KHZ.items():
+        if br_min <= declared_bitrate <= br_max:
+            max_cutoff_khz = max_khz
+            break
+
+    if max_cutoff_khz is None:
+        return cutoff_khz, False, ""
+
+    if cutoff_khz > max_cutoff_khz:
+        reason = (
+            f"MP3 {declared_bitrate}kbps: corte {cutoff_khz:.1f}kHz imposible "
+            f"(máx {max_cutoff_khz:.1f}kHz), ajustado"
+        )
+        return max_cutoff_khz, True, reason
+
+    return cutoff_khz, False, ""
 
 
 def detect_transcode(
@@ -114,13 +159,21 @@ def detect_transcode(
             return True
         return False
 
-    # For lossy formats, check if detected quality is significantly lower than declared
+    # For lossy formats, check if detected quality differs significantly from declared
     try:
         expected_idx = quality_order.index(expected_quality)
         detected_idx = quality_order.index(detected_quality)
 
-        # Transcode if detected is more than 1 step below expected
-        return detected_idx < expected_idx - 1
+        # Downscale transcode: detected is more than 1 step below expected
+        if detected_idx < expected_idx - 1:
+            return True
+
+        # Upscale detection: detected is much higher than declared (physically impossible)
+        # Gap of +2 prevents false positives with VBR (which can vary ±1 tier)
+        if detected_idx > expected_idx + 2:
+            return True
+
+        return False
     except ValueError:
         return False
 
@@ -153,6 +206,16 @@ def assess_quality(
         if not is_uncertain:
             is_uncertain = True
             uncertainty_reason = "MP3 ajustado: corte real ~20kHz"
+
+    # Bitrate plausibility check: if MP3 with known bitrate, cap cutoff to
+    # physically possible maximum for that bitrate (Layer 1 safety net)
+    cutoff_khz, plausibility_adjusted, plausibility_reason = check_bitrate_plausibility(
+        cutoff_khz, metadata.bitrate, metadata.format
+    )
+    if plausibility_adjusted:
+        confidence = confidence * 0.7  # Significant confidence reduction
+        is_uncertain = True
+        uncertainty_reason = plausibility_reason
 
     detected_quality = classify_by_frequency(cutoff_khz)
 
