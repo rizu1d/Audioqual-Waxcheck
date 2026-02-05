@@ -1,6 +1,5 @@
 """DJ-style waveform display with playhead and seeking."""
 
-import time
 import threading
 import tkinter as tk
 from typing import Callable, Optional
@@ -94,7 +93,6 @@ class WaveformDisplay(ctk.CTkFrame):
             samples: Audio samples (1D numpy array)
             sample_rate: Sample rate in Hz
         """
-        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | set_audio_data inicio ({len(samples)} samples)")
         self._samples = samples
         self._sample_rate = sample_rate
         self._duration = len(samples) / sample_rate if sample_rate > 0 else 0.0
@@ -104,7 +102,6 @@ class WaveformDisplay(ctk.CTkFrame):
 
         # Start rendering
         self._start_render()
-        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | set_audio_data fin")
 
     def set_position(self, ratio: float):
         """
@@ -168,7 +165,6 @@ class WaveformDisplay(ctk.CTkFrame):
 
     def _start_render(self):
         """Start background render of waveform."""
-        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | Waveform render iniciado")
         if self._samples is None:
             return
 
@@ -213,7 +209,8 @@ class WaveformDisplay(ctk.CTkFrame):
                 return
 
             # Store results and update display on main thread
-            self.after(0, lambda: self._on_render_complete(render_id, peaks, base_image))
+            from ..utils.tk_utils import schedule_callback_from_thread
+            schedule_callback_from_thread(self, self._on_render_complete, render_id, peaks, base_image)
 
         except Exception as e:
             print(f"Error rendering waveform: {e}")
@@ -312,7 +309,6 @@ class WaveformDisplay(ctk.CTkFrame):
 
     def _on_render_complete(self, render_id: int, peaks: np.ndarray, base_image: Image.Image):
         """Handle render completion on main thread."""
-        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | Waveform render completo")
         if render_id != self._render_id:
             return
 

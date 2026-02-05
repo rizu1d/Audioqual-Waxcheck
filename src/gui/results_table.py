@@ -1,7 +1,5 @@
 """Results table for displaying analysis results with pill-style status badges."""
 
-import time
-import threading
 from typing import Callable, Dict, List, Optional
 
 import customtkinter as ctk
@@ -304,7 +302,6 @@ class ResultsTable(ctk.CTkFrame):
 
     def _on_row_click(self, row: ResultRow):
         """Handle row click for selection."""
-        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | _on_row_click inicio: {row.result.filename}")
         # Deselect previous row
         if self._selected_row and self._selected_row != row:
             self._selected_row.set_selected(False)
@@ -315,13 +312,10 @@ class ResultsTable(ctk.CTkFrame):
 
         # Notify callback
         if self.on_selection_changed:
-            print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | _on_row_click -> on_selection_changed")
             self.on_selection_changed(row.result)
-        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | _on_row_click fin")
 
     def add_result(self, result: AnalysisResult):
         """Add or update a result in the table."""
-        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | add_result inicio: {result.filename}")
         self._results[result.filepath] = result
 
         # Check if row exists
@@ -338,7 +332,6 @@ class ResultsTable(ctk.CTkFrame):
             )
             row.pack(fill="x", pady=(0, 1))
             self._rows[result.filepath] = row
-        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | add_result fin: {result.filename}")
 
     def add_results(self, results: List[AnalysisResult]):
         """Add multiple results to the table."""

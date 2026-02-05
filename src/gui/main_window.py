@@ -2,7 +2,6 @@
 
 import os
 import threading
-import time
 import tkinter as tk
 from tkinter import filedialog
 from typing import List, Optional
@@ -220,12 +219,10 @@ class MainWindow(ctk.CTkFrame):
 
     def _play_track(self, result: AnalysisResult):
         """Load and play a track."""
-        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | _play_track inicio: {result.filename}")
         if self._audio_player and result:
             self._audio_player.load(result.filepath)
             # Auto-play after a brief delay to allow loading
             self.after(100, self._audio_player.play)
-        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | _play_track fin")
 
     def _setup_status_bar(self):
         """Set up the bottom status bar."""
@@ -478,12 +475,11 @@ class MainWindow(ctk.CTkFrame):
 
         Rate-limited to max 1 UI update per 100ms to prevent event loop saturation.
         """
-        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | Callback recibido: {current_file}")
+        import time
         current_time = time.time() * 1000  # ms
         is_final = completed >= total
 
         def update_ui():
-            print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | Actualizando tabla: {current_file}")
             if result:
                 self.results_table.add_result(result)
 
@@ -519,26 +515,15 @@ class MainWindow(ctk.CTkFrame):
             self.progress_bar.grid_remove()
             self.status_label.configure(text="Listo")
             self.add_files_btn.configure(state="normal")
-            # Force event loop to process pending events (fixes macOS tkinter freeze)
-            # Schedule multiple update_idletasks to ensure event loop wakes up
-            print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | Análisis completado, forzando wakeup del event loop")
-            root = self.winfo_toplevel()
-            root.update_idletasks()
-            # Schedule additional wakeups to ensure event loop stays active
-            for i in range(5):
-                self.after(100 * (i + 1), root.update_idletasks)
 
     def _on_selection_changed(self, result: Optional[AnalysisResult]):
         """Handle result selection change."""
-        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | _on_selection_changed inicio: {result.filename if result else 'None'}")
         if self.on_result_selected:
             self.on_result_selected(result)
 
         # Load and play the selected track
         if result and self._audio_player:
-            print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | _on_selection_changed -> _play_track")
             self._play_track(result)
-        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | _on_selection_changed fin")
 
     def _on_clear(self):
         """Handle clear button click."""

@@ -1,6 +1,5 @@
 """Audio playback engine with threading pattern for responsive UI."""
 
-import time
 import threading
 from enum import Enum
 from typing import Callable, Optional
@@ -86,7 +85,8 @@ class AudioPlayer:
     def _schedule_callback(self, callback: Callable, *args):
         """Schedule a callback to run on the main thread."""
         if callback and self._tk_root:
-            self._tk_root.after(0, lambda: callback(*args))
+            from ..utils.tk_utils import schedule_callback_from_thread
+            schedule_callback_from_thread(self._tk_root, callback, *args)
 
     def _set_state(self, state: PlayerState):
         """Update state and notify callback."""
@@ -100,7 +100,6 @@ class AudioPlayer:
         Args:
             filepath: Path to the audio file
         """
-        print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | Audio load iniciado: {filepath}")
         if not HAS_SOUNDDEVICE:
             self._schedule_callback(self._on_load_error, "sounddevice no instalado")
             return
@@ -139,7 +138,6 @@ class AudioPlayer:
 
             if HAS_SOUNDFILE and ext in soundfile_formats:
                 # Use soundfile - releases GIL during I/O, much faster
-                print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | soundfile.read inicio")
                 samples, file_sr = sf.read(filepath, dtype='float32', always_2d=True)
 
                 # Convert to mono if stereo (average channels)
@@ -150,21 +148,16 @@ class AudioPlayer:
 
                 # Resample if needed
                 if file_sr != self._sample_rate:
-                    print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | resampling {file_sr} -> {self._sample_rate}")
                     # Use scipy's resample_poly for efficient resampling
                     from math import gcd
                     g = gcd(self._sample_rate, file_sr)
                     up = self._sample_rate // g
                     down = file_sr // g
                     samples = signal.resample_poly(samples, up, down).astype(np.float32)
-
-                print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | soundfile.read fin")
             else:
                 # Fallback to librosa for MP3, M4A, AAC, WMA and other formats
-                print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | librosa.load inicio (format: {ext})")
                 import librosa
                 samples, _ = librosa.load(filepath, sr=self._sample_rate, mono=True)
-                print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | librosa.load fin")
 
             # Check again if this is still the file we want
             if filepath != self._current_filepath:
@@ -176,7 +169,6 @@ class AudioPlayer:
                 self._position = 0
 
             duration_seconds = len(samples) / self._sample_rate
-            print(f"[PERF] {time.time():.3f} | {threading.current_thread().name} | audio load callback")
             self._set_state(PlayerState.STOPPED)
             self._schedule_callback(self._on_track_loaded, duration_seconds)
 
