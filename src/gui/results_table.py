@@ -1,5 +1,6 @@
 """Results table for displaying analysis results with pill-style status badges."""
 
+import tkinter as tk
 from typing import Callable, Dict, List, Optional
 
 import customtkinter as ctk
@@ -75,7 +76,8 @@ class ResultRow(ctk.CTkFrame):
         self.result = result
         self.on_click = on_click
         self._selected = False
-        self._columns = columns
+        # Store as mutable list of lists so widths can be updated
+        self._columns = [list(col) for col in columns]
         self._cells: Dict[str, ctk.CTkLabel] = {}
         self._cell_frames: Dict[str, ctk.CTkFrame] = {}
         self._badge: Optional[StatusBadge] = None
@@ -86,7 +88,7 @@ class ResultRow(ctk.CTkFrame):
         self.grid_propagate(False)
 
         # Create cells for each column with fixed-width container frames
-        for i, (col_id, _, width) in enumerate(columns):
+        for i, (col_id, _, width) in enumerate(self._columns):
             # Create container frame with fixed width to clip content
             cell_frame = ctk.CTkFrame(
                 self,
@@ -118,7 +120,7 @@ class ResultRow(ctk.CTkFrame):
                 self._cells[col_id] = cell
 
         # Configure column weights - all fixed width
-        for i, (col_id, _, width) in enumerate(columns):
+        for i, (col_id, _, width) in enumerate(self._columns):
             self.grid_columnconfigure(i, weight=0, minsize=width)
 
         # Bind click/hover events to the row
@@ -211,10 +213,21 @@ class ResultRow(ctk.CTkFrame):
         if self._badge:
             self._badge.update_status(result.status)
 
+    def refresh_text(self):
+        """Re-truncate all cell text based on current column widths."""
+        for col_id, cell in self._cells.items():
+            width = 100
+            for cid, _, w in self._columns:
+                if cid == col_id:
+                    width = w
+                    break
+            cell.configure(text=self._get_value(col_id, width))
+
 
 class ResultsTable(ctk.CTkFrame):
     """
     A scrollable table for displaying audio analysis results with pill-style status badges.
+    Columns are resizable by dragging the border between header cells.
     """
 
     COLUMNS = [
@@ -226,6 +239,8 @@ class ResultsTable(ctk.CTkFrame):
         ("detected_quality", "Calidad Det.", 100),
         ("status", "Estado", 170),
     ]
+
+    MIN_WIDTHS = [100, 50, 60, 60, 70, 70, 90]
 
     def __init__(
         self,
@@ -240,7 +255,25 @@ class ResultsTable(ctk.CTkFrame):
         self._rows: Dict[str, ResultRow] = {}
         self._selected_row: Optional[ResultRow] = None
 
+        # Mutable column widths (source of truth for current widths)
+        self._column_widths: List[int] = [w for _, _, w in self.COLUMNS]
+
+        # Resize state
+        self._header_cells: List[ctk.CTkFrame] = []
+        self._grips: List[tk.Frame] = []
+        self._resize_col: int = -1
+        self._resize_start_x: int = 0
+        self._resize_start_width: int = 0
+        self._resize_throttle_id = None
+
         self._setup_ui()
+
+    def _current_columns(self) -> List[tuple]:
+        """Return COLUMNS definition with current widths."""
+        return [
+            (col_id, col_name, self._column_widths[i])
+            for i, (col_id, col_name, _) in enumerate(self.COLUMNS)
+        ]
 
     def _setup_ui(self):
         """Set up the table UI."""
@@ -259,6 +292,7 @@ class ResultsTable(ctk.CTkFrame):
         self.header_frame.grid_propagate(False)
 
         # Create header labels with fixed-width containers
+        self._header_cells = []
         for i, (col_id, col_name, width) in enumerate(self.COLUMNS):
             # Container frame with fixed width
             header_cell = ctk.CTkFrame(
@@ -271,6 +305,7 @@ class ResultsTable(ctk.CTkFrame):
             header_cell.grid(row=0, column=i, sticky="nsew")
             header_cell.grid_propagate(False)
             header_cell.pack_propagate(False)
+            self._header_cells.append(header_cell)
 
             header_label = ctk.CTkLabel(
                 header_cell,
@@ -286,6 +321,9 @@ class ResultsTable(ctk.CTkFrame):
         for i, (col_id, _, width) in enumerate(self.COLUMNS):
             self.header_frame.grid_columnconfigure(i, weight=0, minsize=width)
 
+        # Create resize grips between header cells
+        self._create_grips()
+
         # Scrollable content frame
         self.scroll_frame = ctk.CTkScrollableFrame(
             self,
@@ -299,6 +337,107 @@ class ResultsTable(ctk.CTkFrame):
         # Configure scroll frame columns to match header
         for i in range(len(self.COLUMNS)):
             self.scroll_frame.grid_columnconfigure(i, weight=0)
+
+    def _create_grips(self):
+        """Create drag handles between header cells for column resizing."""
+        self._grips = []
+        for i in range(len(self.COLUMNS) - 1):
+            # Use plain tk.Frame for reliable event capture
+            grip = tk.Frame(
+                self.header_frame,
+                width=8,
+                cursor="sb_h_double_arrow",
+                bg=THEME_COLORS["bg_frame"],
+                bd=0,
+                highlightthickness=0,
+            )
+
+            # Position at the border between column i and i+1
+            x = sum(self._column_widths[:i + 1]) - 4
+            grip.place(x=x, y=0, width=8, relheight=1.0)
+
+            # Bind drag events
+            col_index = i  # capture in closure
+            grip.bind("<ButtonPress-1>", lambda e, c=col_index: self._on_grip_press(e, c))
+            grip.bind("<B1-Motion>", lambda e, c=col_index: self._on_grip_drag(e, c))
+            grip.bind("<ButtonRelease-1>", lambda e, c=col_index: self._on_grip_release(e, c))
+
+            self._grips.append(grip)
+
+    def _reposition_grips(self):
+        """Reposition all grip handles based on current column widths."""
+        for i, grip in enumerate(self._grips):
+            x = sum(self._column_widths[:i + 1]) - 4
+            grip.place_configure(x=x)
+
+    def _on_grip_press(self, event, col_index: int):
+        """Start column resize drag."""
+        self._resize_col = col_index
+        self._resize_start_x = event.x_root
+        self._resize_start_width = self._column_widths[col_index]
+
+    def _on_grip_drag(self, event, col_index: int):
+        """Handle column resize drag motion (throttled)."""
+        if self._resize_col < 0:
+            return
+
+        dx = event.x_root - self._resize_start_x
+        new_width = max(self.MIN_WIDTHS[col_index], self._resize_start_width + dx)
+        self._column_widths[col_index] = new_width
+
+        # Throttle UI updates to ~30ms
+        if self._resize_throttle_id is None:
+            self._resize_throttle_id = self.after(30, self._apply_resize)
+
+    def _on_grip_release(self, event, col_index: int):
+        """End column resize drag."""
+        if self._resize_col < 0:
+            return
+
+        # Cancel pending throttled update
+        if self._resize_throttle_id is not None:
+            self.after_cancel(self._resize_throttle_id)
+            self._resize_throttle_id = None
+
+        # Final width update
+        dx = event.x_root - self._resize_start_x
+        self._column_widths[col_index] = max(
+            self.MIN_WIDTHS[col_index], self._resize_start_width + dx
+        )
+
+        self._resize_col = -1
+        self._apply_column_widths()
+        self._reposition_grips()
+        self._refresh_all_text()
+
+    def _apply_resize(self):
+        """Apply column width change during drag (called by throttle timer)."""
+        self._resize_throttle_id = None
+        self._apply_column_widths()
+        self._reposition_grips()
+
+    def _apply_column_widths(self):
+        """Propagate current column widths to header and all rows."""
+        for i, (col_id, _, _) in enumerate(self.COLUMNS):
+            width = self._column_widths[i]
+
+            # Update header
+            self._header_cells[i].configure(width=width)
+            self.header_frame.grid_columnconfigure(i, minsize=width)
+
+            # Update all rows
+            for row in self._rows.values():
+                cell_frame = row._cell_frames.get(col_id)
+                if cell_frame:
+                    cell_frame.configure(width=width)
+                row.grid_columnconfigure(i, minsize=width)
+                # Keep row's _columns in sync
+                row._columns[i][2] = width
+
+    def _refresh_all_text(self):
+        """Re-truncate text in all rows based on current column widths."""
+        for row in self._rows.values():
+            row.refresh_text()
 
     def _on_row_click(self, row: ResultRow):
         """Handle row click for selection."""
@@ -323,11 +462,11 @@ class ResultsTable(ctk.CTkFrame):
             # Update existing row
             self._rows[result.filepath].update_result(result)
         else:
-            # Create new row
+            # Create new row with current column widths
             row = ResultRow(
                 self.scroll_frame,
                 result,
-                self.COLUMNS,
+                self._current_columns(),
                 on_click=self._on_row_click,
             )
             row.pack(fill="x", pady=(0, 1))
