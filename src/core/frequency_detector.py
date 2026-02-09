@@ -1275,7 +1275,35 @@ def find_cutoff_by_transition(
             if all_dropping and cumulative_drop >= TRANSITION_CUMULATIVE_DROP_DB:
                 has_cumulative_drop = True
 
-        if is_musical_content and (has_significant_drop or is_variance_transition or has_cumulative_drop):
+        # Method 1d: Sliding-window variance decay
+        # Detects gradual rolloffs where variance drops consistently across multiple
+        # bands but no single band-to-band step exceeds the 35% threshold.
+        # Example: variance 0.45 → 0.31 → 0.20 across 1.5kHz (55% total drop,
+        # but each step is only ~32%).
+        VARIANCE_DECAY_WINDOW = 3
+        VARIANCE_DECAY_MIN_DROP = 0.50   # Total variance must drop by >= 50%
+        VARIANCE_DECAY_END_MAX = 0.25    # End band must be clearly non-musical
+        has_sliding_variance_decay = False
+        sliding_total_drop_ratio = 0.0
+        sliding_end_variance = 1.0
+        if is_musical_content and i + VARIANCE_DECAY_WINDOW < len(band_stats):
+            _, _, variance_end = band_stats[i + VARIANCE_DECAY_WINDOW]
+            total_drop_ratio = (variance_low - variance_end) / variance_low if variance_low > 0.1 else 0.0
+            if total_drop_ratio >= VARIANCE_DECAY_MIN_DROP and variance_end < VARIANCE_DECAY_END_MAX:
+                # Verify monotonically decreasing (small tolerance for noise)
+                all_declining = True
+                for k in range(1, VARIANCE_DECAY_WINDOW + 1):
+                    _, _, v_k = band_stats[i + k]
+                    _, _, v_prev = band_stats[i + k - 1]
+                    if v_k > v_prev + 0.05:
+                        all_declining = False
+                        break
+                if all_declining:
+                    has_sliding_variance_decay = True
+                    sliding_total_drop_ratio = total_drop_ratio
+                    sliding_end_variance = variance_end
+
+        if is_musical_content and (has_significant_drop or is_variance_transition or has_cumulative_drop or has_sliding_variance_decay):
             # Verify energy doesn't recover after the drop
             if not energy_recovers_after(i, energy_high):
                 # Found the FIRST transition where musical content ends!
@@ -1286,6 +1314,9 @@ def find_cutoff_by_transition(
                 elif has_cumulative_drop:
                     # Medium-high confidence for cumulative drops
                     confidence = min(0.90, 0.60 + (cumulative_drop / 20.0) * 0.2 + variance_low * 0.15)
+                elif has_sliding_variance_decay:
+                    # Gradual rolloff confidence based on how steep the decay is
+                    confidence = min(0.85, 0.60 + sliding_total_drop_ratio * 0.2 + (1.0 - sliding_end_variance) * 0.1)
                 else:
                     # Slightly lower confidence for variance-only transitions
                     confidence = min(0.90, 0.65 + (drop / 20.0) * 0.15 + variance_low * 0.15)
