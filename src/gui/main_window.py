@@ -123,6 +123,7 @@ class MainWindow(ctk.CTkFrame):
             fg_color=THEME_COLORS["bg_elevated"],
             hover_color=THEME_COLORS["primary_dark"],
         )
+        self.add_files_btn._canvas.configure(takefocus=False)
         self.add_files_btn.grid(row=0, column=0, padx=6)
 
         # Load clean icon
@@ -146,6 +147,7 @@ class MainWindow(ctk.CTkFrame):
             fg_color=THEME_COLORS["bg_elevated"],
             hover_color=THEME_COLORS["primary_dark"],
         )
+        self.clear_btn._canvas.configure(takefocus=False)
         self.clear_btn.grid(row=0, column=1, padx=6)
 
         # Load spectrogram icon
@@ -169,6 +171,7 @@ class MainWindow(ctk.CTkFrame):
             fg_color=THEME_COLORS["bg_elevated"],
             hover_color=THEME_COLORS["primary_dark"],
         )
+        self.spectrogram_btn._canvas.configure(takefocus=False)
         self.spectrogram_btn.grid(row=0, column=2, padx=6)
 
     def _setup_content_area(self):
@@ -570,6 +573,32 @@ class MainWindow(ctk.CTkFrame):
         count = self.results_table.get_results_count()
         text = f"{count} archivo{'s' if count != 1 else ''}"
         self.count_label.configure(text=text)
+
+    def remove_selected_file(self):
+        """Remove the currently selected file from the list (not from disk)."""
+        selected = self.results_table.get_selected_result()
+        if not selected:
+            return
+
+        # Stop playback if this file is playing
+        if self._audio_player:
+            self._audio_player.stop()
+        if self._player_controls:
+            self._player_controls.reset()
+
+        # Remove from table — returns the new selection (or None)
+        new_selection = self.results_table.remove_result(selected.filepath)
+
+        self._update_count()
+        self._update_empty_state_visibility()
+
+        # Load the new selection in the player (without auto-play)
+        if new_selection and self._audio_player:
+            self._audio_player.load(new_selection.filepath)
+
+        # Notify app layer about new selection
+        if self.on_result_selected:
+            self.on_result_selected(new_selection)
 
     def _on_show_spectrogram(self):
         """Handle spectrogram button click."""

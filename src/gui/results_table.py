@@ -402,6 +402,7 @@ class ResultsTable(ctk.CTkFrame):
         if self._selected_row is None:
             # Nothing selected, select first
             self._on_row_click(rows_list[0])
+            self.scroll_to_row(rows_list[0])
             return rows_list[0].result
 
         # Find current index
@@ -414,6 +415,7 @@ class ResultsTable(ctk.CTkFrame):
         next_index = current_index + 1
         if next_index < len(rows_list):
             self._on_row_click(rows_list[next_index])
+            self.scroll_to_row(rows_list[next_index])
             return rows_list[next_index].result
 
         return None  # At end of list
@@ -433,6 +435,7 @@ class ResultsTable(ctk.CTkFrame):
         if self._selected_row is None:
             # Nothing selected, select last
             self._on_row_click(rows_list[-1])
+            self.scroll_to_row(rows_list[-1])
             return rows_list[-1].result
 
         # Find current index
@@ -445,9 +448,92 @@ class ResultsTable(ctk.CTkFrame):
         prev_index = current_index - 1
         if prev_index >= 0:
             self._on_row_click(rows_list[prev_index])
+            self.scroll_to_row(rows_list[prev_index])
             return rows_list[prev_index].result
 
         return None  # At start of list
+
+    def remove_result(self, filepath: str) -> Optional[AnalysisResult]:
+        """
+        Remove a single result from the table.
+
+        If the removed row was selected, auto-selects the next row (or previous if last).
+
+        Returns:
+            The newly selected result, or None if the table is now empty.
+        """
+        if filepath not in self._rows:
+            return None
+
+        row = self._rows[filepath]
+        rows_list = list(self._rows.values())
+        was_selected = self._selected_row == row
+
+        # Find index before removing
+        try:
+            index = rows_list.index(row)
+        except ValueError:
+            index = -1
+
+        # Remove from data structures
+        del self._rows[filepath]
+        del self._results[filepath]
+        row.destroy()
+
+        if not was_selected:
+            # Selection unchanged, return current selection
+            return self._selected_row.result if self._selected_row else None
+
+        # Was selected — pick new selection
+        self._selected_row = None
+        remaining = list(self._rows.values())
+        if not remaining:
+            if self.on_selection_changed:
+                self.on_selection_changed(None)
+            return None
+
+        # Prefer same index (next item), fall back to last
+        new_index = min(index, len(remaining) - 1)
+        new_row = remaining[new_index]
+        self._on_row_click(new_row)
+        self.scroll_to_row(new_row)
+        return new_row.result
+
+    def scroll_to_row(self, row: ResultRow):
+        """Scroll the table so that the given row is visible."""
+        try:
+            canvas = self.scroll_frame._parent_canvas
+            canvas.update_idletasks()
+
+            # Get canvas viewport height
+            canvas_height = canvas.winfo_height()
+            if canvas_height <= 0:
+                return
+
+            # Get total scrollable height
+            scroll_region = canvas.cget("scrollregion")
+            if not scroll_region:
+                return
+            total_height = int(scroll_region.split()[-1])
+            if total_height <= canvas_height:
+                return  # Everything fits, no scroll needed
+
+            # Get row position relative to the scroll frame inner widget
+            row_y = row.winfo_y()
+            row_height = row.winfo_height()
+
+            # Current viewport top/bottom in content coordinates
+            current_top = canvas.yview()[0] * total_height
+            current_bottom = canvas.yview()[1] * total_height
+
+            if row_y < current_top:
+                # Row is above viewport — scroll up
+                canvas.yview_moveto(row_y / total_height)
+            elif row_y + row_height > current_bottom:
+                # Row is below viewport — scroll down so row bottom aligns with viewport bottom
+                canvas.yview_moveto((row_y + row_height - canvas_height) / total_height)
+        except Exception:
+            pass  # Scroll is best-effort
 
     def get_ordered_filepaths(self) -> List[str]:
         """

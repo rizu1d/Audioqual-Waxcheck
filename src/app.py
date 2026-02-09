@@ -1,5 +1,6 @@
 """Main application class integrating core and GUI."""
 
+import sys
 from collections import OrderedDict
 from typing import Optional
 
@@ -22,7 +23,7 @@ from .core.analyzer import AnalysisResult, AudioAnalyzer
 from .core.frequency_detector import FrequencyAnalysis
 from .gui.main_window import MainWindow
 from .gui.spectrogram_window import SpectrogramWindow
-from .gui.audio_player import AudioPlayer
+from .gui.audio_player import AudioPlayer, PlayerState
 from .utils.constants import (
     WINDOW_WIDTH,
     WINDOW_HEIGHT,
@@ -58,6 +59,7 @@ class AudioQualApp:
         self._setup_window()
         self._setup_components()
         self._setup_layout()
+        self._setup_keyboard_bindings()
 
     def _setup_window(self):
         """Configure the main window."""
@@ -95,6 +97,103 @@ class AudioQualApp:
     def _setup_layout(self):
         """Set up the main layout."""
         self.main_window.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+
+    def _setup_keyboard_bindings(self):
+        """Set up global keyboard shortcuts on the root window."""
+        mod = "Command" if sys.platform == "darwin" else "Control"
+
+        self.root.bind("<space>", self._handle_space)
+        self.root.bind("<Delete>", self._handle_delete)
+        self.root.bind("<BackSpace>", self._handle_delete)
+        self.root.bind("<Up>", self._handle_up)
+        self.root.bind("<Down>", self._handle_down)
+        self.root.bind("<Return>", self._handle_return)
+        self.root.bind("<Left>", self._handle_seek_back)
+        self.root.bind("<Right>", self._handle_seek_forward)
+        self.root.bind(f"<{mod}-o>", self._handle_open)
+        self.root.bind(f"<{mod}-O>", self._handle_open)
+        self.root.bind("<Escape>", self._handle_stop)
+
+    def _handle_space(self, event):
+        """Toggle play/pause for the selected file."""
+        if self.audio_player.get_state() == PlayerState.STOPPED:
+            # Nothing loaded yet — load selected and play
+            selected = self.main_window.results_table.get_selected_result()
+            if selected:
+                self.audio_player.load(selected.filepath)
+                self.root.after(100, self.audio_player.play)
+        else:
+            self.audio_player.toggle_play_pause()
+        return "break"
+
+    def _handle_delete(self, event):
+        """Remove the selected file from the list."""
+        self.main_window.remove_selected_file()
+        return "break"
+
+    def _handle_up(self, event):
+        """Select the previous file in the list."""
+        result = self.main_window.results_table.select_previous()
+        if result:
+            self._on_result_selected(result)
+            # Load into player without auto-play
+            self.audio_player.stop()
+            self.audio_player.load(result.filepath)
+        return "break"
+
+    def _handle_down(self, event):
+        """Select the next file in the list."""
+        result = self.main_window.results_table.select_next()
+        if result:
+            self._on_result_selected(result)
+            # Load into player without auto-play
+            self.audio_player.stop()
+            self.audio_player.load(result.filepath)
+        return "break"
+
+    def _handle_return(self, event):
+        """Load and play the selected file."""
+        selected = self.main_window.results_table.get_selected_result()
+        if not selected:
+            return "break"
+
+        state = self.audio_player.get_state()
+
+        if self.audio_player._current_filepath == selected.filepath:
+            # Same file already loaded — play/resume if not already playing
+            if state != PlayerState.PLAYING:
+                self.audio_player.play()
+        else:
+            # Different file — load and play
+            self.audio_player.load(selected.filepath)
+            self.root.after(100, self.audio_player.play)
+        return "break"
+
+    def _handle_seek_back(self, event):
+        """Seek backward 5 seconds (only while playing/paused)."""
+        state = self.audio_player.get_state()
+        if state in (PlayerState.PLAYING, PlayerState.PAUSED):
+            pos = self.audio_player.get_position()
+            self.audio_player.seek(max(0, pos - 5))
+        return "break"
+
+    def _handle_seek_forward(self, event):
+        """Seek forward 5 seconds (only while playing/paused)."""
+        state = self.audio_player.get_state()
+        if state in (PlayerState.PLAYING, PlayerState.PAUSED):
+            pos = self.audio_player.get_position()
+            self.audio_player.seek(pos + 5)
+        return "break"
+
+    def _handle_open(self, event):
+        """Open the file selection dialog."""
+        self.main_window._on_add_files_click()
+        return "break"
+
+    def _handle_stop(self, event):
+        """Stop playback."""
+        self.audio_player.stop()
+        return "break"
 
     def _on_result_selected(self, result: Optional[AnalysisResult]):
         """Handle result selection from the table."""

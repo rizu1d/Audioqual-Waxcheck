@@ -126,6 +126,7 @@ class PlayerControls(ctk.CTkFrame):
             text_color=THEME_COLORS["text_primary"],
             font=ctk.CTkFont(size=16),
         )
+        self._prev_btn._canvas.configure(takefocus=False)
         self._prev_btn.grid(row=0, column=0, padx=2)
 
         # Play/Pause button
@@ -142,6 +143,7 @@ class PlayerControls(ctk.CTkFrame):
             text_color=THEME_COLORS["text_primary"],
             font=ctk.CTkFont(size=16),
         )
+        self._play_btn._canvas.configure(takefocus=False)
         self._play_btn.grid(row=0, column=1, padx=2)
 
         # Next button
@@ -158,6 +160,7 @@ class PlayerControls(ctk.CTkFrame):
             text_color=THEME_COLORS["text_primary"],
             font=ctk.CTkFont(size=16),
         )
+        self._next_btn._canvas.configure(takefocus=False)
         self._next_btn.grid(row=0, column=2, padx=2)
 
         # Time display
@@ -204,6 +207,7 @@ class PlayerControls(ctk.CTkFrame):
             fg_color=THEME_COLORS["primary_muted"],
             command=self._on_volume_change,
         )
+        self._volume_slider._canvas.configure(takefocus=False)
         self._volume_slider.grid(row=0, column=1)
         self._volume_slider.set(1.0)
 
