@@ -1,0 +1,202 @@
+================================================================================
+  AudioQual - Cómo funciona el algoritmo de detección de calidad de audio
+================================================================================
+
+OBJETIVO
+--------
+Detectar si un archivo de audio tiene la calidad real que declara. Por ejemplo,
+un MP3 etiquetado como "320kbps" que en realidad fue convertido desde un archivo
+de menor calidad (128kbps, YouTube rip, etc.). A esto se le llama "transcode".
+
+
+PRINCIPIO FUNDAMENTAL
+---------------------
+Los codecs de audio (MP3, AAC, etc.) aplican un filtro pasa-bajos que elimina
+las frecuencias altas. Cuanto menor es el bitrate, más bajo es el corte:
+
+  - 320 kbps:  corte real ~20 kHz
+  - 256 kbps:  corte real ~19 kHz
+  - 192 kbps:  corte real ~17-18 kHz
+  - 128 kbps:  corte real ~15-16 kHz
+  -  96 kbps:  corte real ~13-15 kHz
+
+Si alguien toma un MP3 de 128kbps (corte a 16kHz) y lo re-codifica a 320kbps,
+el archivo resultante dirá "320kbps" pero NO tendrá contenido real por encima
+de 16kHz. Solo tendrá ruido/silencio ahí arriba.
+
+El algoritmo detecta exactamente dónde termina el contenido musical real.
+
+
+PIPELINE DE ANÁLISIS
+--------------------
+El análisis se ejecuta en tres etapas:
+
+  1. Carga del audio    -> librosa carga el archivo, mutagen extrae metadatos
+  2. Detección de corte -> análisis espectral para encontrar la frecuencia de corte
+  3. Clasificación      -> compara el corte detectado vs el bitrate declarado
+
+
+ETAPA 2: DETECCIÓN DE CORTE (el corazón del algoritmo)
+------------------------------------------------------
+Se usan DOS métodos independientes y luego una lógica de decisión combina sus
+resultados.
+
+
+MÉTODO PRIMARIO: Detección por transición
+------------------------------------------
+Busca el punto donde el contenido musical termina y empieza el ruido/silencio.
+
+Concepto clave: el contenido musical tiene ALTA varianza temporal (la energía
+sube y baja siguiendo la dinámica de la música). El ruido de codificación tiene
+BAJA varianza (energía constante, monótona).
+
+Pasos:
+  1. Se calcula el espectrograma (STFT) del audio completo.
+  2. Se divide el rango 10-21 kHz en bandas de 500 Hz.
+  3. Para cada banda se calcula:
+     - Energía media (en dB)
+     - Varianza temporal (cuánto varía la energía entre momentos del audio)
+  4. Se recorren las bandas buscando la PRIMERA transición de "musical" a "ruido".
+
+Una banda se considera "musical" si su varianza supera un umbral que depende
+de la frecuencia:
+  - A 14 kHz: varianza >= 0.40 (las frecuencias bajas tienen más varianza)
+  - A 20 kHz: varianza >= 0.25 (las frecuencias altas, especialmente en
+    acapellas, tienen menos varianza naturalmente)
+  - Entre medias: interpolación lineal
+
+La transición se detecta por CUATRO métodos (cualquiera puede disparar):
+
+  (a) Caída de energía >= 8 dB entre bandas adyacentes
+      -> El caso clásico de "brick-wall" de un codec MP3
+
+  (b) Transición de varianza musical -> ruido
+      -> Varianza post-banda < 0.30 (claramente ruido), O
+      -> Varianza cae >= 35% entre bandas adyacentes, O
+      -> Dos bandas más adelante la varianza < 0.20 (mirada anticipada)
+
+  (c) Caída acumulada >= 12 dB en 3 bandas consecutivas
+      -> Detecta rolloffs graduales donde cada paso individual es < 8 dB
+
+  (d) Decaimiento de varianza en ventana deslizante
+      -> Si la varianza cae >= 50% a lo largo de 3 bandas consecutivas,
+         terminando por debajo de 0.25, con descenso monótono
+      -> Detecta rolloffs muy graduales (como YouTube rips de acapellas)
+         donde ni la energía ni la varianza caen bruscamente en un solo paso
+
+Protección anti-sibilancia:
+  Antes de confirmar una transición, se verifica que la energía NO se recupere
+  después. Los sonidos sibilantes (S, T, CH) crean picos aislados de energía
+  en altas frecuencias. Para considerarlo "recuperación real", se exigen 2+
+  bandas consecutivas con energía Y varianza >= 0.30.
+
+Si Phase 1 no encuentra nada (típico en archivos lossless), Phase 2 usa un
+método de puntuación combinada energía+varianza como fallback.
+
+
+MÉTODO SECUNDARIO: Análisis por segmentos temporales
+-----------------------------------------------------
+En vez de analizar todo el audio junto, lo divide en 50 segmentos temporales.
+
+  1. Cada segmento se analiza independientemente (método de energía relativa).
+  2. Se obtienen 50 valores de corte, uno por segmento.
+  3. Se usa el percentil 85 como corte "predominante".
+     (Ignora el 15% superior: picos, silencios, anomalías)
+  4. Si hay gran diferencia entre el máximo y el percentil (> 3 kHz),
+     se marca como "tiene outliers" (distribución bimodal).
+
+Este método es más robusto para archivos con secciones silenciosas o con
+calidad variable a lo largo del tiempo.
+
+
+LÓGICA DE DECISIÓN: Combinación de métodos
+--------------------------------------------
+Con los resultados de ambos métodos (transición y segmentos), se decide cuál usar:
+
+  1. Si la transición tiene confianza >= 70%:
+     -> Normalmente se usa la transición.
+     -> EXCEPCIÓN (meseta de ruido): si los segmentos dan un corte MUCHO más
+        bajo (gap > 2 kHz) Y detectaron distribución bimodal (outliers) Y tienen
+        confianza >= 60%, se prefieren los segmentos.
+        Razón: la transición puede estar viendo la transición ruido->silencio
+        en vez de música->ruido cuando hay una "meseta" de ruido plano entre
+        ambas frecuencias.
+
+  2. Si ambos métodos coinciden (diferencia < 2 kHz):
+     -> Se promedian y se aumenta la confianza (los dos coinciden = más certeza).
+
+  3. Si la transición es MÁS BAJA que los segmentos (con confianza >= 50%):
+     -> Se prefiere la transición (más conservador).
+     -> Si el gap es >= 1 kHz, se aplica un boost de confianza (hasta +0.15)
+        porque este patrón (transición < segmentos) es firma de transcode:
+        el contenido real termina en la transición, pero el ruido residual
+        engaña a los segmentos haciéndoles ver un corte más alto.
+
+  4. En cualquier otro caso:
+     -> Se usa el método de segmentos como fallback.
+
+
+NIVELES DE CONFIANZA
+--------------------
+Cada método devuelve un valor de confianza (0.0 a 1.0) que indica cuán seguro
+está de su detección:
+
+  - Caída de energía clara (8+ dB):     base 0.60, sube con magnitud de caída
+  - Caída acumulada (12+ dB en 3 bandas): base 0.60
+  - Transición de varianza:              base 0.65
+  - Decaimiento gradual de varianza:     base 0.60, máximo 0.85
+
+En la interfaz, se traduce a una etiqueta legible:
+  - Confianza >= 70%  ->  "Fiabilidad: Alta"   (verde)
+  - Confianza 50-70%  ->  "Fiabilidad: Media"  (dorado)
+  - Confianza < 50%   ->  "Fiabilidad: Baja"   (rojo)
+
+
+ETAPA 3: CLASIFICACIÓN
+-----------------------
+Con la frecuencia de corte detectada, se clasifica la calidad real:
+
+  Corte detectado        Calidad real estimada
+  ----------------       ---------------------
+  > 20.5 kHz             Lossless
+  19.5 - 20.5 kHz        320 kbps
+  18.5 - 19.5 kHz        256 kbps
+  17.0 - 18.5 kHz        192 kbps
+  16.0 - 17.0 kHz        160 kbps
+  15.0 - 16.0 kHz        128 kbps
+  13.0 - 15.0 kHz         96 kbps
+  < 13.0 kHz             Baja calidad
+
+Luego se compara con lo que el archivo DECLARA ser:
+  - Si coincide:                       "OK"
+  - Si el real es mucho menor:         "Transcode detectado"
+  - Si el real sugiere lossless:       "Lossless"
+  - Si la confianza es baja:           "Incierto"
+
+Red de seguridad para MP3: un MP3 de 128kbps físicamente NO puede tener
+contenido real por encima de ~17kHz (límite del codec). Si el algoritmo
+detecta un corte superior, se limita al máximo físico del bitrate declarado.
+
+
+LIMITACIONES CONOCIDAS
+-----------------------
+- Archivos con rolloff muy gradual y contenido escaso en agudos (acapellas
+  antiguas, samples de vinilo) pueden ser detectados con un corte algo más
+  conservador del real.
+- Archivos con "meseta de ruido" (energía plana y baja con varianza borderline
+  durante varios kHz) requieren que el método de segmentos coincida para
+  corregir la detección.
+- No hay test suite automatizada; las verificaciones se hacen contra carpetas
+  de archivos de referencia conocidos.
+
+
+REFERENCIA DE ENERGÍA
+---------------------
+Para contextualizar los valores de energía (dB) del espectrograma:
+
+  -40 dB y arriba:  Contenido con buena presencia
+  -50 a -60 dB:     Contenido audible, frecuencias altas típicas
+  -60 a -70 dB:     Contenido muy tenue, armónicos débiles
+  -70 a -75 dB:     Zona gris, probablemente artefactos en alta frecuencia
+  -75 dB y abajo:   Ruido/piso de ruido, no es contenido musical útil
+  -80 dB:           Silencio efectivo (piso de ruido del formato MP3)

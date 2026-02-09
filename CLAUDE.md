@@ -44,7 +44,7 @@ Searches 500Hz bands from 10kHz to 21kHz for the first "musical content → nois
 
 - **Phase 1** - Find the FIRST band where musical content ends:
   - Band must have musical content (variance >= frequency-dependent threshold: 0.4 at 14kHz, interpolating down to 0.25 at 20kHz — this accommodates acapellas with lower high-frequency variance)
-  - Detection triggers on: (a) energy drop >= 8dB, (b) variance transition (absolute or relative >= 35%), (c) cumulative drop across 3 consecutive bands >= 12dB
+  - Detection triggers on: (a) energy drop >= 8dB, (b) variance transition (absolute or relative >= 35%), (c) cumulative drop across 3 consecutive bands >= 12dB, (d) sliding-window variance decay (variance drops >= 50% across 3 consecutive bands, ending below 0.25, monotonically decreasing — catches gradual rolloffs where no single step exceeds thresholds)
   - Anti-sibilance: recovery check requires 2+ consecutive bands with both energy AND variance >= 0.3 (isolated sibilance spikes don't count)
 - **Phase 2** (fallback) - Best-score method for lossless/edge cases
 
@@ -53,9 +53,9 @@ Searches 500Hz bands from 10kHz to 21kHz for the first "musical content → nois
 Divides audio into 50 temporal segments, finds cutoff per segment, uses 85th percentile as the predominant cutoff (ignores top 15% peaks/outliers).
 
 **Decision logic:**
-- Transition confidence >= 0.7 → use it
+- Transition confidence >= 0.7 → use it, UNLESS noise-plateau pattern detected (segments much lower with outliers and gap > 2kHz → trust segments instead, as transition may be seeing noise-to-silence rather than music-to-noise)
 - Both methods agree within 2kHz → average, boost confidence
-- Transition is lower with confidence >= 0.5 → prefer it (conservative)
+- Transition is lower with confidence >= 0.5 → prefer it (conservative). If gap >= 1kHz, apply transcode-signature confidence boost (up to +0.15)
 - Otherwise → segment method
 
 **Verification:** Cutoffs > 21kHz are verified by comparing variance ratios between 20-22kHz and 15-20kHz bands.
@@ -65,7 +65,7 @@ Divides audio into 50 temporal segments, finds cutoff per segment, uses 85th per
 Built with customtkinter and tkinterdnd2 for drag-and-drop:
 - **file_drop_zone.py** - Reusable drag-and-drop zone with file/folder selection dialog. Parses platform-specific drop formats (Windows braces vs Unix spaces). Uses `file_utils.get_audio_files_from_path` for recursive directory scanning.
 - **main_window.py** - Main layout with empty state overlay, results table, player controls, progress bar, status bar. Drop targets on both content frame and results table scroll_frame.
-- **spectrogram_window.py** - Separate `CTkToplevel` window; background thread renders matplotlib figure to PIL Image via Agg backend, then progressive left-to-right reveal animation (12 steps, 25ms each)
+- **spectrogram_window.py** - Separate `CTkToplevel` window; background thread renders matplotlib figure to PIL Image via Agg backend, then progressive left-to-right reveal animation (12 steps, 25ms each). Displays reliability label ("Fiabilidad: Alta/Media/Baja") with color instead of raw confidence percentage.
 - **results_table.py** - Analysis results with status colors (ttk.Treeview)
 - **audio_player.py** - Playback engine using sounddevice callback-based OutputStream. Dual-loader: uses `soundfile` for WAV/FLAC/OGG/AIFF (low GIL contention, faster), falls back to `librosa` for MP3/M4A/AAC/WMA.
 - **player_controls.py** - Transport controls (play/pause, seek, volume, prev/next)
@@ -110,6 +110,7 @@ Constants are grouped by purpose:
 - **SHELF_*** - Shelf detection (legacy/fallback algorithm)
 - **MP3_BITRATE_MAX_CUTOFF_KHZ** - Physical cutoff limits per MP3 bitrate (safety net)
 - **STATUS_*** - Analysis status strings (in Spanish)
+- **RELIABILITY_COLORS** - Green/gold/red for Alta/Media/Baja fiabilidad display in spectrogram panel
 - **THEME_COLORS, STATUS_COLORS** - Purple/gold/dark gray UI palette
 - **FONT_FAMILY ("Inter"), FONT_SIZES, FONT_WEIGHTS** - Typography
 - **Window/panel dimensions** - WINDOW_WIDTH, PANEL_WIDTH, MIN_* constraints
