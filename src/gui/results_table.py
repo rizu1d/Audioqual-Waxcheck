@@ -1,6 +1,7 @@
 """Results table for displaying analysis results with pill-style status badges."""
 
 import tkinter as tk
+from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
 import customtkinter as ctk
@@ -673,6 +674,28 @@ class ResultsTable(ctk.CTkFrame):
                 canvas.yview_moveto((row_y + row_height - canvas_height) / total_height)
         except Exception:
             pass  # Scroll is best-effort
+
+    def update_filepath(self, old_filepath: str, new_filepath: str):
+        """Re-key a result when its file has been renamed on disk.
+
+        Updates internal dicts, the AnalysisResult, and the displayed row.
+        """
+        if old_filepath not in self._rows:
+            return
+
+        row = self._rows.pop(old_filepath)
+        result = self._results.pop(old_filepath)
+
+        # Update the dataclass fields
+        result.filepath = new_filepath
+        result.filename = Path(new_filepath).name
+
+        # Re-insert under new key
+        self._results[new_filepath] = result
+        self._rows[new_filepath] = row
+
+        # Refresh the row display
+        row.update_result(result)
 
     def get_ordered_filepaths(self) -> List[str]:
         """

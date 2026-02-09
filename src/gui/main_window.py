@@ -18,6 +18,8 @@ except ImportError:
 from .results_table import ResultsTable
 from .audio_player import AudioPlayer
 from .player_controls import PlayerControls
+from .metadata_editor import MetadataEditor
+from .settings_window import SettingsWindow
 from ..core.analyzer import AnalysisResult, AudioAnalyzer, create_pending_result
 from ..utils.constants import (
     WINDOW_WIDTH,
@@ -46,6 +48,7 @@ class MainWindow(ctk.CTkFrame):
         on_result_selected=None,
         on_show_spectrogram=None,
         on_clear=None,
+        on_metadata_saved=None,
         **kwargs
     ):
         super().__init__(master, fg_color=THEME_COLORS["bg_primary"], **kwargs)
@@ -55,6 +58,7 @@ class MainWindow(ctk.CTkFrame):
         self.on_result_selected = on_result_selected
         self.on_show_spectrogram = on_show_spectrogram
         self.on_clear = on_clear
+        self.on_metadata_saved = on_metadata_saved
         self._analysis_thread: Optional[threading.Thread] = None
         # Rate limiting for progress updates (100ms minimum between updates)
         self._last_progress_update = 0
@@ -173,6 +177,54 @@ class MainWindow(ctk.CTkFrame):
         )
         self.spectrogram_btn._canvas.configure(takefocus=False)
         self.spectrogram_btn.grid(row=0, column=2, padx=6)
+
+        # Load metadata icon
+        meta_icon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "metadata-icon.png")
+        meta_icon_image = Image.open(meta_icon_path)
+        self._meta_icon = ctk.CTkImage(
+            light_image=meta_icon_image,
+            dark_image=meta_icon_image,
+            size=(ICON_SIZE, ICON_SIZE)
+        )
+
+        # Metadata editor button
+        self.metadata_btn = ctk.CTkButton(
+            self.controls_frame,
+            text="",
+            image=self._meta_icon,
+            command=self._on_edit_metadata,
+            width=BUTTON_SIZE,
+            height=BUTTON_SIZE,
+            corner_radius=12,
+            fg_color=THEME_COLORS["bg_elevated"],
+            hover_color=THEME_COLORS["primary_dark"],
+        )
+        self.metadata_btn._canvas.configure(takefocus=False)
+        self.metadata_btn.grid(row=0, column=3, padx=6)
+
+        # Load settings icon
+        settings_icon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "settings-icon.png")
+        settings_icon_image = Image.open(settings_icon_path)
+        self._settings_icon = ctk.CTkImage(
+            light_image=settings_icon_image,
+            dark_image=settings_icon_image,
+            size=(ICON_SIZE, ICON_SIZE)
+        )
+
+        # Settings button
+        self.settings_btn = ctk.CTkButton(
+            self.controls_frame,
+            text="",
+            image=self._settings_icon,
+            command=self._on_open_settings,
+            width=BUTTON_SIZE,
+            height=BUTTON_SIZE,
+            corner_radius=12,
+            fg_color=THEME_COLORS["bg_elevated"],
+            hover_color=THEME_COLORS["primary_dark"],
+        )
+        self.settings_btn._canvas.configure(takefocus=False)
+        self.settings_btn.grid(row=0, column=4, padx=6)
 
     def _setup_content_area(self):
         """Set up the main content area."""
@@ -604,3 +656,22 @@ class MainWindow(ctk.CTkFrame):
         """Handle spectrogram button click."""
         if self.on_show_spectrogram:
             self.on_show_spectrogram()
+
+    def _on_edit_metadata(self):
+        """Handle metadata editor button click."""
+        selected = self.results_table.get_selected_result()
+        if not selected:
+            return
+        MetadataEditor(
+            self.winfo_toplevel(),
+            filepath=selected.filepath,
+            on_save=self.on_metadata_saved,
+        )
+
+    def open_metadata_editor(self):
+        """Public method to open metadata editor (for keyboard shortcut)."""
+        self._on_edit_metadata()
+
+    def _on_open_settings(self):
+        """Handle settings button click."""
+        SettingsWindow(self.winfo_toplevel())

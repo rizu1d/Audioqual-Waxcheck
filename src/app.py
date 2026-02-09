@@ -92,6 +92,7 @@ class AudioQualApp:
             on_result_selected=self._on_result_selected,
             on_show_spectrogram=self._show_spectrogram_window,
             on_clear=self._on_clear,
+            on_metadata_saved=self._on_metadata_saved,
         )
 
     def _setup_layout(self):
@@ -112,6 +113,10 @@ class AudioQualApp:
         self.root.bind("<Right>", self._handle_seek_forward)
         self.root.bind(f"<{mod}-o>", self._handle_open)
         self.root.bind(f"<{mod}-O>", self._handle_open)
+        self.root.bind(f"<{mod}-e>", self._handle_edit_metadata)
+        self.root.bind(f"<{mod}-E>", self._handle_edit_metadata)
+        self.root.bind(f"<{mod}-i>", self._handle_edit_metadata)
+        self.root.bind(f"<{mod}-I>", self._handle_edit_metadata)
         self.root.bind("<Escape>", self._handle_stop)
 
     def _handle_space(self, event):
@@ -194,6 +199,32 @@ class AudioQualApp:
         """Stop playback."""
         self.audio_player.stop()
         return "break"
+
+    def _handle_edit_metadata(self, event):
+        """Open the metadata editor for the selected file."""
+        self.main_window.open_metadata_editor()
+        return "break"
+
+    def _on_metadata_saved(self, old_filepath: str, new_filepath=None):
+        """Handle metadata saved callback. Updates table and cache on rename."""
+        if new_filepath and new_filepath != old_filepath:
+            # Update results table
+            self.main_window.results_table.update_filepath(old_filepath, new_filepath)
+
+            # Update spectrogram cache key
+            cached = self._spectrogram_cache.pop(old_filepath, None)
+            if cached:
+                self._spectrogram_cache[new_filepath] = cached
+
+            # Update selected result reference
+            if (self._selected_result
+                    and self._selected_result.filepath == new_filepath):
+                pass  # Already updated by update_filepath
+
+            # Reload into player if this file was loaded
+            if self.audio_player._current_filepath == old_filepath:
+                self.audio_player.stop()
+                self.audio_player.load(new_filepath)
 
     def _on_result_selected(self, result: Optional[AnalysisResult]):
         """Handle result selection from the table."""
