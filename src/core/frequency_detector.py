@@ -1435,8 +1435,17 @@ def analyze_frequency_cutoff(
 
     if conf_transition >= 0.7:
         # Transition method is confident - use it
-        cutoff_hz = cutoff_transition
-        confidence = conf_transition
+        # BUT check for noise-plateau pattern: if segments strongly disagree
+        # (much lower cutoff) and found a bimodal distribution (outliers),
+        # the transition may be detecting noise-to-silence instead of
+        # music-to-noise. Trust segments in that case.
+        if (has_outliers and cutoff_transition > cutoff_segment + 2000
+                and conf_segment >= 0.6):
+            cutoff_hz = cutoff_segment
+            confidence = conf_segment
+        else:
+            cutoff_hz = cutoff_transition
+            confidence = conf_transition
     elif abs(cutoff_transition - cutoff_segment) < 2000:
         # Methods agree - use average and boost confidence
         cutoff_hz = (cutoff_transition + cutoff_segment) / 2
