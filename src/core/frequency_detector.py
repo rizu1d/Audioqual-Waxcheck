@@ -1285,10 +1285,10 @@ def find_cutoff_by_transition(
                     confidence = min(0.95, 0.6 + (drop / 20.0) * 0.2 + variance_low * 0.15)
                 elif has_cumulative_drop:
                     # Medium-high confidence for cumulative drops
-                    confidence = min(0.90, 0.55 + (cumulative_drop / 20.0) * 0.2 + variance_low * 0.15)
+                    confidence = min(0.90, 0.60 + (cumulative_drop / 20.0) * 0.2 + variance_low * 0.15)
                 else:
                     # Slightly lower confidence for variance-only transitions
-                    confidence = min(0.90, 0.55 + (drop / 20.0) * 0.15 + variance_low * 0.15)
+                    confidence = min(0.90, 0.65 + (drop / 20.0) * 0.15 + variance_low * 0.15)
                 return freq_high, confidence
 
     # ==========================================================================
@@ -1414,7 +1414,14 @@ def analyze_frequency_cutoff(
         # Transition found a lower cutoff - prefer it (more conservative)
         # This catches transcodes where residual noise fooled the segment method
         cutoff_hz = cutoff_transition
-        confidence = conf_transition
+        # Disagreement where transition < segment is a transcode signature:
+        # real content ends at transition cutoff, noise/artifacts extend higher
+        gap_khz = (cutoff_segment - cutoff_transition) / 1000
+        if gap_khz >= 1.0:
+            boost = min(0.15, gap_khz * 0.05)
+            confidence = min(0.95, conf_transition + boost)
+        else:
+            confidence = conf_transition
     else:
         # Fall back to segment method
         cutoff_hz = cutoff_segment

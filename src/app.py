@@ -206,10 +206,20 @@ class AudioQualApp:
         if self.audio_player:
             self.audio_player.cleanup()
 
+    def _heartbeat(self):
+        """Keep macOS event loop alive and force Tk idle task processing."""
+        try:
+            self.root.update_idletasks()
+        except Exception:
+            pass
+        self.root.after(50, self._heartbeat)
+
     def run(self):
         """Start the application main loop."""
         # Set up cleanup on window close
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+        # Start heartbeat to prevent macOS event loop dormancy
+        self._heartbeat()
         self.root.mainloop()
 
     def _on_close(self):

@@ -11,7 +11,7 @@ import numpy as np
 from PIL import Image
 
 from ..core.frequency_detector import FrequencyAnalysis
-from ..utils.constants import THEME_COLORS, FONT_FAMILY, FONT_SIZES
+from ..utils.constants import THEME_COLORS, FONT_FAMILY, FONT_SIZES, RELIABILITY_COLORS
 
 
 class SpectrogramWindow(ctk.CTkToplevel):
@@ -133,17 +133,28 @@ class SpectrogramWindow(ctk.CTkToplevel):
         )
         self.max_freq_label.grid(row=0, column=1, padx=16, pady=12)
 
-        # Confidence info
+        # Reliability info
+        rel_text, rel_color = self._get_reliability_label(self._current_analysis.confidence)
         self.confidence_label = ctk.CTkLabel(
             self.info_frame,
-            text=f"Confianza: {self._current_analysis.confidence * 100:.0f}%",
+            text=rel_text,
             font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["body"]),
-            text_color=THEME_COLORS["text_primary"],
+            text_color=rel_color,
         )
         self.confidence_label.grid(row=0, column=2, padx=16, pady=12)
 
         # Bind resize event
         self.figure_frame.bind("<Configure>", self._on_resize)
+
+    @staticmethod
+    def _get_reliability_label(confidence: float) -> tuple[str, str]:
+        """Return (text, color) for a confidence value."""
+        if confidence >= 0.7:
+            return "Fiabilidad: Alta", RELIABILITY_COLORS["high"]
+        elif confidence >= 0.5:
+            return "Fiabilidad: Media", RELIABILITY_COLORS["medium"]
+        else:
+            return "Fiabilidad: Baja", RELIABILITY_COLORS["low"]
 
     def update_spectrogram(
         self,
@@ -171,9 +182,8 @@ class SpectrogramWindow(ctk.CTkToplevel):
         self.max_freq_label.configure(
             text=f"Frec. max: {analysis.max_frequency_hz / 1000:.1f} kHz"
         )
-        self.confidence_label.configure(
-            text=f"Confianza: {analysis.confidence * 100:.0f}%"
-        )
+        rel_text, rel_color = self._get_reliability_label(analysis.confidence)
+        self.confidence_label.configure(text=rel_text, text_color=rel_color)
 
         # Cancel any pending render timer
         if self._render_timer:

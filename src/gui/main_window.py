@@ -30,6 +30,7 @@ from ..utils.constants import (
     SUPPORTED_FORMATS,
 )
 from ..utils.file_utils import get_audio_files_from_path
+from ..utils.tk_utils import schedule_callback_from_thread
 
 
 class MainWindow(ctk.CTkFrame):
@@ -218,10 +219,9 @@ class MainWindow(ctk.CTkFrame):
             self._play_track(result)
 
     def _play_track(self, result: AnalysisResult):
-        """Load and play a track."""
+        """Load and play a track (explicit play from prev/next buttons)."""
         if self._audio_player and result:
             self._audio_player.load(result.filepath)
-            # Auto-play after a brief delay to allow loading
             self.after(100, self._audio_player.play)
 
     def _setup_status_bar(self):
@@ -324,13 +324,18 @@ class MainWindow(ctk.CTkFrame):
         sub_label.grid(row=2, column=0)
 
     def _setup_dnd(self):
-        """Set up drag-and-drop on content frame."""
+        """Set up drag-and-drop on content frame and results table."""
         if not HAS_DND:
             return
 
         try:
+            # Register on content_frame (for empty state)
             self.content_frame.drop_target_register(DND_FILES)
             self.content_frame.dnd_bind("<<Drop>>", self._on_drop)
+
+            # Register on results table scroll_frame (for when table has files)
+            self.results_table.scroll_frame.drop_target_register(DND_FILES)
+            self.results_table.scroll_frame.dnd_bind("<<Drop>>", self._on_drop)
         except Exception:
             pass
 
@@ -409,7 +414,9 @@ class MainWindow(ctk.CTkFrame):
 
     def _process_paths_async(self, paths: List[str]):
         """Process paths in background thread to avoid UI blocking."""
-        # Show loading status
+        # Get existing filepaths to avoid duplicates
+        existing_filepaths = set(self.results_table.get_ordered_filepaths())
+
         self.status_label.configure(text="Escaneando archivos...")
 
         def scan_files():
@@ -418,8 +425,8 @@ class MainWindow(ctk.CTkFrame):
                 files = get_audio_files_from_path(path)
                 all_files.extend(files)
 
-            # Remove duplicates while preserving order
-            seen = set()
+            # Remove duplicates within batch AND against existing files
+            seen = set(existing_filepaths)  # Start with existing
             unique_files = []
             for f in all_files:
                 if f not in seen:
@@ -427,7 +434,7 @@ class MainWindow(ctk.CTkFrame):
                     unique_files.append(f)
 
             # Return to main thread
-            self.after(0, lambda: self._on_files_scanned(unique_files))
+            schedule_callback_from_thread(self, self._on_files_scanned, unique_files)
 
         threading.Thread(target=scan_files, daemon=True).start()
 
@@ -459,7 +466,7 @@ class MainWindow(ctk.CTkFrame):
                 files,
                 progress_callback=self._on_analysis_progress,
             )
-            self.after(0, lambda: self._set_analyzing_state(False))
+            schedule_callback_from_thread(self, self._set_analyzing_state, False)
 
         self._analysis_thread = threading.Thread(target=run_analysis, daemon=True)
         self._analysis_thread.start()
@@ -493,17 +500,17 @@ class MainWindow(ctk.CTkFrame):
 
         # Always process the final update immediately
         if is_final:
-            self.after(0, update_ui)
+            schedule_callback_from_thread(self, update_ui)
             return
 
         # Rate limit: only update UI if 100ms has passed since last update
         if current_time - self._last_progress_update >= 100:
-            self.after(0, update_ui)
+            schedule_callback_from_thread(self, update_ui)
         else:
             # Store pending update - will be flushed on final or next allowed update
             # Still add result to table immediately to not lose data
             if result:
-                self.after(0, lambda r=result: self.results_table.add_result(r))
+                schedule_callback_from_thread(self, self.results_table.add_result, result)
 
     def _set_analyzing_state(self, is_analyzing: bool):
         """Set UI state for analyzing/ready."""
@@ -521,9 +528,9 @@ class MainWindow(ctk.CTkFrame):
         if self.on_result_selected:
             self.on_result_selected(result)
 
-        # Load and play the selected track
+        # Load track for playback (but don't auto-play)
         if result and self._audio_player:
-            self._play_track(result)
+            self._audio_player.load(result.filepath)
 
     def _on_clear(self):
         """Handle clear button click."""

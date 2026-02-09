@@ -8,10 +8,7 @@ def schedule_callback_from_thread(root, callback, *args):
     Uses event_generate() to wake up the tkinter event loop on macOS,
     which can become dormant after after() calls from threads.
     """
-    def wrapper():
-        callback(*args)
-
-    root.after(0, wrapper)
+    root.after(0, lambda: callback(*args))
     # Force event loop to wake up (fixes macOS tkinter bug)
     try:
         root.event_generate("<<ThreadCallback>>", when="tail")

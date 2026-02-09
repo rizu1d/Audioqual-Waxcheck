@@ -160,6 +160,13 @@ THEME_COLORS = {
     "row_hover": "#222228",
 }
 
+# Reliability label colors (for spectrogram panel confidence display)
+RELIABILITY_COLORS = {
+    "high": "#5DB88C",    # Verde esmeralda (mismo que STATUS_OK)
+    "medium": "#F5C842",  # Dorado/amarillo (mismo que accent)
+    "low": "#E05555",     # Rojo coral (mismo que STATUS_TRANSCODE)
+}
+
 # Colors for status - softened premium palette
 STATUS_COLORS = {
     STATUS_OK: "#5DB88C",           # Esmeralda suave (no neón)

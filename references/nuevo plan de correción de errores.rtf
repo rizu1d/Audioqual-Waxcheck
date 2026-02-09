@@ -1,0 +1,700 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2867
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fnil\fcharset0 Menlo-Bold;\f1\fnil\fcharset0 Menlo-Regular;}
+{\colortbl;\red255\green255\blue255;\red0\green0\blue0;\red162\green168\blue247;\red202\green51\blue35;
+\red56\green185\blue199;\red57\green192\blue38;\red86\green32\blue244;}
+{\*\expandedcolortbl;;\csgray\c0;\cssrgb\c69412\c72549\c97647;\cssrgb\c83899\c28663\c18026;
+\cssrgb\c25546\c77007\c82023;\cssrgb\c25706\c77963\c19557;\cssrgb\c41681\c25958\c96648;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\pard\tx560\tx1120\tx1680\tx2240\tx2800\tx3360\tx3920\tx4480\tx5040\tx5600\tx6160\tx6720\pardirnatural\partightenfactor0
+
+\f0\b\fs22 \cf2 \CocoaLigature0 Resumen
+\f1\b0  
+\f0\b Ejecutivo
+\f1\b0 \
+\
+ Se han identificado 
+\f0\b 12
+\f1\b0  
+\f0\b problemas
+\f1\b0  
+\f0\b cr\'edticos
+\f1\b0  
+\f0\b y
+\f1\b0  
+\f0\b altos
+\f1\b0  que causan que los botones est\'e9n "rotos" o tarden en responder. Los problemas se agrupan en tres categor\'edas principales:\
+\
+ 1. 
+\f0\b Fugas
+\f1\b0  
+\f0\b de
+\f1\b0  
+\f0\b memoria
+\f1\b0  - Datos que se acumulan innecesariamente\
+ 2. 
+\f0\b Bloqueos
+\f1\b0  
+\f0\b del
+\f1\b0  
+\f0\b hilo
+\f1\b0  
+\f0\b principal
+\f1\b0  - Operaciones costosas en el event loop de tkinter\
+ 3. 
+\f0\b Threading
+\f1\b0  
+\f0\b ineficiente
+\f1\b0  - Race conditions y sincronizaci\'f3n d\'e9bil\
+\
+ ---\
+ 
+\f0\b PROBLEMAS
+\f1\b0  
+\f0\b CR\'cdTICOS
+\f1\b0  
+\f0\b (Resolver
+\f1\b0  
+\f0\b primero)
+\f1\b0 \
+\
+ 
+\f0\b 1.
+\f1\b0  
+\f0\b Memoria
+\f1\b0  
+\f0\b Retenida
+\f1\b0  
+\f0\b en
+\f1\b0  
+\f0\b AnalysisResult
+\f1\b0 \
+\
+ 
+\f0\b Archivo:
+\f1\b0  \cf3 src/core/analyzer.py\cf2  (l\'edneas 36-37, 102-118)\
+\
+ 
+\f0\b Problema:
+\f1\b0  Cada \cf3 AnalysisResult\cf2  almacena:\
+ - \cf3 audio_data\cf2  - Todas las muestras de audio (~2 MB por archivo de 5 min)\
+ - \cf3 frequency_analysis\cf2  - Espectrograma completo (~4 MB por archivo)\
+\
+ 
+\f0\b Impacto:
+\f1\b0  100 archivos = 
+\f0\b 600
+\f1\b0  
+\f0\b MB
+\f1\b0  de memoria innecesaria retenida.\
+\
+ 
+\f0\b Soluci\'f3n:
+\f1\b0  Eliminar estos campos del resultado permanente. Solo pasar al SpectrogramPanel cuando se necesite visualizar.\
+\
+ ---\
+ 
+\f0\b 2.
+\f1\b0  
+\f0\b Bindings
+\f1\b0  
+\f0\b Redundantes
+\f1\b0  
+\f0\b en
+\f1\b0  
+\f0\b ResultsTable
+\f1\b0 \
+\
+ 
+\f0\b Archivo:
+\f1\b0  \cf3 src/gui/results_table.py\cf2  (l\'edneas 107-134)\
+\
+ 
+\f0\b Problema:
+\f1\b0  Cada fila tiene 7+ bindings de click en widgets anidados:\
+ self._badge.bind(\cf4 "<Button-1>"\cf2 , self._handle_click)\
+ self._badge.label.bind(\cf4 "<Button-1>"\cf2 , self._handle_click)\
+ cell.bind(\cf4 "<Button-1>"\cf2 , self._handle_click)\
+ cell_frame.bind(\cf4 "<Button-1>"\cf2 , self._handle_click)\
+ self.bind(\cf4 "<Button-1>"\cf2 , self._handle_click)\
+\
+ 
+\f0\b Impacto:
+\f1\b0  100 filas \'d7 7 bindings = 700 event listeners. Cada click dispara m\'faltiples handlers.\
+\
+ 
+\f0\b Soluci\'f3n:
+\f1\b0  Un solo binding por fila con propagaci\'f3n de eventos.\
+\
+ ---\
+ 
+\f0\b 3.
+\f1\b0  
+\f0\b Sin
+\f1\b0  
+\f0\b Virtualizaci\'f3n
+\f1\b0  
+\f0\b de
+\f1\b0  
+\f0\b Widgets
+\f1\b0  
+\f0\b en
+\f1\b0  
+\f0\b Tabla
+\f1\b0 \
+\
+ 
+\f0\b Archivo:
+\f1\b0  \cf3 src/gui/results_table.py\cf2 \
+\
+ 
+\f0\b Problema:
+\f1\b0  Se crean widgets reales para CADA fila:\
+ - 1000 archivos = 1000 ResultRow \'d7 7 columnas = 
+\f0\b 7000+
+\f1\b0  
+\f0\b widgets
+\f1\b0 \
+ - Sin lazy-loading ni recycling\
+\
+ 
+\f0\b Impacto:
+\f1\b0  Consumo masivo de memoria, reflow lento, UI no responsiva.\
+\
+ 
+\f0\b Soluci\'f3n:
+\f1\b0  Implementar virtualizaci\'f3n - solo renderizar filas visibles.\
+\
+ ---\
+ 
+\f0\b 4.
+\f1\b0  
+\f0\b Matplotlib
+\f1\b0  
+\f0\b savefig()
+\f1\b0  
+\f0\b Extremadamente
+\f1\b0  
+\f0\b Lento
+\f1\b0 \
+\
+ 
+\f0\b Archivo:
+\f1\b0  \cf3 src/gui/spectrogram_panel.py\cf2  (l\'edneas 338-344)\
+\
+ 
+\f0\b Problema:
+\f1\b0  Cada render del espectrograma:\
+ fig.savefig(buf, \cf5 format\cf2 =\cf4 'png'\cf2 , ...)  \cf6 #\cf2  \cf6 500ms-2000ms\cf2 \
+\
+ 
+\f0\b Impacto:
+\f1\b0  UI se congela 0.5-2 segundos en cada render.\
+\
+ 
+\f0\b Soluci\'f3n:
+\f1\b0  Usar \cf3 fig.canvas.tostring_rgb()\cf2  para obtener datos raw sin compresi\'f3n PNG.\
+\
+ ---\
+ 
+\f0\b 5.
+\f1\b0  
+\f0\b Re-renders
+\f1\b0  
+\f0\b Excesivos
+\f1\b0  
+\f0\b del
+\f1\b0  
+\f0\b Espectrograma
+\f1\b0 \
+\
+ 
+\f0\b Archivo:
+\f1\b0  \cf3 src/gui/spectrogram_panel.py\cf2  (l\'edneas 275-281)\
+\
+ 
+\f0\b Problema:
+\f1\b0  Umbral de redimensionado muy bajo:\
+ \cf7 if\cf2  \cf5 abs\cf2 (new_width - old_width) < \cf6 20\cf2  \cf7 and\cf2  \cf5 abs\cf2 (new_height - old_height) < \cf6 20\cf2 :\
+     \cf7 return\cf2   \cf6 #\cf2  \cf6 Solo\cf2  \cf6 20px\cf2  \cf6 de\cf2  \cf6 tolerancia\cf2 \
+\
+ 
+\f0\b Impacto:
+\f1\b0  Arrastrar el divisor dispara 10+ re-renders de 2 segundos cada uno.\
+\
+ 
+\f0\b Soluci\'f3n:
+\f1\b0  Aumentar umbral a 50-100px, mejor debouncing.\
+\
+ ---\
+ 
+\f0\b PROBLEMAS
+\f1\b0  
+\f0\b ALTOS
+\f1\b0  
+\f0\b (Resolver
+\f1\b0  
+\f0\b despu\'e9s)
+\f1\b0 \
+\
+ 
+\f0\b 6.
+\f1\b0  
+\f0\b Callbacks
+\f1\b0  
+\f0\b de
+\f1\b0  
+\f0\b Progreso
+\f1\b0  
+\f0\b Sin
+\f1\b0  
+\f0\b Rate-Limiting
+\f1\b0 \
+\
+ 
+\f0\b Archivo:
+\f1\b0  \cf3 src/gui/main_window.py\cf2  (l\'edneas 419-438)\
+\
+ 
+\f0\b Problema:
+\f1\b0  Cada archivo analizado llama inmediatamente:\
+ self.after(\cf6 0\cf2 , update_ui)  \cf6 #\cf2  \cf6 Sin\cf2  \cf6 throttle\cf2 \
+\
+ 
+\f0\b Impacto:
+\f1\b0  50 archivos peque\'f1os = 50 actualizaciones de UI en r\'e1faga, saturando el event loop.\
+\
+ 
+\f0\b Soluci\'f3n:
+\f1\b0  Rate-limit a m\'e1ximo 1 actualizaci\'f3n cada 100ms.\
+\
+ ---\
+ 
+\f0\b 7.
+\f1\b0  
+\f0\b File
+\f1\b0  
+\f0\b Drop
+\f1\b0  
+\f0\b Parsing
+\f1\b0  
+\f0\b Bloquea
+\f1\b0  
+\f0\b UI
+\f1\b0 \
+\
+ 
+\f0\b Archivo:
+\f1\b0  \cf3 src/gui/main_window.py\cf2  (l\'edneas 290-337)\
+\
+ 
+\f0\b Problema:
+\f1\b0  \cf3 get_audio_files_from_path()\cf2  hace I/O de filesystem en el hilo principal.\
+\
+ 
+\f0\b Impacto:
+\f1\b0  Dropear carpeta con 1000+ archivos congela UI 500ms-2s.\
+\
+ 
+\f0\b Soluci\'f3n:
+\f1\b0  Mover escaneo de archivos a thread separado.\
+\
+ ---\
+ 
+\f0\b 8.
+\f1\b0  
+\f0\b Memory
+\f1\b0  
+\f0\b Leak
+\f1\b0  
+\f0\b en
+\f1\b0  
+\f0\b CTkImage
+\f1\b0 \
+\
+ 
+\f0\b Archivo:
+\f1\b0  \cf3 src/gui/spectrogram_panel.py\cf2  (l\'edneas 452-456)\
+\
+ 
+\f0\b Problema:
+\f1\b0  Im\'e1genes anteriores no se liberan expl\'edcitamente:\
+ self._photo_image = ctk.CTkImage(...)  \cf6 #\cf2  \cf6 Reemplaza\cf2  \cf6 sin\cf2  \cf6 limpiar\cf2 \
+\
+ 
+\f0\b Impacto:
+\f1\b0  Acumulaci\'f3n de 1-5 MB por render en sesiones largas.\
+\
+ 
+\f0\b Soluci\'f3n:
+\f1\b0  Llamar a \cf3 del\cf2  o m\'e9todo de limpieza antes de reemplazar.\
+\
+ ---\
+ 
+\f0\b 9.
+\f1\b0  
+\f0\b Race
+\f1\b0  
+\f0\b Condition
+\f1\b0  
+\f0\b en
+\f1\b0  
+\f0\b Progress
+\f1\b0  
+\f0\b Callback
+\f1\b0 \
+\
+ 
+\f0\b Archivo:
+\f1\b0  \cf3 src/core/analyzer.py\cf2  (l\'edneas 195-201)\
+\
+ 
+\f0\b Problema:
+\f1\b0  Valores le\'eddos dentro del lock se usan fuera:\
+ \cf7 with\cf2  self._state.lock:\
+     self._state.completed_files += \cf6 1\cf2 \
+ \cf6 #\cf2  \cf6 Fuera\cf2  \cf6 del\cf2  \cf6 lock:\cf2 \
+ progress_callback(self._state.completed_files, ...)  \cf6 #\cf2  \cf6 Race\cf2  \cf6 condition\cf2 \
+\
+ 
+\f0\b Soluci\'f3n:
+\f1\b0  Capturar valores dentro del lock antes de llamar callback.\
+\
+ ---\
+ 
+\f0\b 10.
+\f1\b0  
+\f0\b update_idletasks()
+\f1\b0  
+\f0\b Bloqueante
+\f1\b0 \
+\
+ 
+\f0\b Archivo:
+\f1\b0  \cf3 src/gui/spectrogram_panel.py\cf2  (l\'edneas 198, 230)\
+\
+ 
+\f0\b Problema:
+\f1\b0  Se llama 2 veces, procesando todos los eventos pendientes:\
+ self.update_idletasks()  \cf6 #\cf2  \cf6 Bloqueo\cf2  \cf6 de\cf2  \cf6 10-50ms\cf2 \
+\
+ 
+\f0\b Soluci\'f3n:
+\f1\b0  Usar \cf3 .after(0,\cf2  \cf3 ...)\cf2  en lugar de esperar.\
+\
+ ---\
+ 
+\f0\b PROBLEMAS
+\f1\b0  
+\f0\b MEDIOS
+\f1\b0  
+\f0\b (Optimizaciones)
+\f1\b0 \
+\
+ 
+\f0\b 11.
+\f1\b0  
+\f0\b Hover
+\f1\b0  
+\f0\b Events
+\f1\b0  
+\f0\b Sin
+\f1\b0  
+\f0\b Throttle
+\f1\b0 \
+\
+ 
+\f0\b Archivo:
+\f1\b0  \cf3 src/gui/results_table.py\cf2  (l\'edneas 172-180)\
+\
+ Cada movimiento m\'ednimo del mouse dispara \cf3 configure()\cf2 .\
+\
+ 
+\f0\b 12.
+\f1\b0  
+\f0\b clear()
+\f1\b0  
+\f0\b Destruye
+\f1\b0  
+\f0\b Widgets
+\f1\b0  
+\f0\b Secuencialmente
+\f1\b0 \
+\
+ 
+\f0\b Archivo:
+\f1\b0  \cf3 src/gui/results_table.py\cf2  (l\'edneas 335-343)\
+\
+ Destruir 1000 widgets tarda 100-500ms.\
+\
+ 
+\f0\b 13.
+\f1\b0  
+\f0\b Backend/Estilo
+\f1\b0  
+\f0\b Matplotlib
+\f1\b0  
+\f0\b Repetido
+\f1\b0 \
+\
+ 
+\f0\b Archivo:
+\f1\b0  \cf3 src/gui/spectrogram_panel.py\cf2  (l\'edneas 306-307)\
+\
+ matplotlib.use(\cf4 'Agg'\cf2 )  \cf6 #\cf2  \cf6 En\cf2  \cf6 CADA\cf2  \cf6 render\cf2 \
+ plt.style.use(\cf4 'dark_background'\cf2 )  \cf6 #\cf2  \cf6 En\cf2  \cf6 CADA\cf2  \cf6 render\cf2 \
+\
+ Deber\'eda configurarse una sola vez en inicializaci\'f3n.\
+\
+ 
+\f0\b 14.
+\f1\b0  
+\f0\b Sin
+\f1\b0  
+\f0\b L\'edmite
+\f1\b0  
+\f0\b de
+\f1\b0  
+\f0\b An\'e1lisis
+\f1\b0  
+\f0\b Simult\'e1neo
+\f1\b0 \
+\
+ 
+\f0\b Archivo:
+\f1\b0  \cf3 src/core/analyzer.py\cf2 \
+\
+ Usuario puede iniciar m\'faltiples an\'e1lisis, creando 8+ threads en quad-core.\
+\
+ ---\
+ 
+\f0\b Tabla
+\f1\b0  
+\f0\b Resumen
+\f1\b0  
+\f0\b de
+\f1\b0  
+\f0\b Severidad
+\f1\b0 \
+ \uc0\u9484 \u9472 \u9472 \u9472 \u9472 \u9472 \u9516 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9516 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9516 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9488 \
+ \uc0\u9474   #  \u9474           Problema          \u9474  Severidad  \u9474             Impacto            \u9474 \
+ \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+ \uc0\u9474  1   \u9474  Memoria en AnalysisResult  \u9474  \u55357 \u56628  CR\'cdTICO \u9474  600MB+ para 100 archivos      \u9474 \
+ \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+ \uc0\u9474  2   \u9474  Bindings redundantes       \u9474  \u55357 \u56628  CR\'cdTICO \u9474  M\'faltiples handlers por click  \u9474 \
+ \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+ \uc0\u9474  3   \u9474  Sin virtualizaci\'f3n tabla   \u9474  \u55357 \u56628  CR\'cdTICO \u9474  7000+ widgets, reflow lento   \u9474 \
+ \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+ \uc0\u9474  4   \u9474  savefig() lento            \u9474  \u55357 \u56628  CR\'cdTICO \u9474  0.5-2s congelaci\'f3n por render \u9474 \
+ \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+ \uc0\u9474  5   \u9474  Re-renders excesivos       \u9474  \u55357 \u56628  CR\'cdTICO \u9474  10+ renders al arrastrar      \u9474 \
+ \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+ \uc0\u9474  6   \u9474  Callbacks sin rate-limit   \u9474  \u55357 \u57312  ALTO    \u9474  Event loop saturado           \u9474 \
+ \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+ \uc0\u9474  7   \u9474  File drop en main thread   \u9474  \u55357 \u57312  ALTO    \u9474  0.5-2s bloqueo                \u9474 \
+ \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+ \uc0\u9474  8   \u9474  Memory leak CTkImage       \u9474  \u55357 \u57312  ALTO    \u9474  Acumulaci\'f3n progresiva        \u9474 \
+ \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+ \uc0\u9474  9   \u9474  Race condition callbacks   \u9474  \u55357 \u57312  ALTO    \u9474  Progreso inconsistente        \u9474 \
+ \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+ \uc0\u9474  10  \u9474  update_idletasks()         \u9474  \u55357 \u57312  ALTO    \u9474  Bloqueos 10-50ms              \u9474 \
+ \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+ \uc0\u9474  11  \u9474  Hover sin throttle         \u9474  \u55357 \u57313  MEDIO   \u9474  Redraws excesivos             \u9474 \
+ \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+ \uc0\u9474  12  \u9474  clear() secuencial         \u9474  \u55357 \u57313  MEDIO   \u9474  100-500ms pausa               \u9474 \
+ \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+ \uc0\u9474  13  \u9474  Matplotlib config repetido \u9474  \u55357 \u57313  MEDIO   \u9474  ~50ms overhead/render         \u9474 \
+ \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+ \uc0\u9474  14  \u9474  Sin l\'edmite an\'e1lisis        \u9474  \u55357 \u57313  MEDIO   \u9474  CPU thrashing                 \u9474 \
+ \uc0\u9492 \u9472 \u9472 \u9472 \u9472 \u9472 \u9524 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9524 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9524 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9496 \
+ ---\
+ 
+\f0\b Archivos
+\f1\b0  
+\f0\b Afectados
+\f1\b0 \
+ \uc0\u9484 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9516 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9488 \
+ \uc0\u9474            Archivo            \u9474       Problemas       \u9474 \
+ \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+ \uc0\u9474  \cf3 src/core/analyzer.py\cf2          \uc0\u9474  #1, #9, #14          \u9474 \
+ \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+ \uc0\u9474  \cf3 src/gui/results_table.py\cf2      \uc0\u9474  #2, #3, #11, #12     \u9474 \
+ \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+ \uc0\u9474  \cf3 src/gui/spectrogram_panel.py\cf2  \uc0\u9474  #4, #5, #8, #10, #13 \u9474 \
+ \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+ \uc0\u9474  \cf3 src/gui/main_window.py\cf2        \uc0\u9474  #6, #7               \u9474 \
+ \uc0\u9492 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9524 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9496 \
+ ---\
+ 
+\f0\b Plan
+\f1\b0  
+\f0\b de
+\f1\b0  
+\f0\b Implementaci\'f3n
+\f1\b0  
+\f0\b (5
+\f1\b0  
+\f0\b Problemas
+\f1\b0  
+\f0\b Cr\'edticos)
+\f1\b0 \
+\
+ 
+\f0\b 1.
+\f1\b0  
+\f0\b Memoria
+\f1\b0  
+\f0\b Retenida
+\f1\b0  
+\f0\b en
+\f1\b0  
+\f0\b AnalysisResult
+\f1\b0 \
+\
+ 
+\f0\b Archivo:
+\f1\b0  \cf3 src/core/analyzer.py\cf2 \
+\
+ 
+\f0\b Cambios:
+\f1\b0 \
+ - Hacer \cf3 audio_data\cf2  y \cf3 frequency_analysis\cf2  opcionales (None por defecto)\
+ - No guardar estos datos en \cf3 _state.results\cf2 \
+ - Pasar \cf3 frequency_analysis\cf2  directamente al callback sin retenerlo\
+ - El SpectrogramPanel recibir\'e1 los datos cuando se necesite visualizar\
+\
+ 
+\f0\b 2.
+\f1\b0  
+\f0\b Bindings
+\f1\b0  
+\f0\b Redundantes
+\f1\b0  
+\f0\b en
+\f1\b0  
+\f0\b ResultsTable
+\f1\b0 \
+\
+ 
+\f0\b Archivo:
+\f1\b0  \cf3 src/gui/results_table.py\cf2 \
+\
+ 
+\f0\b Cambios:
+\f1\b0 \
+ - Eliminar todos los bindings individuales en celdas\
+ - Usar un solo \cf3 bind("<Button-1>")\cf2  en el ResultRow\
+ - Agregar \cf3 bind_all\cf2  o propagaci\'f3n de eventos desde hijos\
+ - Eliminar bindings en \cf3 _badge.label\cf2 , \cf3 cell\cf2 , \cf3 cell_frame\cf2 \
+\
+ 
+\f0\b 3.
+\f1\b0  
+\f0\b Virtualizaci\'f3n
+\f1\b0  
+\f0\b de
+\f1\b0  
+\f0\b Tabla
+\f1\b0  
+\f0\b (Simplificada)
+\f1\b0 \
+\
+ 
+\f0\b Archivo:
+\f1\b0  \cf3 src/gui/results_table.py\cf2 \
+\
+ 
+\f0\b Cambios:
+\f1\b0 \
+ - Implementar lazy rendering: crear widgets solo cuando se hace scroll\
+ - Pool de ResultRow reutilizables (m\'e1ximo ~50 visibles)\
+ - Reciclar filas en lugar de crear/destruir\
+ - Usar \cf3 canvas.yview\cf2  para detectar rango visible\
+\
+ 
+\f0\b 4.
+\f1\b0  
+\f0\b Optimizar
+\f1\b0  
+\f0\b savefig()
+\f1\b0  
+\f0\b de
+\f1\b0  
+\f0\b Matplotlib
+\f1\b0 \
+\
+ 
+\f0\b Archivo:
+\f1\b0  \cf3 src/gui/spectrogram_panel.py\cf2 \
+\
+ 
+\f0\b Cambios:
+\f1\b0 \
+ - Reemplazar \cf3 fig.savefig(buf,\cf2  \cf3 format='png')\cf2  con renderer directo\
+ - Usar \cf3 FigureCanvasAgg\cf2  y \cf3 canvas.draw()\cf2  + \cf3 canvas.buffer_rgba()\cf2 \
+ - Crear PIL Image directamente desde buffer sin compresi\'f3n PNG\
+ - Mover \cf3 matplotlib.use('Agg')\cf2  y \cf3 plt.style.use()\cf2  a inicializaci\'f3n global\
+\
+ 
+\f0\b 5.
+\f1\b0  
+\f0\b Reducir
+\f1\b0  
+\f0\b Re-renders
+\f1\b0  
+\f0\b del
+\f1\b0  
+\f0\b Espectrograma
+\f1\b0 \
+\
+ 
+\f0\b Archivo:
+\f1\b0  \cf3 src/gui/spectrogram_panel.py\cf2 \
+\
+ 
+\f0\b Cambios:
+\f1\b0 \
+ - Aumentar umbral de resize de 20px a 50px\
+ - Aumentar debounce de 200ms a 400ms\
+ - No re-renderizar durante drag del divisor (ya implementado parcialmente)\
+ - Cachear el \'faltimo render si las dimensiones son similares\
+\
+ ---\
+ 
+\f0\b Archivos
+\f1\b0  
+\f0\b a
+\f1\b0  
+\f0\b Modificar
+\f1\b0 \
+ \uc0\u9484 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9516 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9516 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9488 \
+ \uc0\u9474            Archivo            \u9474             Problema            \u9474    L\'edneas Clave   \u9474 \
+ \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+ \uc0\u9474  \cf3 src/core/analyzer.py\cf2          \uc0\u9474  #1 Memoria                     \u9474  36-37, 102-118   \u9474 \
+ \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+ \uc0\u9474  \cf3 src/gui/results_table.py\cf2      \uc0\u9474  #2 Bindings, #3 Virtualizaci\'f3n \u9474  107-134, 311-328 \u9474 \
+ \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+ \uc0\u9474  \cf3 src/gui/spectrogram_panel.py\cf2  \uc0\u9474  #4 savefig, #5 Re-renders      \u9474  275-281, 306-344 \u9474 \
+ \uc0\u9500 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9532 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9508 \
+ \uc0\u9474  \cf3 src/main.py\cf2  o \cf3 src/app.py\cf2      \uc0\u9474  #4 matplotlib.use()            \u9474  Inicializaci\'f3n   \u9474 \
+ \uc0\u9492 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9524 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9524 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9472 \u9496 \
+ ---\
+ 
+\f0\b Verificaci\'f3n
+\f1\b0 \
+\
+ Para verificar mejoras:\
+ 1. 
+\f0\b Memoria:
+\f1\b0  Cargar 50+ archivos, verificar en Activity Monitor que memoria no crece excesivamente\
+ 2. 
+\f0\b Bindings:
+\f1\b0  Click r\'e1pido en filas, debe responder instant\'e1neamente sin lag\
+ 3. 
+\f0\b Virtualizaci\'f3n:
+\f1\b0  Cargar 100+ archivos, scroll debe ser fluido\
+ 4. 
+\f0\b savefig:
+\f1\b0  Seleccionar archivo, espectrograma debe aparecer en <500ms\
+ 5. 
+\f0\b Re-renders:
+\f1\b0  Arrastrar divisor, no debe haber parpadeos ni congelaciones}
