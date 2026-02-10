@@ -53,7 +53,7 @@ Searches 500Hz bands from 10kHz to 21kHz for the first "musical content → nois
 Divides audio into 50 temporal segments, finds cutoff per segment, uses 85th percentile as the predominant cutoff (ignores top 15% peaks/outliers).
 
 **Decision logic:**
-- Transition confidence >= 0.7 → use it, UNLESS noise-plateau pattern detected (segments much lower with outliers and gap > 2kHz → trust segments instead, as transition may be seeing noise-to-silence rather than music-to-noise)
+- Transition confidence >= 0.7 → use it, UNLESS noise-plateau pattern detected (segments much lower with outliers and gap > 2kHz → trust segments instead, as transition may be seeing noise-to-silence rather than music-to-noise). The noise-plateau guard verifies the gap bands actually lack musical content before overriding transition — if bands between the segment and transition cutoffs have musical variance (frequency-dependent threshold), the transition is trusted (prevents false positives on older recordings with genuine high-frequency content like LaTour).
 - Both methods agree within 2kHz → average, boost confidence
 - Transition is lower with confidence >= 0.5 → prefer it (conservative). If gap >= 1kHz, apply transcode-signature confidence boost (up to +0.15)
 - Otherwise → segment method
@@ -64,19 +64,21 @@ Divides audio into 50 temporal segments, finds cutoff per segment, uses 85th per
 
 Built with customtkinter and tkinterdnd2 for drag-and-drop:
 - **file_drop_zone.py** - Reusable drag-and-drop zone with file/folder selection dialog. Parses platform-specific drop formats (Windows braces vs Unix spaces). Uses `file_utils.get_audio_files_from_path` for recursive directory scanning.
-- **main_window.py** - Main layout with empty state overlay, results table, player controls, progress bar, status bar. Drop targets on both content frame and results table scroll_frame.
+- **main_window.py** - Main layout with empty state overlay, results table, player controls, progress bar, status bar, and toolbar (add files, clear, spectrogram, metadata editor, settings). Drop targets on both content frame and results table scroll_frame.
 - **spectrogram_window.py** - Separate `CTkToplevel` window; background thread renders matplotlib figure to PIL Image via Agg backend, then progressive left-to-right reveal animation (12 steps, 25ms each). Displays reliability label ("Fiabilidad: Alta/Media/Baja") with color instead of raw confidence percentage.
-- **results_table.py** - Analysis results with status colors (ttk.Treeview)
+- **results_table.py** - Analysis results with status colors (ttk.Treeview). Supports draggable column resize grips with 30ms throttling and minimum column widths. `update_filepath()` re-keys results when files are renamed.
+- **metadata_editor.py** - iTunes-style metadata editor (`CTkToplevel`). Edits ID3 tags (MP3/WAV/AIFF) and Vorbis comments (FLAC). Fields: title, artist, album, genre (combobox with 300+ genre autocomplete), year, track/disc numbers, compilation, BPM, comments. Optional file renaming on save ("Artist - Title.ext") controlled by `AppSettings.rename_on_save`.
+- **settings_window.py** - Modal configuration panel. Currently one setting: `rename_on_save` (rename file on disk when saving metadata).
 - **audio_player.py** - Playback engine using sounddevice callback-based OutputStream. Dual-loader: uses `soundfile` for WAV/FLAC/OGG/AIFF (low GIL contention, faster), falls back to `librosa` for MP3/M4A/AAC/WMA.
 - **player_controls.py** - Transport controls (play/pause, seek, volume, prev/next)
 - **waveform_display.py** - DJ-style amplitude bar visualization with played/unplayed coloring and gold playhead. Background thread computes peaks, main thread updates display. Playhead updates skip if movement < 2px to reduce redraws.
 
-Icon assets live in `src/assets/` (drop-icon.png, spectrum.jpg, clean.jpg, wave-icon.png).
+Icon assets live in `src/assets/` (drop-icon.png, spectrum.jpg, clean.jpg, wave-icon.png, metadata-icon.png, settings-icon.png).
 
 ### Application Entry & Wiring
 
 - `src/main.py` - Entry point, adds `src` parent to path for package imports
-- `src/app.py` - `AudioQualApp` creates root window (TkinterDnD.Tk if available, else CTk), wires analyzer + audio player + main window + spectrogram window. Manages LRU spectrogram cache (max 10 entries, OrderedDict). Configures matplotlib `Agg` backend and `dark_background` style once at module load.
+- `src/app.py` - `AudioQualApp` creates root window (TkinterDnD.Tk if available, else CTk), wires analyzer + audio player + main window + spectrogram window. Manages LRU spectrogram cache (max 10 entries, OrderedDict). Configures matplotlib `Agg` backend and `dark_background` style once at module load. Sets up global keyboard shortcuts via `_setup_keyboard_bindings()` (platform-aware: Cmd on macOS, Ctrl on Windows/Linux).
 
 ### Threading Patterns
 
@@ -93,11 +95,24 @@ All background-to-UI communication uses `schedule_callback_from_thread()` from `
 
 `app.py` runs a 50ms heartbeat (`_heartbeat` → `update_idletasks`) to keep macOS tkinter responsive. Combined with the `event_generate` wake-up in `tk_utils.py`, this prevents UI freezes when callbacks are scheduled from threads.
 
+### Keyboard Shortcuts (`app.py → _setup_keyboard_bindings`)
+
+Platform-aware (Cmd on macOS, Ctrl on Windows/Linux):
+- **Space** - Play/pause toggle
+- **Return** - Load and play selected file
+- **Up/Down** - Navigate file list
+- **Left/Right** - Seek ±5 seconds
+- **Delete/Backspace** - Remove selected file
+- **Cmd/Ctrl-O** - Open file dialog
+- **Cmd/Ctrl-E / Cmd/Ctrl-I** - Open metadata editor
+- **Escape** - Stop playback
+
 ### Utilities (`src/utils/`)
 
 - **constants.py** - All configurable parameters (see below)
 - **tk_utils.py** - `schedule_callback_from_thread()` for thread-safe UI updates
 - **file_utils.py** - Audio file discovery (`get_audio_files_from_path` with recursive dir walk), format validation against `SUPPORTED_FORMATS`, duration formatting
+- **settings.py** - Singleton `AppSettings` with JSON persistence at `~/.audioqual/settings.json`. Auto-saves on property changes.
 
 ## Key Constants (`src/utils/constants.py`)
 

@@ -1439,10 +1439,52 @@ def analyze_frequency_cutoff(
         # (much lower cutoff) and found a bimodal distribution (outliers),
         # the transition may be detecting noise-to-silence instead of
         # music-to-noise. Trust segments in that case.
+        #
+        # However, verify the bands between segment and transition cutoffs
+        # are actually non-musical (noise plateau). If they have musical
+        # variance, the transition correctly detected where content ends
+        # and overriding with segments would be wrong (e.g., older recordings
+        # with natural high-frequency rolloff that still have real content).
         if (has_outliers and cutoff_transition > cutoff_segment + 2000
                 and conf_segment >= 0.6):
-            cutoff_hz = cutoff_segment
-            confidence = conf_segment
+            # Verify: check if bands between segment and transition cutoffs
+            # lack musical content (confirming noise-plateau pattern)
+            gap_has_musical_content = False
+            check_start = cutoff_segment
+            check_end = cutoff_transition
+            check_freq = check_start
+            while check_freq + TRANSITION_BAND_WIDTH_HZ <= check_end:
+                band_var = compute_band_temporal_variance(
+                    spectrogram_db, frequencies,
+                    check_freq, check_freq + TRANSITION_BAND_WIDTH_HZ,
+                    active_frames_mask, ref_std
+                )
+                # Use frequency-dependent threshold (same as transition method)
+                freq_range = TRANSITION_VARIANCE_FREQ_HIGH_HZ - TRANSITION_VARIANCE_FREQ_LOW_HZ
+                if check_freq <= TRANSITION_VARIANCE_FREQ_LOW_HZ:
+                    min_var = TRANSITION_MIN_PRE_VARIANCE
+                elif check_freq >= TRANSITION_VARIANCE_FREQ_HIGH_HZ:
+                    min_var = TRANSITION_MIN_PRE_VARIANCE_HIGH_FREQ
+                else:
+                    t = (check_freq - TRANSITION_VARIANCE_FREQ_LOW_HZ) / freq_range
+                    min_var = TRANSITION_MIN_PRE_VARIANCE + t * (
+                        TRANSITION_MIN_PRE_VARIANCE_HIGH_FREQ - TRANSITION_MIN_PRE_VARIANCE
+                    )
+                if band_var >= min_var:
+                    gap_has_musical_content = True
+                    break
+                check_freq += TRANSITION_BAND_WIDTH_HZ
+
+            if gap_has_musical_content:
+                # Bands between segment and transition have real musical content,
+                # so the transition correctly detected where content ends.
+                # Trust transition, not segments.
+                cutoff_hz = cutoff_transition
+                confidence = conf_transition
+            else:
+                # Confirmed noise-plateau: bands between cutoffs lack musical content
+                cutoff_hz = cutoff_segment
+                confidence = conf_segment
         else:
             cutoff_hz = cutoff_transition
             confidence = conf_transition
