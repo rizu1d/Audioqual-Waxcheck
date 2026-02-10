@@ -19,13 +19,98 @@ from ..utils.constants import THEME_COLORS, FONT_FAMILY, FONT_SIZES
 from ..utils.settings import AppSettings
 
 # Common music genres for the combobox dropdown
+# Electronic subgenres sourced from https://en.wikipedia.org/wiki/List_of_electronic_music_genres
 GENRES = [
-    "", "Alternative", "Blues", "Classical", "Country", "Dance",
-    "Disco", "Drum & Bass", "Dubstep", "Electronic", "Folk",
-    "Funk", "Gospel", "Hip-Hop", "House", "Indie", "Jazz",
-    "Latin", "Lo-Fi", "Metal", "New Age", "Opera", "Pop",
-    "Punk", "R&B", "Rap", "Reggae", "Reggaeton", "Rock",
-    "Soul", "Soundtrack", "Techno", "Trance", "Trip-Hop", "World",
+    "",
+    "2-step garage", "Acid breaks", "Acid house", "Acid techno", "Acid trance",
+    "Afro house", "Afro tech", "Afro trap", "Afrobeats", "Afroswing",
+    "Aggrotech", "Algorave", "Alternative", "Alternative dance", "Alternative hip-hop",
+    "Alternative R&B", "Amapiano", "Ambient", "Ambient dub", "Ambient house",
+    "Ambient industrial", "Ambient techno", "Asian Underground",
+    "Atmospheric drum and bass", "Azonto",
+    "Baggy", "Balearic beat", "Balearic trance", "Ballroom", "Baltimore club",
+    "Bass house", "Bassline", "Berlin School", "Big beat", "Big room house",
+    "Birmingham sound", "Bitpop", "Black MIDI", "Bleep techno", "Blog house",
+    "Blues", "Boogie", "Bouncy techno", "Brazilian bass", "Brazilian phonk",
+    "Breakbeat", "Breakbeat hardcore", "Breakcore", "Breakstep", "Broken beat",
+    "Brooklyn drill", "Brostep", "Budots",
+    "Changa tuki", "Chicago hard house", "Chicago house", "Chill-out", "Chillwave",
+    "Chiptune", "Chopped and screwed", "City pop", "Classical", "Cloud rap",
+    "Cold wave", "Complextro", "Contemporary R&B", "Country", "Coupé-décalé",
+    "Crunk", "Crunkcore", "Cyber metal",
+    "Dance", "Dance-pop", "Dance-punk", "Dance-rock", "Dancehall pop",
+    "Dark ambient", "Dark electro", "Dark psytrance", "Dark wave",
+    "Darkcore", "Darkstep", "Darksynth", "Death industrial", "Deconstructed club",
+    "Deep house", "Detroit techno", "Digital hardcore", "Disco", "Disco edits",
+    "Disco house", "Disco polo", "Diva house", "Downtempo", "Dream trance",
+    "Dreampunk", "Drift phonk", "Drill", "Drill 'n' bass", "Drone",
+    "Drum & Bass", "Drumfunk", "Drumstep", "Dub", "Dub poetry", "Dub techno",
+    "Dubstep", "Dubstyle", "Dungeon synth", "Dutch house",
+    "Early hardcore", "Electro", "Electro hop", "Electro house", "Electro swing",
+    "Electro-disco", "Electro-industrial", "Electroacoustic improvisation",
+    "Electroclash", "Electrogrind", "Electronic", "Electropop", "Emo rap",
+    "Ethereal wave", "Euphoric frenchcore", "Euphoric hardstyle", "Eurobeat",
+    "Eurodance", "Eurodisco", "Eurohouse", "Eurotrance", "Extratone",
+    "Fidget house", "Flashcore", "Florida breaks", "FM synthesis", "Folk",
+    "Folktronica", "Footwork", "Free tekno", "Freestyle", "French house",
+    "Frenchcore", "Full-on", "Funk", "Funk carioca", "Funk melody",
+    "Funk ostentação", "Funkstep", "Funktronica", "Funky house",
+    "Future bass", "Future funk", "Future garage", "Future house", "Future rave",
+    "Futurepop",
+    "Gabber", "Garage house", "Ghetto house", "Ghettotech", "Glitch",
+    "Glitch hop", "Goa trance", "Gospel", "Gqom", "Grime", "Grindie",
+    "Guaracha",
+    "Hands up", "Happy hardcore", "Hard dance", "Hard NRG", "Hard techno",
+    "Hard trance", "Hardbag", "Hardbass", "Hardcore", "Hardcore breaks",
+    "Hardstep", "Hardstyle", "Hardvapour", "Hardwave", "Harsh noise",
+    "Harsh noise wall", "Hauntology", "Hi-NRG", "Hip house", "Hip-Hop",
+    "Hipster hop", "House", "Hyperpop", "Hypnagogic pop",
+    "Illbient", "Indie", "Indietronica", "Industrial", "Industrial hardcore",
+    "Industrial hip-hop", "Industrial metal", "Industrial rock", "Industrial techno",
+    "Instrumental hip-hop", "Intelligent drum and bass", "Isolationism",
+    "Italo dance", "Italo disco", "Italo house",
+    "J-core", "Jackin house", "Japanoise", "Jazz", "Jazz house", "Jazzstep",
+    "Jerk", "Jersey club", "Juke house", "Jump-up", "Jumpstyle", "Jungle",
+    "Jungle terror", "Jungletek",
+    "Kawaii future bass", "Kidandali", "Kosmische musik", "Krautrock", "Kuduro",
+    "Kwaito",
+    "Laptronica", "Latin", "Latin house", "Latin trap", "Lento violento",
+    "Liquid funk", "Lo-Fi", "Lo-fi house", "Lofi hip-hop", "Lowercase",
+    "Mahraganat", "Mainstream hardcore", "Mallsoft", "Manila sound",
+    "Martial industrial", "Melbourne bounce", "Melodic house", "Merenhouse",
+    "Metal", "Miami bass", "Microhouse", "Microsound", "Midtempo bass",
+    "Minimal psytrance", "Minimal techno", "Minimal wave", "Moombahcore",
+    "Moombahsoul", "Moombahton", "Mumble rap", "Musique concrète", "Mákina",
+    "Neo soul", "Neoclassical dark wave", "Neoclassical new-age",
+    "Neue Deutsche Härte", "Neue Deutsche Todeskunst", "Neue Deutsche Welle",
+    "Neurofunk", "New Age", "New beat", "New jack swing", "New Jersey sound",
+    "New rave", "New romantic", "New wave", "Nightcore", "Nintendocore",
+    "Nitzhonot", "Nortec", "Nu jazz", "Nu skool breaks", "Nu-disco", "Nu-gaze",
+    "Nueva Iberica",
+    "Onkyokei", "Opera", "Outsider house",
+    "Philly club", "Phonk", "Plugg", "Plunderphonics", "Pop", "Pop kreatif",
+    "Post-disco", "Post-dubstep", "Post-Industrial", "Post-rock", "Power noise",
+    "Progressive breaks", "Progressive house", "Progressive psytrance",
+    "Progressive trance", "Proibidão", "Psybient", "Psychedelic trance", "Psydub",
+    "Pumping house", "Punk",
+    "R&B", "Rabòday", "Ragga jungle", "Raggacore", "Raggatek", "Rap",
+    "Rara tech", "Rasteirinha", "Rawstyle", "Reductionism", "Reggae",
+    "Reggaestep", "Reggaeton", "Riddim", "Rock",
+    "Sambass", "Sampledelia", "Schaffel", "Scouse house", "Shamstep",
+    "Shangaan electro", "Skweee", "Slap house", "Sophisti-pop", "Soul",
+    "Soulful house", "Soundscape", "Soundtrack", "Sovietwave", "Space disco",
+    "Space rock", "Spacesynth", "Speed garage", "Speedcore", "Splittercore",
+    "Stadium house", "Suomisaundi", "Synth-funk", "Synth-metal", "Synth-pop",
+    "Synth-punk", "Synthwave",
+    "Tech house", "Tech trance", "Techno", "Techstep", "Tecno brega",
+    "Tecnocumbia", "Toytown techno", "Trance", "Trap", "Trap (EDM)", "Trapstyle",
+    "Tribal guarachero", "Tribal house", "Trip rock", "Trip-Hop",
+    "Tropical house", "Trouse",
+    "UK bass", "UK drill", "UK funky", "UK garage", "UK hard house",
+    "UK hardcore", "UK trap", "Uplifting trance",
+    "Vaporwave", "Vocal trance",
+    "Wave", "Weird SoundCloud", "Witch house", "Wonky", "Wonky pop", "World",
+    "Worldbeat",
 ]
 
 # ID3 tag mapping for MP3/AIFF/WAV
@@ -244,6 +329,7 @@ class MetadataEditor(ctk.CTkToplevel):
         )
         self._genre_combo.grid(row=0, column=1, sticky="ew")
         self._genre_combo.set("")
+        self._setup_genre_autocomplete()
 
         # 5. Año
         row = make_row("año", 4)
@@ -327,6 +413,41 @@ class MetadataEditor(ctk.CTkToplevel):
             height=72,
         )
         self._comments_textbox.grid(row=0, column=1, sticky="ew")
+
+    def _setup_genre_autocomplete(self):
+        """Bind inline autocomplete to the genre combobox entry."""
+        entry = self._genre_combo._entry
+        self._genre_ac_skip = False
+
+        def on_key(event):
+            # Ignore navigation / modifier keys
+            if event.keysym in (
+                "BackSpace", "Delete", "Left", "Right", "Home", "End",
+                "Shift_L", "Shift_R", "Control_L", "Control_R",
+                "Meta_L", "Meta_R", "Alt_L", "Alt_R", "Tab", "Return",
+                "Escape", "Up", "Down",
+            ):
+                return
+
+            typed = entry.get()
+            if not typed:
+                return
+
+            cursor = entry.index("insert")
+            prefix = typed[:cursor].lower()
+            if not prefix:
+                return
+
+            for genre in GENRES:
+                if genre and genre.lower().startswith(prefix):
+                    # Complete the text and select the suggested suffix
+                    entry.delete(0, "end")
+                    entry.insert(0, genre)
+                    entry.select_range(cursor, len(genre))
+                    entry.icursor(cursor)
+                    return
+
+        entry.bind("<KeyRelease>", on_key)
 
     def _setup_buttons(self):
         """Create Cancel and Save buttons."""
