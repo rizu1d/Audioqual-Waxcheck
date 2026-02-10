@@ -113,7 +113,7 @@ class SpectrogramWindow(ctk.CTkToplevel):
             corner_radius=8,
         )
         self.info_frame.grid(row=1, column=0, sticky="ew", padx=12, pady=(0, 12))
-        self.info_frame.grid_columnconfigure((0, 1, 2), weight=1)
+        self.info_frame.grid_columnconfigure((0, 1), weight=1)
 
         # Cutoff frequency info
         self.cutoff_label = ctk.CTkLabel(
@@ -124,15 +124,6 @@ class SpectrogramWindow(ctk.CTkToplevel):
         )
         self.cutoff_label.grid(row=0, column=0, padx=16, pady=12)
 
-        # Max frequency info
-        self.max_freq_label = ctk.CTkLabel(
-            self.info_frame,
-            text=f"Frec. max: {self._current_analysis.max_frequency_hz / 1000:.1f} kHz",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["body"]),
-            text_color=THEME_COLORS["text_primary"],
-        )
-        self.max_freq_label.grid(row=0, column=1, padx=16, pady=12)
-
         # Reliability info
         rel_text, rel_color = self._get_reliability_label(self._current_analysis.confidence)
         self.confidence_label = ctk.CTkLabel(
@@ -141,7 +132,7 @@ class SpectrogramWindow(ctk.CTkToplevel):
             font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["body"]),
             text_color=rel_color,
         )
-        self.confidence_label.grid(row=0, column=2, padx=16, pady=12)
+        self.confidence_label.grid(row=0, column=1, padx=16, pady=12)
 
         # Bind resize event
         self.figure_frame.bind("<Configure>", self._on_resize)
@@ -179,9 +170,6 @@ class SpectrogramWindow(ctk.CTkToplevel):
 
         # Update info labels
         self.cutoff_label.configure(text=f"Frec. de corte: {cutoff_khz:.1f} kHz")
-        self.max_freq_label.configure(
-            text=f"Frec. max: {analysis.max_frequency_hz / 1000:.1f} kHz"
-        )
         rel_text, rel_color = self._get_reliability_label(analysis.confidence)
         self.confidence_label.configure(text=rel_text, text_color=rel_color)
 
@@ -337,16 +325,6 @@ class SpectrogramWindow(ctk.CTkToplevel):
             extent=[0, n_frames, frequencies[0] / 1000, frequencies[-1] / 1000],
             vmin=-80,
             vmax=0,
-        )
-
-        # Add cutoff line
-        cutoff_khz = analysis.cutoff_frequency_khz
-        ax.axhline(
-            y=cutoff_khz,
-            color=THEME_COLORS["accent"],
-            linestyle='--',
-            linewidth=1.5,
-            alpha=0.8,
         )
 
         # Labels
