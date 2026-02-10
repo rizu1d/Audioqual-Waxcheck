@@ -1,17 +1,20 @@
 """Metadata editor window (iTunes-style)."""
 
+import io
 import os
 from pathlib import Path
+from tkinter import filedialog
 from typing import Callable, Dict, List, Optional
 
 import customtkinter as ctk
+from PIL import Image
 
 from mutagen import File as MutagenFile
 from mutagen.id3 import (
-    ID3, TIT2, TPE1, TALB, TCON, TDRC, TRCK, TPOS, TBPM, COMM, ID3NoHeaderError,
+    ID3, TIT2, TPE1, TALB, TCON, TDRC, TRCK, TPOS, TBPM, COMM, APIC, ID3NoHeaderError,
 )
 from mutagen.mp3 import MP3
-from mutagen.flac import FLAC
+from mutagen.flac import FLAC, Picture
 from mutagen.wave import WAVE
 from mutagen.aiff import AIFF
 
@@ -162,6 +165,24 @@ class MetadataEditor(ctk.CTkToplevel):
         self._comments_textbox: Optional[ctk.CTkTextbox] = None
         self._supported = True
 
+        # Tab system
+        self._current_tab: str = "detalles"
+        self._detalles_tab_btn: Optional[ctk.CTkButton] = None
+        self._ilustracion_tab_btn: Optional[ctk.CTkButton] = None
+        self._content_frame: Optional[ctk.CTkFrame] = None
+        self._detalles_content: Optional[ctk.CTkFrame] = None
+        self._ilustracion_content: Optional[ctk.CTkFrame] = None
+
+        # Artwork state
+        self._artwork_data: Optional[bytes] = None
+        self._artwork_mime: Optional[str] = None
+        self._artwork_modified: bool = False
+        self._artwork_display_label: Optional[ctk.CTkLabel] = None
+        self._artwork_ctk_image: Optional[ctk.CTkImage] = None
+        self._empty_state_label: Optional[ctk.CTkLabel] = None
+        self._add_artwork_btn: Optional[ctk.CTkButton] = None
+        self._remove_artwork_btn: Optional[ctk.CTkButton] = None
+
         self._detect_format()
         self._setup_window()
         self._setup_ui()
@@ -190,9 +211,10 @@ class MetadataEditor(ctk.CTkToplevel):
 
     def _setup_window(self):
         """Configure window size, position, and appearance."""
-        w, h = 500, 580
+        w, h = 500, 640
         self.geometry(f"{w}x{h}")
-        self.resizable(False, False)
+        self.minsize(500, 500)
+        self.resizable(False, True)
         self.title("Editar metadatos")
         self.configure(fg_color=THEME_COLORS["bg_primary"])
 
@@ -210,22 +232,34 @@ class MetadataEditor(ctk.CTkToplevel):
 
         # Separator
         sep = ctk.CTkFrame(self, height=1, fg_color=THEME_COLORS["primary_dark"])
-        sep.pack(fill="x", padx=20, pady=(0, 12))
-
-        # Form fields
-        form = ctk.CTkFrame(self, fg_color="transparent")
-        form.pack(fill="both", expand=True, padx=28, pady=(0, 8))
+        sep.pack(fill="x", padx=20, pady=(0, 8))
 
         if not self._supported:
-            unsupported_label = ctk.CTkLabel(
+            form = ctk.CTkFrame(self, fg_color="transparent")
+            form.pack(fill="both", expand=True, padx=28, pady=(0, 8))
+            ctk.CTkLabel(
                 form,
                 text="Este formato no soporta edición de metadatos.",
                 font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["body"]),
                 text_color=THEME_COLORS["text_secondary"],
-            )
-            unsupported_label.pack(pady=40)
+            ).pack(pady=40)
         else:
-            self._setup_fields(form)
+            # Tab bar
+            self._setup_tab_bar()
+
+            # Content frame (holds both tabs)
+            self._content_frame = ctk.CTkFrame(self, fg_color="transparent")
+            self._content_frame.pack(fill="both", expand=True, padx=28, pady=(0, 8))
+
+            # Detalles tab content
+            self._detalles_content = ctk.CTkFrame(self._content_frame, fg_color="transparent")
+            self._detalles_content.pack(fill="both", expand=True)
+            self._setup_fields(self._detalles_content)
+
+            # Ilustración tab content
+            self._ilustracion_content = ctk.CTkFrame(self._content_frame, fg_color="transparent")
+            self._setup_ilustracion_tab()
+            # Initially hidden (detalles is default)
 
         # Buttons
         self._setup_buttons()
@@ -449,6 +483,303 @@ class MetadataEditor(ctk.CTkToplevel):
 
         entry.bind("<KeyRelease>", on_key)
 
+    def _setup_tab_bar(self):
+        """Create the tab bar with Detalles and Ilustración buttons."""
+        tab_bar = ctk.CTkFrame(self, fg_color="transparent")
+        tab_bar.pack(fill="x", padx=28, pady=(0, 8))
+
+        btn_kwargs = dict(
+            height=30,
+            corner_radius=6,
+            border_width=0,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
+        )
+
+        self._detalles_tab_btn = ctk.CTkButton(
+            tab_bar,
+            text="Detalles",
+            command=lambda: self._switch_tab("detalles"),
+            fg_color=THEME_COLORS["primary"],
+            text_color=THEME_COLORS["text_primary"],
+            hover_color=THEME_COLORS["primary_dark"],
+            **btn_kwargs,
+        )
+        self._detalles_tab_btn.pack(side="left", padx=(0, 4))
+
+        self._ilustracion_tab_btn = ctk.CTkButton(
+            tab_bar,
+            text="Ilustración",
+            command=lambda: self._switch_tab("ilustracion"),
+            fg_color="transparent",
+            text_color=THEME_COLORS["text_secondary"],
+            hover_color=THEME_COLORS["bg_elevated"],
+            **btn_kwargs,
+        )
+        self._ilustracion_tab_btn.pack(side="left")
+
+    def _switch_tab(self, tab_name: str):
+        """Switch between Detalles and Ilustración tabs."""
+        if tab_name == self._current_tab:
+            return
+
+        self._current_tab = tab_name
+
+        if tab_name == "detalles":
+            self._ilustracion_content.pack_forget()
+            self._detalles_content.pack(fill="both", expand=True)
+            self._detalles_tab_btn.configure(
+                fg_color=THEME_COLORS["primary"],
+                text_color=THEME_COLORS["text_primary"],
+                font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"], weight="bold"),
+            )
+            self._ilustracion_tab_btn.configure(
+                fg_color="transparent",
+                text_color=THEME_COLORS["text_secondary"],
+                font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
+            )
+        else:
+            self._detalles_content.pack_forget()
+            self._ilustracion_content.pack(fill="both", expand=True)
+            self._ilustracion_tab_btn.configure(
+                fg_color=THEME_COLORS["primary"],
+                text_color=THEME_COLORS["text_primary"],
+                font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"], weight="bold"),
+            )
+            self._detalles_tab_btn.configure(
+                fg_color="transparent",
+                text_color=THEME_COLORS["text_secondary"],
+                font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
+            )
+            # Re-render artwork at correct size now that frame is visible
+            if self._artwork_data:
+                self.after(50, self._update_artwork_display)
+
+    def _setup_ilustracion_tab(self):
+        """Create the artwork display tab content."""
+        parent = self._ilustracion_content
+
+        # Subtitle
+        ctk.CTkLabel(
+            parent,
+            text="Ilustración del álbum",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
+            text_color=THEME_COLORS["text_secondary"],
+            anchor="w",
+        ).pack(fill="x", pady=(4, 8))
+
+        # Artwork display frame (expands to fill available space)
+        self._artwork_frame = ctk.CTkFrame(
+            parent,
+            fg_color="transparent",
+            corner_radius=0,
+        )
+        self._artwork_frame.pack(fill="both", expand=True)
+
+        # Re-render artwork when frame is resized
+        self._artwork_resize_after_id = None
+        self._artwork_frame.bind("<Configure>", self._on_artwork_frame_resize)
+
+        # Empty state label (centered in frame)
+        self._empty_state_label = ctk.CTkLabel(
+            self._artwork_frame,
+            text="No hay ilustración cargada",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["body"]),
+            text_color=THEME_COLORS["text_secondary"],
+        )
+        self._empty_state_label.place(relx=0.5, rely=0.5, anchor="center")
+
+        # Artwork image label (hidden initially)
+        self._artwork_display_label = ctk.CTkLabel(
+            self._artwork_frame,
+            text="",
+        )
+
+        # Button row
+        btn_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        btn_frame.pack(fill="x", pady=(12, 0))
+
+        self._add_artwork_btn = ctk.CTkButton(
+            btn_frame,
+            text="Añadir ilustración",
+            command=self._on_add_artwork,
+            width=140,
+            height=32,
+            corner_radius=8,
+            fg_color=THEME_COLORS["primary"],
+            hover_color=THEME_COLORS["primary_dark"],
+            text_color=THEME_COLORS["text_primary"],
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
+        )
+        self._add_artwork_btn.pack(side="left", padx=(0, 8))
+
+        self._remove_artwork_btn = ctk.CTkButton(
+            btn_frame,
+            text="Eliminar",
+            command=self._on_remove_artwork,
+            width=80,
+            height=32,
+            corner_radius=8,
+            fg_color="transparent",
+            border_width=1,
+            border_color=THEME_COLORS["primary_dark"],
+            hover_color=THEME_COLORS["bg_elevated"],
+            text_color=THEME_COLORS["text_primary"],
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
+        )
+        # Initially hidden (shown only when artwork exists)
+
+    def _on_artwork_frame_resize(self, event=None):
+        """Debounced handler: re-render artwork when frame is resized."""
+        if not self._artwork_data:
+            return
+        if self._artwork_resize_after_id is not None:
+            self.after_cancel(self._artwork_resize_after_id)
+        self._artwork_resize_after_id = self.after(100, self._update_artwork_display)
+
+    @staticmethod
+    def _round_corners(img: Image.Image, radius: int) -> Image.Image:
+        """Apply rounded corners to a PIL image using an alpha mask."""
+        img = img.convert("RGBA")
+        mask = Image.new("L", img.size, 0)
+        from PIL import ImageDraw
+        draw = ImageDraw.Draw(mask)
+        draw.rounded_rectangle([0, 0, img.width, img.height], radius=radius, fill=255)
+        img.putalpha(mask)
+        return img
+
+    def _update_artwork_display(self):
+        """Update the artwork display based on current artwork data."""
+        if self._artwork_data:
+            try:
+                img = Image.open(io.BytesIO(self._artwork_data))
+                # Determine available space; fallback to 420 if frame not mapped yet
+                fw = self._artwork_frame.winfo_width()
+                fh = self._artwork_frame.winfo_height()
+                if fw < 50 or fh < 50:
+                    fw, fh = 420, 420
+                img.thumbnail((fw, fh), Image.LANCZOS)
+                img = self._round_corners(img, 12)
+                self._artwork_ctk_image = ctk.CTkImage(
+                    light_image=img, dark_image=img,
+                    size=(img.width, img.height),
+                )
+                self._artwork_display_label.configure(image=self._artwork_ctk_image)
+                self._artwork_display_label.place(relx=0.5, rely=0.5, anchor="center")
+                self._empty_state_label.place_forget()
+                self._remove_artwork_btn.pack(side="left", padx=(0, 8))
+            except Exception:
+                # Corrupted image data — show empty state
+                self._artwork_data = None
+                self._update_artwork_display()
+        else:
+            self._artwork_ctk_image = None
+            self._artwork_display_label.configure(image=None)
+            self._artwork_display_label.place_forget()
+            self._empty_state_label.place(relx=0.5, rely=0.5, anchor="center")
+            self._remove_artwork_btn.pack_forget()
+
+    def _on_add_artwork(self):
+        """Open file dialog to select artwork image."""
+        filepath = filedialog.askopenfilename(
+            parent=self,
+            title="Seleccionar ilustración",
+            filetypes=[("Imágenes", "*.png *.jpg *.jpeg *.PNG *.JPG *.JPEG")],
+        )
+        if not filepath:
+            return
+
+        try:
+            with open(filepath, "rb") as f:
+                self._artwork_data = f.read()
+
+            ext = Path(filepath).suffix.lower()
+            if ext == ".png":
+                self._artwork_mime = "image/png"
+            else:
+                self._artwork_mime = "image/jpeg"
+
+            self._artwork_modified = True
+            self._update_artwork_display()
+        except Exception:
+            pass
+
+    def _on_remove_artwork(self):
+        """Remove the current artwork."""
+        self._artwork_data = None
+        self._artwork_mime = None
+        self._artwork_modified = True
+        self._update_artwork_display()
+
+    # ─── Artwork Read ────────────────────────────────────────────────
+
+    def _read_artwork(self):
+        """Read embedded artwork from the audio file."""
+        try:
+            if self._format_type == "id3":
+                self._read_artwork_id3()
+            elif self._format_type == "vorbis":
+                self._read_artwork_flac()
+        except Exception:
+            pass
+        self._update_artwork_display()
+
+    def _read_artwork_id3(self):
+        """Read artwork from ID3 tags (MP3/AIFF/WAV)."""
+        audio = MutagenFile(self._filepath)
+        if audio is None or audio.tags is None:
+            return
+        for key in audio.tags:
+            if key.startswith("APIC"):
+                frame = audio.tags[key]
+                if hasattr(frame, "data") and frame.data:
+                    self._artwork_data = frame.data
+                    self._artwork_mime = getattr(frame, "mime", "image/jpeg")
+                    return
+
+    def _read_artwork_flac(self):
+        """Read artwork from FLAC pictures."""
+        audio = FLAC(self._filepath)
+        if audio.pictures:
+            pic = audio.pictures[0]
+            self._artwork_data = pic.data
+            self._artwork_mime = pic.mime or "image/jpeg"
+
+    # ─── Artwork Save ────────────────────────────────────────────────
+
+    def _save_artwork_id3(self, audio):
+        """Save artwork to ID3 tags."""
+        tags = audio.tags
+        # Remove existing APIC frames
+        apic_keys = [k for k in tags if k.startswith("APIC")]
+        for k in apic_keys:
+            del tags[k]
+        # Add new artwork if present
+        if self._artwork_data:
+            tags["APIC:"] = APIC(
+                encoding=3,
+                mime=self._artwork_mime or "image/jpeg",
+                type=3,  # Cover (front)
+                desc="",
+                data=self._artwork_data,
+            )
+
+    def _save_artwork_flac(self, audio):
+        """Save artwork to FLAC pictures."""
+        audio.clear_pictures()
+        if self._artwork_data:
+            pic = Picture()
+            pic.type = 3  # Cover (front)
+            pic.mime = self._artwork_mime or "image/jpeg"
+            pic.data = self._artwork_data
+            # Set dimensions from actual image
+            try:
+                img = Image.open(io.BytesIO(self._artwork_data))
+                pic.width, pic.height = img.size
+                pic.depth = 24
+            except Exception:
+                pass
+            audio.add_picture(pic)
+
     def _setup_buttons(self):
         """Create Cancel and Save buttons."""
         btn_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -502,6 +833,8 @@ class MetadataEditor(ctk.CTkToplevel):
                 self._read_vorbis()
         except Exception:
             pass
+
+        self._read_artwork()
 
     def _read_id3(self):
         """Read ID3 tags (MP3, AIFF, WAV)."""
@@ -785,6 +1118,9 @@ class MetadataEditor(ctk.CTkToplevel):
         if comments:
             tags["COMM::eng"] = COMM(encoding=3, lang="eng", desc="", text=[comments])
 
+        if self._artwork_modified:
+            self._save_artwork_id3(audio)
+
         audio.save()
 
     def _save_vorbis(self):
@@ -811,6 +1147,9 @@ class MetadataEditor(ctk.CTkToplevel):
 
         comments = self._comments_textbox.get("1.0", "end-1c").strip() if self._comments_textbox else ""
         set_tag("comment", comments)
+
+        if self._artwork_modified:
+            self._save_artwork_flac(audio)
 
         audio.save()
 
