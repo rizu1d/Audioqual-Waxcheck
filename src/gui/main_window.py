@@ -49,6 +49,7 @@ class MainWindow(ctk.CTkFrame):
         on_show_spectrogram=None,
         on_clear=None,
         on_metadata_saved=None,
+        on_toggle_watcher=None,
         **kwargs
     ):
         super().__init__(master, fg_color=THEME_COLORS["bg_primary"], **kwargs)
@@ -59,10 +60,13 @@ class MainWindow(ctk.CTkFrame):
         self.on_show_spectrogram = on_show_spectrogram
         self.on_clear = on_clear
         self.on_metadata_saved = on_metadata_saved
+        self.on_toggle_watcher = on_toggle_watcher
         self._analysis_thread: Optional[threading.Thread] = None
         # Rate limiting for progress updates (100ms minimum between updates)
         self._last_progress_update = 0
         self._pending_progress_update = None  # Store pending update for final flush
+        self._pending_analysis_queue: List[str] = []
+        self._pulse_active = False
 
         self._setup_ui()
 
@@ -226,6 +230,30 @@ class MainWindow(ctk.CTkFrame):
         self.settings_btn._canvas.configure(takefocus=False)
         self.settings_btn.grid(row=0, column=4, padx=6)
 
+        # Load watcher icon
+        watcher_icon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "watcher-icon.png")
+        watcher_icon_image = Image.open(watcher_icon_path)
+        self._watcher_icon = ctk.CTkImage(
+            light_image=watcher_icon_image,
+            dark_image=watcher_icon_image,
+            size=(ICON_SIZE, ICON_SIZE)
+        )
+
+        # Watcher button
+        self.watcher_btn = ctk.CTkButton(
+            self.controls_frame,
+            text="",
+            image=self._watcher_icon,
+            command=self._on_toggle_watcher,
+            width=BUTTON_SIZE,
+            height=BUTTON_SIZE,
+            corner_radius=12,
+            fg_color=THEME_COLORS["bg_elevated"],
+            hover_color=THEME_COLORS["primary_dark"],
+        )
+        self.watcher_btn._canvas.configure(takefocus=False)
+        self.watcher_btn.grid(row=0, column=5, padx=6)
+
     def _setup_content_area(self):
         """Set up the main content area."""
         self.content_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -290,7 +318,18 @@ class MainWindow(ctk.CTkFrame):
         # Adjust row number since player controls is now row 2
         status_row = 3 if self._audio_player else 2
         self.status_bar.grid(row=status_row, column=0, sticky="ew", padx=16, pady=(0, 16))
-        self.status_bar.grid_columnconfigure(1, weight=1)
+        self.status_bar.grid_columnconfigure(2, weight=1)
+
+        # Watcher indicator (hidden by default)
+        self._watcher_indicator = ctk.CTkLabel(
+            self.status_bar,
+            text="\u25CF",
+            font=ctk.CTkFont(size=10),
+            text_color="#5DB88C",
+            width=16,
+        )
+        self._watcher_indicator.grid(row=0, column=0, padx=(16, 0), pady=8)
+        self._watcher_indicator.grid_remove()
 
         # Status label
         self.status_label = ctk.CTkLabel(
@@ -299,7 +338,7 @@ class MainWindow(ctk.CTkFrame):
             font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
             text_color=THEME_COLORS["text_primary"],
         )
-        self.status_label.grid(row=0, column=0, padx=16, pady=8)
+        self.status_label.grid(row=0, column=1, padx=(8, 16), pady=8)
 
         # Progress bar (hidden by default)
         self.progress_bar = ctk.CTkProgressBar(
@@ -309,7 +348,7 @@ class MainWindow(ctk.CTkFrame):
             corner_radius=3,
             progress_color=THEME_COLORS["accent"],
         )
-        self.progress_bar.grid(row=0, column=1, padx=16, pady=8, sticky="e")
+        self.progress_bar.grid(row=0, column=2, padx=16, pady=8, sticky="e")
         self.progress_bar.set(0)
         self.progress_bar.grid_remove()
 
@@ -320,7 +359,7 @@ class MainWindow(ctk.CTkFrame):
             font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
             text_color=THEME_COLORS["text_primary"],
         )
-        self.count_label.grid(row=0, column=2, padx=16, pady=8)
+        self.count_label.grid(row=0, column=3, padx=16, pady=8)
 
     def _setup_empty_state(self):
         """Set up the empty state overlay shown when no files are loaded."""
@@ -512,6 +551,7 @@ class MainWindow(ctk.CTkFrame):
     def _start_analysis(self, files: List[str]):
         """Start batch analysis in background thread."""
         if self._analysis_thread and self._analysis_thread.is_alive():
+            self._pending_analysis_queue.extend(files)
             return
 
         self._set_analyzing_state(True)
@@ -521,10 +561,18 @@ class MainWindow(ctk.CTkFrame):
                 files,
                 progress_callback=self._on_analysis_progress,
             )
-            schedule_callback_from_thread(self, self._set_analyzing_state, False)
+            schedule_callback_from_thread(self, self._on_analysis_complete)
 
         self._analysis_thread = threading.Thread(target=run_analysis, daemon=True)
         self._analysis_thread.start()
+
+    def _on_analysis_complete(self):
+        """Handle analysis batch completion. Drains pending queue if needed."""
+        self._set_analyzing_state(False)
+        if self._pending_analysis_queue:
+            queued = self._pending_analysis_queue[:]
+            self._pending_analysis_queue.clear()
+            self._start_analysis(queued)
 
     def _on_analysis_progress(
         self,
@@ -675,3 +723,45 @@ class MainWindow(ctk.CTkFrame):
     def _on_open_settings(self):
         """Handle settings button click."""
         SettingsWindow(self.winfo_toplevel())
+
+    # ─── Watcher ──────────────────────────────────────────────────────
+
+    def _on_toggle_watcher(self):
+        """Handle watcher button click."""
+        if self.on_toggle_watcher:
+            self.on_toggle_watcher()
+
+    def set_watcher_active(self, active: bool, folder_name: str = ""):
+        """Update UI to reflect watcher state."""
+        if active:
+            self.watcher_btn.configure(fg_color=THEME_COLORS["primary"])
+            self._watcher_indicator.grid()
+            self._start_indicator_pulse()
+        else:
+            self.watcher_btn.configure(fg_color=THEME_COLORS["bg_elevated"])
+            self._watcher_indicator.grid_remove()
+            self._stop_indicator_pulse()
+
+    def _start_indicator_pulse(self):
+        """Start pulsing the watcher indicator."""
+        self._pulse_active = True
+        self._pulse_step(True)
+
+    def _stop_indicator_pulse(self):
+        """Stop pulsing the watcher indicator."""
+        self._pulse_active = False
+
+    def _pulse_step(self, bright: bool):
+        """Alternate indicator color for pulse effect."""
+        if not self._pulse_active:
+            return
+        color = "#5DB88C" if bright else "#2D6B4A"
+        self._watcher_indicator.configure(text_color=color)
+        self.after(800, self._pulse_step, not bright)
+
+    def add_files_from_watcher(self, files: List[str]):
+        """Add files detected by the folder watcher (deduplicates first)."""
+        existing = set(self.results_table.get_ordered_filepaths())
+        new_files = [f for f in files if f not in existing]
+        if new_files:
+            self._on_files_added(new_files)

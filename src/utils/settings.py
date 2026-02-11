@@ -12,6 +12,8 @@ _SETTINGS_FILE = os.path.join(_SETTINGS_DIR, "settings.json")
 # Default values for all settings
 _DEFAULTS: Dict[str, Any] = {
     "rename_on_save": False,
+    "watcher_folder": "",
+    "watcher_auto_start": False,
 }
 
 
@@ -36,6 +38,24 @@ class AppSettings:
     @rename_on_save.setter
     def rename_on_save(self, value: bool):
         self._data["rename_on_save"] = value
+        self._save()
+
+    @property
+    def watcher_folder(self) -> str:
+        return self._data.get("watcher_folder", "")
+
+    @watcher_folder.setter
+    def watcher_folder(self, value: str):
+        self._data["watcher_folder"] = value
+        self._save()
+
+    @property
+    def watcher_auto_start(self) -> bool:
+        return self._data.get("watcher_auto_start", False)
+
+    @watcher_auto_start.setter
+    def watcher_auto_start(self, value: bool):
+        self._data["watcher_auto_start"] = value
         self._save()
 
     # ─── Persistence ─────────────────────────────────────────────────

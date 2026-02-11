@@ -1,5 +1,8 @@
 """Settings window (configuration panel)."""
 
+import os
+from tkinter import filedialog
+
 import customtkinter as ctk
 
 from ..utils.constants import THEME_COLORS, FONT_FAMILY, FONT_SIZES
@@ -22,7 +25,7 @@ class SettingsWindow(ctk.CTkToplevel):
         self.bind("<Escape>", lambda e: self.destroy())
 
     def _setup_window(self):
-        w, h = 460, 260
+        w, h = 460, 400
         self.geometry(f"{w}x{h}")
         self.resizable(False, False)
         self.title("Configuración")
@@ -87,7 +90,67 @@ class SettingsWindow(ctk.CTkToplevel):
             font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["small"]),
             text_color=THEME_COLORS["text_secondary"],
             anchor="w",
-        ).pack(fill="x", padx=56, pady=(0, 20))
+        ).pack(fill="x", padx=56, pady=(0, 16))
+
+        # Separator
+        ctk.CTkFrame(self, height=1, fg_color=THEME_COLORS["primary_dark"]).pack(
+            fill="x", padx=24, pady=(0, 16)
+        )
+
+        # Section: Monitorización
+        ctk.CTkLabel(
+            self,
+            text="Monitorización de carpeta",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["body"], weight="bold"),
+            text_color=THEME_COLORS["text_primary"],
+            anchor="w",
+        ).pack(fill="x", padx=28, pady=(0, 8))
+
+        # Current folder display
+        folder = self._settings.watcher_folder
+        folder_text = os.path.basename(folder) if folder else "No configurada"
+        self._folder_label = ctk.CTkLabel(
+            self,
+            text=f"Carpeta: {folder_text}",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
+            text_color=THEME_COLORS["text_secondary"],
+            anchor="w",
+        )
+        self._folder_label.pack(fill="x", padx=36, pady=(0, 6))
+
+        # Change folder button
+        ctk.CTkButton(
+            self,
+            text="Cambiar carpeta...",
+            command=self._on_change_watcher_folder,
+            width=140,
+            height=30,
+            corner_radius=8,
+            fg_color=THEME_COLORS["bg_elevated"],
+            hover_color=THEME_COLORS["primary_dark"],
+            text_color=THEME_COLORS["text_primary"],
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
+        ).pack(anchor="w", padx=36, pady=(0, 8))
+
+        # Auto-start checkbox
+        self._auto_start_var = ctk.StringVar(
+            value="1" if self._settings.watcher_auto_start else "0"
+        )
+
+        ctk.CTkCheckBox(
+            self,
+            text="Iniciar monitorización automáticamente al abrir",
+            variable=self._auto_start_var,
+            onvalue="1",
+            offvalue="0",
+            command=self._on_auto_start_toggle,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
+            text_color=THEME_COLORS["text_primary"],
+            fg_color=THEME_COLORS["primary"],
+            hover_color=THEME_COLORS["primary_dark"],
+            border_color=THEME_COLORS["primary_dark"],
+            checkmark_color=THEME_COLORS["text_primary"],
+        ).pack(anchor="w", padx=36, pady=(0, 20))
 
         # Close button — right-aligned
         btn_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -109,3 +172,15 @@ class SettingsWindow(ctk.CTkToplevel):
 
     def _on_rename_toggle(self):
         self._settings.rename_on_save = self._rename_var.get() == "1"
+
+    def _on_change_watcher_folder(self):
+        folder = filedialog.askdirectory(
+            title="Seleccionar carpeta a monitorizar",
+            parent=self,
+        )
+        if folder:
+            self._settings.watcher_folder = folder
+            self._folder_label.configure(text=f"Carpeta: {os.path.basename(folder)}")
+
+    def _on_auto_start_toggle(self):
+        self._settings.watcher_auto_start = self._auto_start_var.get() == "1"

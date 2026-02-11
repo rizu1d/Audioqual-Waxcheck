@@ -1,7 +1,9 @@
 """Main application class integrating core and GUI."""
 
+import os
 import sys
 from collections import OrderedDict
+from tkinter import filedialog
 from typing import Optional
 
 import customtkinter as ctk
@@ -24,6 +26,15 @@ from .core.frequency_detector import FrequencyAnalysis
 from .gui.main_window import MainWindow
 from .gui.spectrogram_window import SpectrogramWindow
 from .gui.audio_player import AudioPlayer, PlayerState
+from .utils.settings import AppSettings
+from .utils.tk_utils import schedule_callback_from_thread
+
+try:
+    from .core.folder_watcher import FolderWatcher
+    HAS_WATCHDOG = True
+except ImportError:
+    HAS_WATCHDOG = False
+
 from .utils.constants import (
     WINDOW_WIDTH,
     WINDOW_HEIGHT,
@@ -84,6 +95,15 @@ class AudioQualApp:
         self.audio_player = AudioPlayer()
         self.audio_player.set_tk_root(self.root)
 
+        # Settings and folder watcher
+        self._settings = AppSettings()
+        if HAS_WATCHDOG:
+            self._folder_watcher = FolderWatcher(
+                on_files_ready=self._on_watcher_files_ready
+            )
+        else:
+            self._folder_watcher = None
+
         # Create main window
         self.main_window = MainWindow(
             self.root,
@@ -93,7 +113,15 @@ class AudioQualApp:
             on_show_spectrogram=self._show_spectrogram_window,
             on_clear=self._on_clear,
             on_metadata_saved=self._on_metadata_saved,
+            on_toggle_watcher=self._on_toggle_watcher,
         )
+
+        # Auto-start watcher if configured
+        if (self._folder_watcher
+                and self._settings.watcher_auto_start
+                and self._settings.watcher_folder
+                and os.path.isdir(self._settings.watcher_folder)):
+            self._start_watcher(self._settings.watcher_folder)
 
     def _setup_layout(self):
         """Set up the main layout."""
@@ -323,6 +351,84 @@ class AudioQualApp:
         # Add/update cache entry
         self._spectrogram_cache[filepath] = (analysis, filename, cutoff_khz)
 
+    # ─── Folder Watcher ────────────────────────────────────────────────
+
+    def _on_toggle_watcher(self):
+        """Handle watcher button click — show context menu with options."""
+        if not self._folder_watcher:
+            return
+
+        import tkinter as tk
+        menu = tk.Menu(self.root, tearoff=0)
+
+        if self._folder_watcher.is_running:
+            current = os.path.basename(self._folder_watcher.watch_path or "")
+            menu.add_command(
+                label=f"Monitorizando: {current}",
+                state="disabled",
+            )
+            menu.add_separator()
+            menu.add_command(
+                label="Cambiar carpeta...",
+                command=self._change_watcher_folder,
+            )
+            menu.add_command(
+                label="Detener monitorización",
+                command=self._stop_watcher,
+            )
+        else:
+            saved = self._settings.watcher_folder
+            if saved and os.path.isdir(saved):
+                menu.add_command(
+                    label=f"Monitorizar: {os.path.basename(saved)}",
+                    command=lambda: self._start_watcher(saved),
+                )
+                menu.add_separator()
+            menu.add_command(
+                label="Seleccionar carpeta...",
+                command=self._change_watcher_folder,
+            )
+
+        btn = self.main_window.watcher_btn
+        x = btn.winfo_rootx()
+        y = btn.winfo_rooty() + btn.winfo_height()
+        menu.tk_popup(x, y)
+
+    def _change_watcher_folder(self):
+        """Ask for a new folder and start watching it."""
+        folder = filedialog.askdirectory(
+            title="Seleccionar carpeta a monitorizar",
+            parent=self.root,
+        )
+        if folder:
+            self._start_watcher(folder)
+
+    def _start_watcher(self, folder: str):
+        """Start monitoring a folder."""
+        if not self._folder_watcher:
+            return
+        if self._folder_watcher.start(folder):
+            self._settings.watcher_folder = folder
+            basename = os.path.basename(folder)
+            self.main_window.set_watcher_active(True, basename)
+            self.main_window.status_label.configure(
+                text=f"Monitorizando: {basename}"
+            )
+
+    def _stop_watcher(self):
+        """Stop folder monitoring."""
+        if not self._folder_watcher:
+            return
+        self._folder_watcher.stop()
+        self.main_window.set_watcher_active(False)
+        self.main_window.status_label.configure(text="Listo")
+
+    def _on_watcher_files_ready(self, files):
+        """Called from watcher thread when files are stable and ready."""
+        schedule_callback_from_thread(
+            self.root, self.main_window.add_files_from_watcher, files
+        )
+
     def _on_clear(self):
         """Handle clear action - clear cache."""
         self._spectrogram_cache.clear()
@@ -354,6 +460,8 @@ class AudioQualApp:
 
     def _on_close(self):
         """Handle application close."""
+        if self._folder_watcher:
+            self._folder_watcher.cleanup()
         self._cleanup()
         self.root.destroy()
 
