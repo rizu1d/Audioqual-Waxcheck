@@ -134,6 +134,30 @@ class MainWindow(ctk.CTkFrame):
         self.add_files_btn._canvas.configure(takefocus=False)
         self.add_files_btn.grid(row=0, column=0, padx=6)
 
+        # Load watcher icon
+        watcher_icon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "watcher-icon.png")
+        watcher_icon_image = Image.open(watcher_icon_path)
+        self._watcher_icon = ctk.CTkImage(
+            light_image=watcher_icon_image,
+            dark_image=watcher_icon_image,
+            size=(ICON_SIZE, ICON_SIZE)
+        )
+
+        # Watcher button
+        self.watcher_btn = ctk.CTkButton(
+            self.controls_frame,
+            text="",
+            image=self._watcher_icon,
+            command=self._on_toggle_watcher,
+            width=BUTTON_SIZE,
+            height=BUTTON_SIZE,
+            corner_radius=12,
+            fg_color=THEME_COLORS["bg_elevated"],
+            hover_color=THEME_COLORS["primary_dark"],
+        )
+        self.watcher_btn._canvas.configure(takefocus=False)
+        self.watcher_btn.grid(row=0, column=1, padx=6)
+
         # Load clean icon
         clean_icon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "clean.jpg")
         clean_icon_image = Image.open(clean_icon_path)
@@ -156,7 +180,7 @@ class MainWindow(ctk.CTkFrame):
             hover_color=THEME_COLORS["primary_dark"],
         )
         self.clear_btn._canvas.configure(takefocus=False)
-        self.clear_btn.grid(row=0, column=1, padx=6)
+        self.clear_btn.grid(row=0, column=2, padx=6)
 
         # Load spectrogram icon
         icon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "spectrum.jpg")
@@ -180,7 +204,7 @@ class MainWindow(ctk.CTkFrame):
             hover_color=THEME_COLORS["primary_dark"],
         )
         self.spectrogram_btn._canvas.configure(takefocus=False)
-        self.spectrogram_btn.grid(row=0, column=2, padx=6)
+        self.spectrogram_btn.grid(row=0, column=3, padx=6)
 
         # Load metadata icon
         meta_icon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "metadata-icon.png")
@@ -204,7 +228,7 @@ class MainWindow(ctk.CTkFrame):
             hover_color=THEME_COLORS["primary_dark"],
         )
         self.metadata_btn._canvas.configure(takefocus=False)
-        self.metadata_btn.grid(row=0, column=3, padx=6)
+        self.metadata_btn.grid(row=0, column=4, padx=6)
 
         # Load settings icon
         settings_icon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "settings-icon.png")
@@ -228,31 +252,7 @@ class MainWindow(ctk.CTkFrame):
             hover_color=THEME_COLORS["primary_dark"],
         )
         self.settings_btn._canvas.configure(takefocus=False)
-        self.settings_btn.grid(row=0, column=4, padx=6)
-
-        # Load watcher icon
-        watcher_icon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "watcher-icon.png")
-        watcher_icon_image = Image.open(watcher_icon_path)
-        self._watcher_icon = ctk.CTkImage(
-            light_image=watcher_icon_image,
-            dark_image=watcher_icon_image,
-            size=(ICON_SIZE, ICON_SIZE)
-        )
-
-        # Watcher button
-        self.watcher_btn = ctk.CTkButton(
-            self.controls_frame,
-            text="",
-            image=self._watcher_icon,
-            command=self._on_toggle_watcher,
-            width=BUTTON_SIZE,
-            height=BUTTON_SIZE,
-            corner_radius=12,
-            fg_color=THEME_COLORS["bg_elevated"],
-            hover_color=THEME_COLORS["primary_dark"],
-        )
-        self.watcher_btn._canvas.configure(takefocus=False)
-        self.watcher_btn.grid(row=0, column=5, padx=6)
+        self.settings_btn.grid(row=0, column=5, padx=6)
 
     def _setup_content_area(self):
         """Set up the main content area."""
