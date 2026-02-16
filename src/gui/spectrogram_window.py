@@ -265,6 +265,7 @@ class SpectrogramWindow(ctk.CTkToplevel):
         if self._render_cancelled.is_set() or render_id != self._render_id:
             return
 
+        fig = None
         try:
             dpi = 100
             fig = Figure(
@@ -307,6 +308,11 @@ class SpectrogramWindow(ctk.CTkToplevel):
 
         except Exception as e:
             print(f"Error rendering spectrogram: {e}")
+        finally:
+            if fig is not None:
+                fig.clear()
+                import matplotlib.pyplot as plt
+                plt.close(fig)
 
     def _plot_spectrogram(self, ax, analysis: FrequencyAnalysis):
         """Plot the spectrogram on given axes."""

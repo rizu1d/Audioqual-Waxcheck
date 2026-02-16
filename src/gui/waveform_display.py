@@ -348,13 +348,15 @@ class WaveformDisplay(ctk.CTkFrame):
                     width=2,
                 )
 
-            # Update CTkImage
+            # Update CTkImage (release old one first to reduce peak memory)
+            old = self._photo_image
             self._photo_image = ctk.CTkImage(
                 light_image=display,
                 dark_image=display,
                 size=(display.width, display.height),
             )
             self._image_label.configure(image=self._photo_image)
+            del old
 
         except tk.TclError:
             # Widget was destroyed

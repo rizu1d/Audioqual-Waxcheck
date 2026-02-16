@@ -343,3 +343,8 @@ class PlayerControls(ctk.CTkFrame):
             self.after_cancel(self._update_timer)
             self._update_timer = None
         self._waveform.cleanup()
+
+    def destroy(self):
+        """Ensure cleanup before widget destruction."""
+        self.cleanup()
+        super().destroy()

@@ -244,11 +244,6 @@ class AudioQualApp:
             if cached:
                 self._spectrogram_cache[new_filepath] = cached
 
-            # Update selected result reference
-            if (self._selected_result
-                    and self._selected_result.filepath == new_filepath):
-                pass  # Already updated by update_filepath
-
             # Reload into player if this file was loaded
             if self.audio_player._current_filepath == old_filepath:
                 self.audio_player.stop()

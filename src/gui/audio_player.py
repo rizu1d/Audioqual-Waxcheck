@@ -52,6 +52,7 @@ class AudioPlayer:
         self._lock = threading.Lock()
         self._load_thread: Optional[threading.Thread] = None
         self._stream: Optional[sd.OutputStream] = None
+        self._stream_generation = 0  # Incremented on each stream create/destroy
 
         # Callbacks for UI updates (called from main thread via after())
         self._on_position_changed: Optional[Callable[[float], None]] = None
@@ -272,31 +273,39 @@ class AudioPlayer:
 
     def _start_stream(self):
         """Start the audio output stream."""
-        if self._stream is not None:
-            return
+        with self._lock:
+            if self._stream is not None:
+                return
+            self._stream_generation += 1
+            gen = self._stream_generation
 
         try:
-            self._stream = sd.OutputStream(
+            stream = sd.OutputStream(
                 samplerate=self._sample_rate,
                 channels=1,
                 dtype='float32',
                 callback=self._audio_callback,
-                finished_callback=self._on_stream_finished,
+                finished_callback=lambda: self._on_stream_finished(gen),
             )
-            self._stream.start()
+            stream.start()
+            with self._lock:
+                self._stream = stream
         except Exception as e:
             print(f"Error starting audio stream: {e}")
             self._set_state(PlayerState.STOPPED)
 
     def _stop_stream(self):
         """Stop the audio output stream."""
-        if self._stream is not None:
+        with self._lock:
+            stream = self._stream
+            self._stream = None
+            self._stream_generation += 1  # Invalidate pending finished_callbacks
+        if stream is not None:
             try:
-                self._stream.stop()
-                self._stream.close()
+                stream.stop()
+                stream.close()
             except Exception:
                 pass
-            self._stream = None
 
     def _audio_callback(self, outdata: np.ndarray, frames: int, time_info, status):
         """
@@ -333,14 +342,16 @@ class AudioPlayer:
             # Signal end of track (will be handled in finished_callback)
             pass
 
-    def _on_stream_finished(self):
+    def _on_stream_finished(self, generation: int):
         """Called when the audio stream finishes."""
-        # Check if we reached the end naturally
         with self._lock:
+            # Ignore callback from a replaced/stopped stream
+            if generation != self._stream_generation:
+                return
             at_end = self._position >= self._duration_samples - self._sample_rate // 10  # ~100ms tolerance
+            self._stream = None
 
         if at_end and self._state == PlayerState.PLAYING:
-            self._stream = None
             self._set_state(PlayerState.STOPPED)
             with self._lock:
                 self._position = 0
