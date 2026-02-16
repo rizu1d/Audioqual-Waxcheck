@@ -230,14 +230,9 @@ class MainWindow(ctk.CTkFrame):
         self.metadata_btn._canvas.configure(takefocus=False)
         self.metadata_btn.grid(row=0, column=4, padx=6)
 
-        # Load settings icon
-        settings_icon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "settings-icon.png")
-        settings_icon_image = Image.open(settings_icon_path)
-        self._settings_icon = ctk.CTkImage(
-            light_image=settings_icon_image,
-            dark_image=settings_icon_image,
-            size=(ICON_SIZE, ICON_SIZE)
-        )
+        # Settings icon (programmatic)
+        from .icons import icon_settings
+        self._settings_icon = icon_settings(ICON_SIZE)
 
         # Settings button
         self.settings_btn = ctk.CTkButton(

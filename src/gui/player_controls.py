@@ -184,12 +184,17 @@ class PlayerControls(ctk.CTkFrame):
         volume_frame = ctk.CTkFrame(self, fg_color="transparent")
         volume_frame.grid(row=0, column=4, padx=(8, 12), pady=8)
 
-        # Volume icon/label
+        # Volume icons (programmatic)
+        from .icons import icon_volume_high, icon_volume_low, icon_volume_mute
+        self._vol_high_icon = icon_volume_high(14)
+        self._vol_low_icon = icon_volume_low(14)
+        self._vol_mute_icon = icon_volume_mute(14)
+
+        # Volume icon label
         self._volume_label = ctk.CTkLabel(
             volume_frame,
-            text="🔊",
-            font=ctk.CTkFont(size=14),
-            text_color=THEME_COLORS["text_primary"],
+            text="",
+            image=self._vol_high_icon,
             width=24,
         )
         self._volume_label.grid(row=0, column=0, padx=(0, 4))
@@ -230,11 +235,11 @@ class PlayerControls(ctk.CTkFrame):
         self._player.set_volume(value)
         # Update volume icon
         if value == 0:
-            self._volume_label.configure(text="🔇")
+            self._volume_label.configure(image=self._vol_mute_icon)
         elif value < 0.5:
-            self._volume_label.configure(text="🔉")
+            self._volume_label.configure(image=self._vol_low_icon)
         else:
-            self._volume_label.configure(text="🔊")
+            self._volume_label.configure(image=self._vol_high_icon)
 
     def _on_waveform_seek(self, position_seconds: float):
         """Handle seek from waveform display."""
