@@ -1,0 +1,718 @@
+[
+  {
+    "id": "BASE_001",
+    "file": "references/test-files/base/1A. Orbit (3) Featuring Carol Hall - The Beat Goes On (Lunar Mix).aiff",
+    "description": "AIFF legitimo - debe ser lossless/OK",
+    "expected": {
+      "status": "Lossless",
+      "detected_quality_in": [
+        "lossless"
+      ],
+      "cutoff_above_khz": 19.0
+    },
+    "known_bug": false,
+    "notes": "",
+    "_baseline": {
+      "cutoff_khz": 20.5,
+      "status": "Lossless",
+      "quality": "lossless",
+      "confidence": 0.701,
+      "is_uncertain": false,
+      "details": "Frecuencia de corte: 20.5 kHz | Bitrate declarado: 1411 kbps"
+    }
+  },
+  {
+    "id": "BASE_002",
+    "file": "references/test-files/base/Agoria - Teardrops (Don't Stop The Music) (Nick Morgan Remix).mp3",
+    "description": "MP3 legitimo - debe ser OK",
+    "expected": {
+      "status": "OK",
+      "detected_quality_in": [
+        "256kbps"
+      ],
+      "cutoff_above_khz": 17.0
+    },
+    "known_bug": false,
+    "notes": "",
+    "_baseline": {
+      "cutoff_khz": 18.5,
+      "status": "OK",
+      "quality": "256kbps",
+      "confidence": 0.817,
+      "is_uncertain": false,
+      "details": "Frecuencia de corte: 18.5 kHz | Bitrate declarado: 320 kbps"
+    }
+  },
+  {
+    "id": "BASE_003",
+    "file": "references/test-files/base/Silicone Soul - Chic-O-Laa (H-Foundation Remix).mp3",
+    "description": "MP3 legitimo - debe ser OK",
+    "expected": {
+      "status": "OK",
+      "detected_quality_in": [
+        "256kbps"
+      ],
+      "cutoff_above_khz": 17.5
+    },
+    "known_bug": false,
+    "notes": "",
+    "_baseline": {
+      "cutoff_khz": 19.0,
+      "status": "OK",
+      "quality": "256kbps",
+      "confidence": 0.842,
+      "is_uncertain": false,
+      "details": "Frecuencia de corte: 19.0 kHz | Bitrate declarado: 320 kbps"
+    }
+  },
+  {
+    "id": "BASE_004",
+    "file": "references/test-files/base/notaiff-detected.aiff",
+    "description": "AIFF falso (transcode) - debe detectar transcode",
+    "expected": {
+      "status": "Transcode detectado",
+      "detected_quality_in": [
+        "192kbps"
+      ],
+      "cutoff_below_khz": 18.5
+    },
+    "known_bug": false,
+    "notes": "",
+    "_baseline": {
+      "cutoff_khz": 17.0,
+      "status": "Transcode detectado",
+      "quality": "192kbps",
+      "confidence": 0.835,
+      "is_uncertain": false,
+      "details": "Frecuencia de corte: 17.0 kHz | Bitrate declarado: 2116 kbps | Archivo AIFF convertido desde fuente de menor calidad"
+    }
+  },
+  {
+    "id": "BASE_005",
+    "file": "references/test-files/base/notaiff-undetected.aiff",
+    "description": "AIFF falso (transcode no detectado) - known bug",
+    "expected": {
+      "status": "Transcode detectado",
+      "detected_quality_in": [
+        "160kbps"
+      ],
+      "cutoff_below_khz": 17.5
+    },
+    "known_bug": false,
+    "notes": "Anteriormente no detectado, ahora funciona correctamente",
+    "_baseline": {
+      "cutoff_khz": 16.0,
+      "status": "Transcode detectado",
+      "quality": "160kbps",
+      "confidence": 0.83,
+      "is_uncertain": false,
+      "details": "Frecuencia de corte: 16.0 kHz | Bitrate declarado: 2116 kbps | Archivo AIFF convertido desde fuente de menor calidad"
+    }
+  },
+  {
+    "id": "BASE_006",
+    "file": "references/test-files/base/transcode-manuchao.mp3",
+    "description": "MP3 transcode - Manu Chao",
+    "expected": {
+      "status": "Transcode detectado",
+      "detected_quality_in": [
+        "96kbps"
+      ],
+      "cutoff_below_khz": 14.5
+    },
+    "known_bug": false,
+    "notes": "",
+    "_baseline": {
+      "cutoff_khz": 13.0,
+      "status": "Transcode detectado",
+      "quality": "96kbps",
+      "confidence": 0.894,
+      "is_uncertain": false,
+      "details": "Frecuencia de corte: 13.0 kHz | Bitrate declarado: 320 kbps | Posible conversión desde ~96kbps"
+    }
+  },
+  {
+    "id": "BASE_007",
+    "file": "references/test-files/base/transcode-portishead.mp3",
+    "description": "MP3 transcode - Portishead",
+    "expected": {
+      "status": "Transcode detectado",
+      "detected_quality_in": [
+        "96kbps"
+      ],
+      "cutoff_below_khz": 14.5
+    },
+    "known_bug": false,
+    "notes": "",
+    "_baseline": {
+      "cutoff_khz": 13.0,
+      "status": "Transcode detectado",
+      "quality": "96kbps",
+      "confidence": 0.861,
+      "is_uncertain": false,
+      "details": "Frecuencia de corte: 13.0 kHz | Bitrate declarado: 320 kbps | Posible conversión desde ~96kbps"
+    }
+  },
+  {
+    "id": "BASE_008",
+    "file": "references/test-files/base/transcode-sickomode.mp3",
+    "description": "MP3 transcode - Sicko Mode",
+    "expected": {
+      "status": "Baja calidad",
+      "detected_quality_in": [
+        "128kbps"
+      ],
+      "cutoff_below_khz": 17.0
+    },
+    "known_bug": false,
+    "notes": "",
+    "_baseline": {
+      "cutoff_khz": 15.5,
+      "status": "Baja calidad",
+      "quality": "128kbps",
+      "confidence": 0.85,
+      "is_uncertain": false,
+      "details": "Frecuencia de corte: 15.5 kHz | Bitrate declarado: 128 kbps"
+    }
+  },
+  {
+    "id": "BASE_009",
+    "file": "references/test-files/base/transcode-thebox.mp3",
+    "description": "MP3 transcode - The Box",
+    "expected": {
+      "status": "Transcode detectado",
+      "detected_quality_in": [
+        "128kbps"
+      ],
+      "cutoff_below_khz": 16.5
+    },
+    "known_bug": false,
+    "notes": "",
+    "_baseline": {
+      "cutoff_khz": 15.0,
+      "status": "Transcode detectado",
+      "quality": "128kbps",
+      "confidence": 0.85,
+      "is_uncertain": false,
+      "details": "Frecuencia de corte: 15.0 kHz | Bitrate declarado: 320 kbps | Posible conversión desde ~128kbps"
+    }
+  },
+  {
+    "id": "YT_001",
+    "file": "references/test-files/youtuberips/C.R.E.A.M. (A Cappella).mp3",
+    "description": "YouTube rip - C.R.E.A.M. acapella",
+    "expected": {
+      "status": "Transcode detectado",
+      "detected_quality_in": [
+        "96kbps"
+      ],
+      "cutoff_below_khz": 16.0
+    },
+    "known_bug": false,
+    "notes": "",
+    "_baseline": {
+      "cutoff_khz": 14.5,
+      "status": "Transcode detectado",
+      "quality": "96kbps",
+      "confidence": 0.811,
+      "is_uncertain": false,
+      "details": "Frecuencia de corte: 14.5 kHz | Bitrate declarado: 320 kbps | Posible conversión desde ~96kbps"
+    }
+  },
+  {
+    "id": "YT_002",
+    "file": "references/test-files/youtuberips/C'est justifiable (Acapella).mp3",
+    "description": "YouTube rip - C'est justifiable acapella",
+    "expected": {
+      "status": "Incierto",
+      "detected_quality_in": [
+        "320kbps"
+      ],
+      "cutoff_below_khz": 20.0,
+      "is_uncertain": true
+    },
+    "known_bug": false,
+    "notes": "",
+    "_baseline": {
+      "cutoff_khz": 19.5,
+      "status": "Incierto",
+      "quality": "320kbps",
+      "confidence": 0.456,
+      "is_uncertain": true,
+      "details": "Frecuencia de corte: 19.5 kHz | Bitrate declarado: 192 kbps | MP3 192kbps: corte 20.0kHz imposible (máx 19.5kHz), ajustado"
+    }
+  },
+  {
+    "id": "YT_003",
+    "file": "references/test-files/youtuberips/De La Soul  Chaka Khan  All Good Acapella.mp3",
+    "description": "YouTube rip - De La Soul acapella",
+    "expected": {
+      "status": "Incierto",
+      "detected_quality_in": [
+        "320kbps"
+      ],
+      "cutoff_below_khz": 20.0,
+      "is_uncertain": true
+    },
+    "known_bug": false,
+    "notes": "",
+    "_baseline": {
+      "cutoff_khz": 19.5,
+      "status": "Incierto",
+      "quality": "320kbps",
+      "confidence": 0.552,
+      "is_uncertain": true,
+      "details": "Frecuencia de corte: 19.5 kHz | Bitrate declarado: 235 kbps | MP3 235kbps: corte 20.0kHz imposible (máx 19.5kHz), ajustado"
+    }
+  },
+  {
+    "id": "YT_004",
+    "file": "references/test-files/youtuberips/Hip Hop Hooray (Acapella) (Unrelease.mp3",
+    "description": "YouTube rip - Hip Hop Hooray acapella",
+    "expected": {
+      "status": "Transcode detectado",
+      "detected_quality_in": [
+        "128kbps"
+      ],
+      "cutoff_below_khz": 16.5
+    },
+    "known_bug": false,
+    "notes": "",
+    "_baseline": {
+      "cutoff_khz": 15.0,
+      "status": "Transcode detectado",
+      "quality": "128kbps",
+      "confidence": 0.85,
+      "is_uncertain": false,
+      "details": "Frecuencia de corte: 15.0 kHz | Bitrate declarado: 320 kbps | Posible conversión desde ~128kbps"
+    }
+  },
+  {
+    "id": "YT_005",
+    "file": "references/test-files/youtuberips/IAM - Sad Hill (Acapella).mp3",
+    "description": "YouTube rip - IAM Sad Hill acapella",
+    "expected": {
+      "status": "Incierto",
+      "detected_quality_in": [
+        "320kbps"
+      ],
+      "cutoff_below_khz": 20.0,
+      "is_uncertain": true
+    },
+    "known_bug": false,
+    "notes": "",
+    "_baseline": {
+      "cutoff_khz": 19.5,
+      "status": "Incierto",
+      "quality": "320kbps",
+      "confidence": 0.469,
+      "is_uncertain": true,
+      "details": "Frecuencia de corte: 19.5 kHz | Bitrate declarado: 192 kbps | MP3 192kbps: corte 20.0kHz imposible (máx 19.5kHz), ajustado"
+    }
+  },
+  {
+    "id": "YT_006",
+    "file": "references/test-files/youtuberips/Mama lova (acapella) 81 bpm.mp3",
+    "description": "YouTube rip - Mama lova acapella",
+    "expected": {
+      "status": "Transcode detectado",
+      "detected_quality_in": [
+        "128kbps"
+      ],
+      "cutoff_below_khz": 16.5
+    },
+    "known_bug": false,
+    "notes": "",
+    "_baseline": {
+      "cutoff_khz": 15.0,
+      "status": "Transcode detectado",
+      "quality": "128kbps",
+      "confidence": 0.85,
+      "is_uncertain": false,
+      "details": "Frecuencia de corte: 15.0 kHz | Bitrate declarado: 192 kbps | Posible conversión desde ~128kbps"
+    }
+  },
+  {
+    "id": "YT_007",
+    "file": "references/test-files/youtuberips/Poison (Isolated Vocals).mp3",
+    "description": "YouTube rip - Poison isolated vocals",
+    "expected": {
+      "status": "Transcode detectado",
+      "detected_quality_in": [
+        "96kbps"
+      ],
+      "cutoff_below_khz": 16.0
+    },
+    "known_bug": false,
+    "notes": "",
+    "_baseline": {
+      "cutoff_khz": 14.5,
+      "status": "Transcode detectado",
+      "quality": "96kbps",
+      "confidence": 0.815,
+      "is_uncertain": false,
+      "details": "Frecuencia de corte: 14.5 kHz | Bitrate declarado: 320 kbps | Posible conversión desde ~96kbps"
+    }
+  },
+  {
+    "id": "YT_008",
+    "file": "references/test-files/youtuberips/poppa large acapella ultramagnetic mcs.mp3",
+    "description": "YouTube rip - Poppa Large acapella",
+    "expected": {
+      "status": "Transcode detectado",
+      "detected_quality_in": [
+        "128kbps"
+      ],
+      "cutoff_below_khz": 16.5
+    },
+    "known_bug": false,
+    "notes": "",
+    "_baseline": {
+      "cutoff_khz": 15.0,
+      "status": "Transcode detectado",
+      "quality": "128kbps",
+      "confidence": 0.839,
+      "is_uncertain": false,
+      "details": "Frecuencia de corte: 15.0 kHz | Bitrate declarado: 253 kbps | Posible conversión desde ~128kbps"
+    }
+  },
+  {
+    "id": "YT_009",
+    "file": "references/test-files/youtuberips/Public Enemy Acapella Pack.mp3",
+    "description": "YouTube rip - Public Enemy acapella",
+    "expected": {
+      "status": "Baja calidad",
+      "detected_quality_in": [
+        "96kbps"
+      ],
+      "cutoff_below_khz": 16.0
+    },
+    "known_bug": false,
+    "notes": "",
+    "_baseline": {
+      "cutoff_khz": 14.5,
+      "status": "Baja calidad",
+      "quality": "96kbps",
+      "confidence": 0.805,
+      "is_uncertain": false,
+      "details": "Frecuencia de corte: 14.5 kHz | Bitrate declarado: 128 kbps"
+    }
+  },
+  {
+    "id": "YT_010",
+    "file": "references/test-files/youtuberips/Regulate Acapella.mp3",
+    "description": "YouTube rip - Regulate acapella",
+    "expected": {
+      "status": "Transcode detectado",
+      "detected_quality_in": [
+        "96kbps"
+      ],
+      "cutoff_below_khz": 16.0
+    },
+    "known_bug": false,
+    "notes": "",
+    "_baseline": {
+      "cutoff_khz": 14.5,
+      "status": "Transcode detectado",
+      "quality": "96kbps",
+      "confidence": 0.801,
+      "is_uncertain": false,
+      "details": "Frecuencia de corte: 14.5 kHz | Bitrate declarado: 320 kbps | Posible conversión desde ~96kbps"
+    }
+  },
+  {
+    "id": "YT_011",
+    "file": "references/test-files/youtuberips/Shook Ones Pt. 2 (Acapella) 94 bpm.mp3",
+    "description": "YouTube rip - Shook Ones acapella",
+    "expected": {
+      "status": "Transcode detectado",
+      "detected_quality_in": [
+        "128kbps"
+      ],
+      "cutoff_below_khz": 16.5
+    },
+    "known_bug": false,
+    "notes": "",
+    "_baseline": {
+      "cutoff_khz": 15.0,
+      "status": "Transcode detectado",
+      "quality": "128kbps",
+      "confidence": 0.85,
+      "is_uncertain": false,
+      "details": "Frecuencia de corte: 15.0 kHz | Bitrate declarado: 192 kbps | Posible conversión desde ~128kbps"
+    }
+  },
+  {
+    "id": "YT_012",
+    "file": "references/test-files/youtuberips/Supreme NTM - Boogie man acapellaaaa.mp3",
+    "description": "YouTube rip - NTM Boogie Man acapella",
+    "expected": {
+      "status": "Transcode detectado",
+      "detected_quality_in": [
+        "96kbps"
+      ],
+      "cutoff_below_khz": 15.5
+    },
+    "known_bug": false,
+    "notes": "",
+    "_baseline": {
+      "cutoff_khz": 14.0,
+      "status": "Transcode detectado",
+      "quality": "96kbps",
+      "confidence": 0.806,
+      "is_uncertain": false,
+      "details": "Frecuencia de corte: 14.0 kHz | Bitrate declarado: 320 kbps | Posible conversión desde ~96kbps"
+    }
+  },
+  {
+    "id": "YT_013",
+    "file": "references/test-files/youtuberips/Suprême NTM - Come Again (Remix) (A.mp3",
+    "description": "YouTube rip - NTM Come Again acapella",
+    "expected": {
+      "status": "Transcode detectado",
+      "detected_quality_in": [
+        "128kbps"
+      ],
+      "cutoff_below_khz": 16.5,
+      "is_uncertain": true
+    },
+    "known_bug": false,
+    "notes": "",
+    "_baseline": {
+      "cutoff_khz": 15.0,
+      "status": "Transcode detectado",
+      "quality": "128kbps",
+      "confidence": 0.867,
+      "is_uncertain": true,
+      "details": "Frecuencia de corte: 15.0 kHz | Bitrate declarado: 192 kbps | Posible conversión desde ~128kbps | Calidad variable detectada"
+    }
+  },
+  {
+    "id": "YT_014",
+    "file": "references/test-files/youtuberips/Suprême NTM - Seine Saint Denis Styl.mp3",
+    "description": "YouTube rip - NTM Seine Saint Denis acapella",
+    "expected": {
+      "status": "Transcode detectado",
+      "detected_quality_in": [
+        "96kbps"
+      ],
+      "cutoff_below_khz": 15.5,
+      "is_uncertain": true
+    },
+    "known_bug": false,
+    "notes": "",
+    "_baseline": {
+      "cutoff_khz": 14.0,
+      "status": "Transcode detectado",
+      "quality": "96kbps",
+      "confidence": 0.822,
+      "is_uncertain": true,
+      "details": "Frecuencia de corte: 14.0 kHz | Bitrate declarado: 192 kbps | Posible conversión desde ~96kbps | Calidad variable detectada"
+    }
+  },
+  {
+    "id": "YT_015",
+    "file": "references/test-files/youtuberips/The Humpty Dance (Acapella).mp3",
+    "description": "YouTube rip - Humpty Dance acapella",
+    "expected": {
+      "status": "Transcode detectado",
+      "detected_quality_in": [
+        "128kbps"
+      ],
+      "cutoff_below_khz": 16.5
+    },
+    "known_bug": false,
+    "notes": "",
+    "_baseline": {
+      "cutoff_khz": 15.0,
+      "status": "Transcode detectado",
+      "quality": "128kbps",
+      "confidence": 0.85,
+      "is_uncertain": false,
+      "details": "Frecuencia de corte: 15.0 kHz | Bitrate declarado: 320 kbps | Posible conversión desde ~128kbps"
+    }
+  },
+  {
+    "id": "YT_016",
+    "file": "references/test-files/youtuberips/Walkman Music (Acapella).mp3",
+    "description": "YouTube rip - Walkman Music acapella",
+    "expected": {
+      "status": "Transcode detectado",
+      "detected_quality_in": [
+        "96kbps"
+      ],
+      "cutoff_below_khz": 16.0
+    },
+    "known_bug": false,
+    "notes": "",
+    "_baseline": {
+      "cutoff_khz": 14.5,
+      "status": "Transcode detectado",
+      "quality": "96kbps",
+      "confidence": 0.804,
+      "is_uncertain": false,
+      "details": "Frecuencia de corte: 14.5 kHz | Bitrate declarado: 320 kbps | Posible conversión desde ~96kbps"
+    }
+  },
+  {
+    "id": "YT_017",
+    "file": "references/test-files/youtuberips/yt5s.io - Jocelyn Brown - Love's Gonna Get You (Acapella) (128 kbps).mp3",
+    "description": "YouTube rip 128kbps - Jocelyn Brown acapella",
+    "expected": {
+      "status": "Baja calidad",
+      "detected_quality_in": [
+        "128kbps"
+      ],
+      "cutoff_below_khz": 16.5
+    },
+    "known_bug": false,
+    "notes": "",
+    "_baseline": {
+      "cutoff_khz": 15.0,
+      "status": "Baja calidad",
+      "quality": "128kbps",
+      "confidence": 0.85,
+      "is_uncertain": false,
+      "details": "Frecuencia de corte: 15.0 kHz | Bitrate declarado: 128 kbps"
+    }
+  },
+  {
+    "id": "YT_018",
+    "file": "references/test-files/youtuberips/yt5s.io - Kinny - Afro Love Forest - A Cappella (128 kbps).mp3",
+    "description": "YouTube rip 128kbps - Kinny acapella",
+    "expected": {
+      "status": "Baja calidad",
+      "detected_quality_in": [
+        "96kbps"
+      ],
+      "cutoff_below_khz": 14.5
+    },
+    "known_bug": false,
+    "notes": "",
+    "_baseline": {
+      "cutoff_khz": 13.0,
+      "status": "Baja calidad",
+      "quality": "96kbps",
+      "confidence": 0.832,
+      "is_uncertain": false,
+      "details": "Frecuencia de corte: 13.0 kHz | Bitrate declarado: 128 kbps"
+    }
+  },
+  {
+    "id": "EDGE_001",
+    "file": "references/test-files/casos-excepcionales/LaTour - People Are Still Having Sex.mp3",
+    "description": "Edge case - LaTour (contenido HF genuino antiguo)",
+    "expected": {
+      "status": "Incierto",
+      "detected_quality_in": [
+        "320kbps"
+      ],
+      "cutoff_above_khz": 17.5,
+      "cutoff_below_khz": 21.5,
+      "is_uncertain": true
+    },
+    "known_bug": false,
+    "notes": "",
+    "_baseline": {
+      "cutoff_khz": 19.5,
+      "status": "Incierto",
+      "quality": "320kbps",
+      "confidence": 0.85,
+      "is_uncertain": true,
+      "details": "Frecuencia de corte: 19.5 kHz | Bitrate declarado: 320 kbps | Calidad variable detectada"
+    }
+  },
+  {
+    "id": "EDGE_002",
+    "file": "references/test-files/casos-excepcionales/DJ Assault - Bangapella.mp3",
+    "description": "Edge case - DJ Assault acapella",
+    "expected": {
+      "status": "Transcode detectado",
+      "detected_quality_in": [
+        "192kbps"
+      ],
+      "cutoff_above_khz": 15.5,
+      "cutoff_below_khz": 19.5
+    },
+    "known_bug": false,
+    "notes": "",
+    "_baseline": {
+      "cutoff_khz": 17.5,
+      "status": "Transcode detectado",
+      "quality": "192kbps",
+      "confidence": 0.711,
+      "is_uncertain": false,
+      "details": "Frecuencia de corte: 17.5 kHz | Bitrate declarado: 320 kbps | Posible conversión desde ~192kbps"
+    }
+  },
+  {
+    "id": "EDGE_003",
+    "file": "references/test-files/casos-excepcionales/Golden Boy - Autopilot (Original).mp3",
+    "description": "Edge case - Golden Boy",
+    "expected": {
+      "status": "Transcode detectado",
+      "detected_quality_in": [
+        "192kbps"
+      ],
+      "cutoff_above_khz": 16.0,
+      "cutoff_below_khz": 20.0
+    },
+    "known_bug": false,
+    "notes": "",
+    "_baseline": {
+      "cutoff_khz": 18.0,
+      "status": "Transcode detectado",
+      "quality": "192kbps",
+      "confidence": 0.704,
+      "is_uncertain": false,
+      "details": "Frecuencia de corte: 18.0 kHz | Bitrate declarado: 320 kbps | Posible conversión desde ~192kbps"
+    }
+  },
+  {
+    "id": "EDGE_004",
+    "file": "references/test-files/casos-excepcionales/Plaisir de France - Américaine (2002 Mix).mp3",
+    "description": "Edge case - Plaisir de France",
+    "expected": {
+      "status": "Transcode detectado",
+      "detected_quality_in": [
+        "160kbps"
+      ],
+      "cutoff_above_khz": 14.0,
+      "cutoff_below_khz": 18.0
+    },
+    "known_bug": false,
+    "notes": "",
+    "_baseline": {
+      "cutoff_khz": 16.0,
+      "status": "Transcode detectado",
+      "quality": "160kbps",
+      "confidence": 0.809,
+      "is_uncertain": false,
+      "details": "Frecuencia de corte: 16.0 kHz | Bitrate declarado: 320 kbps | Posible conversión desde ~160kbps"
+    }
+  },
+  {
+    "id": "EDGE_005",
+    "file": "references/test-files/casos-excepcionales/The 45 King - Beat Suite One (Part Four).mp3",
+    "description": "Edge case - The 45 King",
+    "expected": {
+      "status": "Transcode detectado",
+      "detected_quality_in": [
+        "96kbps"
+      ],
+      "cutoff_above_khz": 12.0,
+      "cutoff_below_khz": 16.0,
+      "is_uncertain": true
+    },
+    "known_bug": false,
+    "notes": "",
+    "_baseline": {
+      "cutoff_khz": 14.0,
+      "status": "Transcode detectado",
+      "quality": "96kbps",
+      "confidence": 0.776,
+      "is_uncertain": true,
+      "details": "Frecuencia de corte: 14.0 kHz | Bitrate declarado: 320 kbps | Posible conversión desde ~96kbps | Calidad variable detectada"
+    }
+  }
+]
