@@ -260,11 +260,19 @@ class ResultsTable(ctk.CTkFrame):
 
         # Resize state
         self._header_cells: List[ctk.CTkFrame] = []
+        self._header_labels: Dict[str, ctk.CTkLabel] = {}
         self._grips: List[tk.Frame] = []
         self._resize_col: int = -1
         self._resize_start_x: int = 0
         self._resize_start_width: int = 0
         self._resize_throttle_id = None
+
+        # Sort state
+        self._sort_column: Optional[str] = None
+        self._sort_ascending: bool = True
+
+        # Debounce timer for reorder during batch analysis
+        self._reorder_timer = None
 
         self._setup_ui()
 
@@ -293,6 +301,7 @@ class ResultsTable(ctk.CTkFrame):
 
         # Create header labels with fixed-width containers
         self._header_cells = []
+        self._header_labels = {}
         for i, (col_id, col_name, width) in enumerate(self.COLUMNS):
             # Container frame with fixed width
             header_cell = ctk.CTkFrame(
@@ -301,6 +310,7 @@ class ResultsTable(ctk.CTkFrame):
                 width=width,
                 height=36,
                 corner_radius=0,
+                cursor="hand2",
             )
             header_cell.grid(row=0, column=i, sticky="nsew")
             header_cell.grid_propagate(False)
@@ -314,8 +324,14 @@ class ResultsTable(ctk.CTkFrame):
                 font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
                 text_color=THEME_COLORS["text_muted"],
                 fg_color="transparent",
+                cursor="hand2",
             )
             header_label.place(x=8, rely=0.5, anchor="w")
+            self._header_labels[col_id] = header_label
+
+            # Bind click for sorting
+            header_cell.bind("<Button-1>", lambda e, c=col_id: self._on_header_click(c))
+            header_label.bind("<Button-1>", lambda e, c=col_id: self._on_header_click(c))
 
         # Configure header column weights - all fixed
         for i, (col_id, _, width) in enumerate(self.COLUMNS):
@@ -453,6 +469,107 @@ class ResultsTable(ctk.CTkFrame):
         if self.on_selection_changed:
             self.on_selection_changed(row.result)
 
+    # ─── Column sorting ──────────────────────────────────────────────
+
+    # Severity ordering for status column (higher = more problematic)
+    _STATUS_SEVERITY = {
+        "Transcode detectado": 8,
+        "Baja calidad": 7,
+        "Calidad variable": 6,
+        "Incierto": 5,
+        "Error": 4,
+        "OK": 3,
+        "Lossless": 2,
+        "Pendiente": 1,
+        "Analizando...": 0,
+    }
+
+    # Quality ordering (higher = worse quality, so descending shows problems first)
+    _QUALITY_ORDER = {
+        "Lossless": 0,
+        "320kbps": 1,
+        "256kbps": 2,
+        "192kbps": 3,
+        "160kbps": 4,
+        "128kbps": 5,
+        "96kbps": 6,
+        "Baja calidad": 7,
+    }
+
+    def _on_header_click(self, col_id: str):
+        """Handle header click for column sorting."""
+        if self._sort_column == col_id:
+            self._sort_ascending = not self._sort_ascending
+        else:
+            self._sort_column = col_id
+            self._sort_ascending = False  # First click = descending
+        self._update_header_indicators()
+        self._reorder_rows()
+
+    def _update_header_indicators(self):
+        """Update sort direction arrows in header labels."""
+        for col_id, label in self._header_labels.items():
+            orig_name = None
+            for cid, cname, _ in self.COLUMNS:
+                if cid == col_id:
+                    orig_name = cname
+                    break
+            if col_id == self._sort_column:
+                arrow = " \u25B2" if self._sort_ascending else " \u25BC"
+                label.configure(text=orig_name + arrow)
+            else:
+                label.configure(text=orig_name)
+
+    def _get_sort_key(self, result: AnalysisResult):
+        """Get sort key for a result based on current sort column."""
+        col = self._sort_column
+        if col == "filename":
+            return result.filename.lower()
+        elif col == "format":
+            return result.format.lower()
+        elif col == "duration":
+            return result.duration
+        elif col == "declared_bitrate":
+            return result.declared_bitrate or 0
+        elif col == "cutoff_frequency":
+            return result.cutoff_frequency_khz
+        elif col == "detected_quality":
+            return self._QUALITY_ORDER.get(result.detected_quality, 99)
+        elif col == "status":
+            return self._STATUS_SEVERITY.get(result.status, 99)
+        return ""
+
+    def _schedule_reorder(self):
+        """Schedule a debounced reorder (used during batch analysis)."""
+        if self._reorder_timer is not None:
+            self.after_cancel(self._reorder_timer)
+        self._reorder_timer = self.after(50, self._reorder_rows)
+
+    def _reorder_rows(self):
+        """Reorder all rows in the scroll frame based on current sort."""
+        self._reorder_timer = None
+
+        if not self._sort_column or not self._rows:
+            return
+
+        # Sort rows
+        sorted_items = sorted(
+            self._rows.items(),
+            key=lambda item: self._get_sort_key(item[1].result),
+            reverse=not self._sort_ascending,
+        )
+
+        # Rebuild _rows dict in sorted order
+        self._rows = dict(sorted_items)
+
+        # Re-pack rows in-place using pack(after=...) to avoid flickering
+        rows_list = list(self._rows.values())
+        if not rows_list:
+            return
+        rows_list[0].pack(fill="x", pady=(0, 1))
+        for i in range(1, len(rows_list)):
+            rows_list[i].pack(fill="x", pady=(0, 1), after=rows_list[i - 1])
+
     def add_result(self, result: AnalysisResult):
         """Add or update a result in the table."""
         self._results[result.filepath] = result
@@ -472,6 +589,10 @@ class ResultsTable(ctk.CTkFrame):
             row.pack(fill="x", pady=(0, 1))
             self._rows[result.filepath] = row
 
+        # Maintain sort order if sorting is active (debounced during batch)
+        if self._sort_column:
+            self._schedule_reorder()
+
     def add_results(self, results: List[AnalysisResult]):
         """Add multiple results to the table."""
         for result in results:
@@ -479,6 +600,11 @@ class ResultsTable(ctk.CTkFrame):
 
     def clear(self):
         """Clear all results from the table."""
+        # Cancel any pending reorder timer
+        if self._reorder_timer is not None:
+            self.after_cancel(self._reorder_timer)
+            self._reorder_timer = None
+
         # Get all rows to destroy
         rows_to_destroy = list(self._rows.values())
 
