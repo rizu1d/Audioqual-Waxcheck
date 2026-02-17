@@ -425,6 +425,7 @@ class SpectrogramWindow(ctk.CTkToplevel):
             self.after_cancel(self._resize_timer)
 
         self.destroy()
+        self.master.focus_force()
 
     def is_open(self) -> bool:
         """Check if the window is still open."""

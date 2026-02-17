@@ -173,7 +173,6 @@ class ResultRow(ctk.CTkFrame):
         """Handle click on row or its children."""
         if self.on_click:
             self.on_click(self)
-        return "break"  # Prevent event from bubbling to other handlers
 
     def _on_enter(self, event):
         """Handle mouse enter (hover)."""

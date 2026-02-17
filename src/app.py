@@ -27,7 +27,11 @@ from .gui.main_window import MainWindow
 from .gui.spectrogram_window import SpectrogramWindow
 from .gui.audio_player import AudioPlayer, PlayerState
 from .utils.settings import AppSettings
-from .utils.tk_utils import schedule_callback_from_thread
+from .utils.tk_utils import (
+    init_thread_scheduler,
+    cleanup_thread_scheduler,
+    schedule_callback_from_thread,
+)
 
 try:
     from .core.folder_watcher import FolderWatcher
@@ -66,6 +70,8 @@ class AudioQualApp:
         self._spectrogram_window: Optional[SpectrogramWindow] = None
         # Currently selected result (for spectrogram display)
         self._selected_result: Optional[AnalysisResult] = None
+
+        init_thread_scheduler(self.root)
 
         self._setup_window()
         self._setup_components()
@@ -438,12 +444,13 @@ class AudioQualApp:
             self.audio_player.cleanup()
 
     def _heartbeat(self):
-        """Keep macOS event loop alive and force Tk idle task processing."""
-        try:
-            self.root.update_idletasks()
-        except Exception:
-            pass
-        self.root.after(50, self._heartbeat)
+        """Keep the macOS event loop alive.
+
+        The keep-alive pipe in tk_utils.py ensures the Cocoa run loop
+        stays active and thread callbacks are processed promptly.
+        This heartbeat acts as a safety net.
+        """
+        self.root.after(200, self._heartbeat)
 
     def run(self):
         """Start the application main loop."""
@@ -458,6 +465,7 @@ class AudioQualApp:
         if self._folder_watcher:
             self._folder_watcher.cleanup()
         self._cleanup()
+        cleanup_thread_scheduler()
         self.root.destroy()
 
 

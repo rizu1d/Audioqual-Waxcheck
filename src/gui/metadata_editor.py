@@ -189,8 +189,10 @@ class MetadataEditor(ctk.CTkToplevel):
         self._read_metadata()
 
         # Make modal
+        self.lift()
         self.grab_set()
         self.focus_force()
+        self.after(50, self.focus_force)
         self.bind("<Escape>", lambda e: self._cancel())
 
     def _detect_format(self):
@@ -986,7 +988,7 @@ class MetadataEditor(ctk.CTkToplevel):
         if self._on_save:
             self._on_save(old_filepath, new_filepath)
 
-        self.destroy()
+        self._close()
 
     def _try_rename(self) -> Optional[str]:
         """Attempt to rename the file to 'Artist - Title.ext'.
@@ -1211,4 +1213,10 @@ class MetadataEditor(ctk.CTkToplevel):
 
     def _cancel(self):
         """Close without saving."""
+        self._close()
+
+    def _close(self):
+        """Close editor and restore focus to parent."""
+        self.grab_release()
         self.destroy()
+        self.master.focus_force()

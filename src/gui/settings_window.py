@@ -20,9 +20,13 @@ class SettingsWindow(ctk.CTkToplevel):
         self._setup_window()
         self._setup_ui()
 
+        self.lift()
         self.grab_set()
         self.focus_force()
-        self.bind("<Escape>", lambda e: self.destroy())
+        # Ensure focus after window is fully mapped (macOS needs a delay)
+        self.after(50, self.focus_force)
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+        self.bind("<Escape>", lambda e: self._on_close())
 
     def _setup_window(self):
         w, h = 460, 400
@@ -160,7 +164,7 @@ class SettingsWindow(ctk.CTkToplevel):
         ctk.CTkButton(
             btn_frame,
             text="Cerrar",
-            command=self.destroy,
+            command=self._on_close,
             width=90,
             height=34,
             corner_radius=8,
@@ -184,3 +188,9 @@ class SettingsWindow(ctk.CTkToplevel):
 
     def _on_auto_start_toggle(self):
         self._settings.watcher_auto_start = self._auto_start_var.get() == "1"
+
+    def _on_close(self):
+        """Close settings and restore focus to parent."""
+        self.grab_release()
+        self.destroy()
+        self.master.focus_force()
