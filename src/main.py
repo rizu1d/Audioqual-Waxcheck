@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""AudioQual - Audio Quality Analyzer
+"""WaxCheck - Audio Quality Analyzer
 
 A desktop application for analyzing the real quality of audio files
 through spectral analysis, detecting "fake" files (upscaled from lower quality).

@@ -1,1 +1,1 @@
-"""AudioQual - Audio quality analyzer."""
+"""WaxCheck - Audio quality analyzer."""

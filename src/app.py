@@ -80,9 +80,19 @@ class AudioQualApp:
 
     def _setup_window(self):
         """Configure the main window."""
-        self.root.title("AudioQual - Analizador de Calidad de Audio")
+        self.root.title("WaxCheck")
         self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
         self.root.minsize(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)
+
+        # Set app icon (dock/taskbar)
+        icon_path = os.path.join(os.path.dirname(__file__), "assets", "logo-WaxCheck.png")
+        try:
+            from PIL import Image, ImageTk
+            icon_img = Image.open(icon_path)
+            self._app_icon = ImageTk.PhotoImage(icon_img)
+            self.root.iconphoto(True, self._app_icon)
+        except Exception:
+            pass
 
         # Set appearance mode
         ctk.set_appearance_mode("dark")

@@ -93,13 +93,28 @@ class MainWindow(ctk.CTkFrame):
         self.top_bar.grid(row=0, column=0, sticky="ew", padx=16, pady=(16, 0))
         self.top_bar.grid_columnconfigure(1, weight=1)
 
-        # Title
-        self.title_label = ctk.CTkLabel(
-            self.top_bar,
-            text="AudioQual",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["title"], weight="bold"),
-            text_color=THEME_COLORS["text_primary"],
-        )
+        # Logo
+        logo_path = os.path.join(os.path.dirname(__file__), "..", "assets", "logo-WaxCheck.png")
+        try:
+            logo_image = Image.open(logo_path)
+            self._logo_icon = ctk.CTkImage(
+                light_image=logo_image,
+                dark_image=logo_image,
+                size=(64, 64),
+            )
+            self.title_label = ctk.CTkLabel(
+                self.top_bar,
+                text="",
+                image=self._logo_icon,
+            )
+        except Exception:
+            # Fallback to text if logo not found
+            self.title_label = ctk.CTkLabel(
+                self.top_bar,
+                text="WaxCheck",
+                font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["title"], weight="bold"),
+                text_color=THEME_COLORS["text_primary"],
+            )
         self.title_label.grid(row=0, column=0, padx=16, pady=12)
 
         # Controls frame (aligned right)
