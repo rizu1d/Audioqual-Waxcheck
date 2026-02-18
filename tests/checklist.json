@@ -1,0 +1,212 @@
+{
+  "version": "1.0",
+  "description": "Registro de features de WaxCheck con verificaciones automatizadas y manuales",
+  "features": {
+    "app_boot": {
+      "checks": [
+        "App arranca sin excepciones",
+        "Ventana principal visible",
+        "Sin errores en consola"
+      ],
+      "automated": "VUI_001, VUI_002",
+      "status": "pending"
+    },
+    "rebranding": {
+      "checks": [
+        "Logo WaxCheck visible",
+        "No aparece 'AudioQual' en UI",
+        "Titulo ventana es 'WaxCheck'"
+      ],
+      "automated": "VUI_003",
+      "status": "pending"
+    },
+    "toolbar_buttons": {
+      "checks": [
+        "6 botones presentes (add, watcher, clear, spectrogram, metadata, settings)",
+        "Todos tienen comando asociado",
+        "Iconos cargan correctamente"
+      ],
+      "automated": "VUI_004",
+      "status": "pending"
+    },
+    "empty_state": {
+      "checks": [
+        "Overlay visible sin archivos cargados",
+        "Texto 'Arrastra archivos de audio aqui'",
+        "Se oculta al cargar archivos"
+      ],
+      "automated": "VUI_005",
+      "status": "pending"
+    },
+    "results_table": {
+      "checks": [
+        "7 columnas con IDs correctos",
+        "Headers visibles con nombres en espanol",
+        "Columnas redimensionables"
+      ],
+      "automated": "VUI_006",
+      "status": "pending"
+    },
+    "column_sorting": {
+      "checks": [
+        "Clic en header ordena",
+        "Segundo clic invierte orden",
+        "Flecha indicadora visible",
+        "Sin flickering durante ordenacion"
+      ],
+      "automated": "VUI_007",
+      "status": "pending"
+    },
+    "window_resize": {
+      "checks": [
+        "Resize a 1000x700 sin errores",
+        "Resize a 900x800 sin errores",
+        "Layout se ajusta correctamente"
+      ],
+      "automated": "VUI_008",
+      "status": "pending"
+    },
+    "settings_window": {
+      "checks": [
+        "Se abre desde boton",
+        "Es modal (grab_set)",
+        "Se cierra limpiamente",
+        "Configuracion persiste"
+      ],
+      "automated": "VUI_009",
+      "status": "pending"
+    },
+    "spectrogram_window": {
+      "checks": [
+        "Sin archivo: no-op sin error",
+        "Con archivo: ventana se abre",
+        "Muestra fiabilidad (Alta/Media/Baja)",
+        "Animacion de renderizado"
+      ],
+      "automated": "VUI_010",
+      "manual": "Verificar con archivo cargado",
+      "status": "pending"
+    },
+    "metadata_editor": {
+      "checks": [
+        "Sin archivo: no-op sin error",
+        "Con archivo: ventana se abre",
+        "Campos editables (title, artist, album, etc)",
+        "Guardado funciona"
+      ],
+      "automated": "VUI_011",
+      "manual": "Verificar con archivo cargado",
+      "status": "pending"
+    },
+    "audio_player": {
+      "checks": [
+        "PlayerControls widget existe",
+        "Play/Pause funciona",
+        "Seek funciona",
+        "Volumen funciona",
+        "Prev/Next funciona"
+      ],
+      "automated": "VUI_012",
+      "manual": "Verificar reproduccion con archivo real",
+      "status": "pending"
+    },
+    "clear_function": {
+      "checks": [
+        "Limpia tabla sin crash",
+        "Detiene reproduccion",
+        "Empty state vuelve a aparecer",
+        "Cache de espectrogramas limpiado"
+      ],
+      "automated": "VUI_013",
+      "status": "pending"
+    },
+    "status_bar": {
+      "checks": [
+        "Label de estado con texto",
+        "Label de conteo con texto",
+        "Barra de progreso oculta por defecto",
+        "Indicador de watcher oculto por defecto"
+      ],
+      "automated": "VUI_014",
+      "status": "pending"
+    },
+    "drag_and_drop": {
+      "checks": [
+        "Drop zone funciona en empty state",
+        "Drop zone funciona en tabla con archivos",
+        "Formatos soportados se procesan",
+        "Duplicados se filtran"
+      ],
+      "automated": null,
+      "manual": "Requiere interaccion manual con drag-and-drop",
+      "status": "pending"
+    },
+    "keyboard_shortcuts": {
+      "checks": [
+        "Space: play/pause",
+        "Return: load and play",
+        "Up/Down: navegar lista",
+        "Left/Right: seek",
+        "Delete/Backspace: eliminar",
+        "Cmd-O: abrir archivos",
+        "Cmd-E/I: editor metadata",
+        "Cmd-F: busqueda",
+        "Escape: parar/cerrar busqueda"
+      ],
+      "automated": null,
+      "manual": "Requiere interaccion de teclado",
+      "status": "pending"
+    },
+    "file_analysis": {
+      "checks": [
+        "MP3 se analiza correctamente",
+        "FLAC se analiza correctamente",
+        "Cutoff y calidad detectados",
+        "Status correcto"
+      ],
+      "automated": "verify_implementation.py --quick (Fase 2)",
+      "status": "pending"
+    },
+    "search_filter": {
+      "checks": [
+        "Cmd-F abre barra de busqueda",
+        "Filtrado por nombre funciona",
+        "Fuzzy matching funciona (C.R.E.A.M -> cream)",
+        "Escape cierra busqueda y restaura filas"
+      ],
+      "automated": null,
+      "manual": "Requiere interaccion de teclado y archivos cargados",
+      "status": "pending"
+    },
+    "folder_watcher": {
+      "checks": [
+        "Boton de watcher funciona",
+        "Menu contextual aparece",
+        "Monitoriza carpeta",
+        "Archivos nuevos se anaden automaticamente"
+      ],
+      "automated": null,
+      "manual": "Requiere carpeta con archivos reales",
+      "status": "pending"
+    },
+    "waveform_display": {
+      "checks": [
+        "Waveform se renderiza con archivo cargado",
+        "Playhead se mueve durante reproduccion",
+        "Colores played/unplayed correctos"
+      ],
+      "automated": null,
+      "manual": "Requiere reproduccion de archivo real",
+      "status": "pending"
+    },
+    "exception_safety": {
+      "checks": [
+        "Sin excepciones no manejadas durante tests",
+        "Thread callbacks seguros",
+        "Cleanup correcto al cerrar"
+      ],
+      "automated": "VUI_015",
+      "status": "pending"
+    }
+  }
+}

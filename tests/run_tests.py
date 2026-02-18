@@ -13,6 +13,7 @@ Opciones:
 import argparse
 import json
 import os
+import subprocess
 import sys
 import time
 from datetime import datetime
@@ -185,10 +186,55 @@ def save_results(all_results, analysis_results):
     return filepath
 
 
+def _run_verify_subprocess():
+    """Run UI verification in a subprocess to avoid Tk pyimage conflicts.
+
+    When multiple Tk roots are created/destroyed in one process (e.g., ui suite
+    then verify suite), CTkImage PhotoImage references become stale. Subprocess
+    isolation ensures a fresh Tk interpreter for each suite.
+    """
+    import subprocess
+    verify_script = os.path.join(TESTS_DIR, "verify_ui.py")
+    try:
+        proc = subprocess.run(
+            [sys.executable, verify_script, "--json"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=PROJECT_ROOT,
+        )
+        if proc.stdout.strip():
+            return json.loads(proc.stdout.strip())
+        # Fallback: subprocess ran but no JSON output
+        return [{
+            "id": "VUI_000",
+            "description": "UI Verification subprocess",
+            "test_type": "verify",
+            "status": "FAIL",
+            "detail": proc.stderr.strip()[:200] if proc.stderr else "No output",
+        }]
+    except subprocess.TimeoutExpired:
+        return [{
+            "id": "VUI_000",
+            "description": "UI Verification subprocess",
+            "test_type": "verify",
+            "status": "FAIL",
+            "detail": "Timeout (60s)",
+        }]
+    except Exception as e:
+        return [{
+            "id": "VUI_000",
+            "description": "UI Verification subprocess",
+            "test_type": "verify",
+            "status": "FAIL",
+            "detail": f"Error: {e}",
+        }]
+
+
 def main():
     parser = argparse.ArgumentParser(description="Ejecutor de tests AudioQual")
     parser.add_argument("--summary", action="store_true", help="Solo mostrar resumen")
-    parser.add_argument("--suite", choices=["detection", "classification", "ui"],
+    parser.add_argument("--suite", choices=["detection", "classification", "ui", "verify"],
                         help="Ejecutar solo una suite")
     parser.add_argument("--save", action="store_true", help="Guardar resultados en JSON")
     args = parser.parse_args()
@@ -201,7 +247,7 @@ def main():
     analysis_results = {}
 
     # Cargar test cases (necesario para detection y classification)
-    if args.suite != "ui":
+    if args.suite not in ("ui", "verify"):
         test_cases = load_test_cases()
 
         # Ejecutar analisis una sola vez
@@ -238,6 +284,15 @@ def main():
         for r in ui_results:
             print_result(r, args.summary)
         all_results.extend(ui_results)
+        print()
+
+    # Suite: verify (subprocess for Tk isolation — avoids pyimage conflicts)
+    if args.suite is None or args.suite == "verify":
+        print(f"{BOLD}--- UI Verification Tests ---{RESET}")
+        verify_results = _run_verify_subprocess()
+        for r in verify_results:
+            print_result(r, args.summary)
+        all_results.extend(verify_results)
         print()
 
     # Resumen

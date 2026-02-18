@@ -1,0 +1,340 @@
+================================================================================
+  WaxCheck - Sistema de Verificacion Post-Implementacion
+================================================================================
+
+PROBLEMA QUE RESUELVE
+---------------------
+Antes de este sistema, no habia forma automatizada de verificar que la app
+seguia funcionando correctamente despues de cada cambio. Esto causaba:
+
+  - Cambios en UI que rompian widgets sin detectarlo
+  - Regresiones en el algoritmo de deteccion
+  - Multiples rondas de correccion por no verificar antes de reportar
+
+La solucion: infraestructura que fuerza la verificacion antes de dar una
+tarea por terminada.
+
+
+ARQUITECTURA DEL SISTEMA
+-------------------------
+El sistema tiene tres capas:
+
+  1. VERIFICADORES (ejecutan checks concretos)
+     - verify_ui.py          -> 15 checks de interfaz grafica
+     - run_tests.py           -> tests de algoritmo (32 archivos reales)
+
+  2. ORQUESTADORES (combinan verificadores)
+     - verify_implementation.py  -> modo quick (~15s) y full (~2-3min)
+
+  3. SCRIPTS DE CONVENIENCIA (punto de entrada rapido)
+     - quick_check.sh         -> verificacion rapida + tests algoritmo
+     - full_check.sh          -> verificacion completa
+
+Ademas:
+  - checklist.json            -> registro de features y sus checks
+  - WORKFLOW.md               -> protocolo para humanos y Claude
+  - CLAUDE.md (seccion final) -> instrucciones para que Claude verifique
+
+
+CAPA 1: VERIFICADOR DE UI (tests/verify_ui.py)
+-----------------------------------------------
+Clase UIVerifier que crea UNA instancia real de la app (sin mainloop),
+ejecuta 15 checks sobre la interfaz, y destruye la app.
+
+Patron de uso (inspirado en test_ui.py):
+
+    from src.app import AudioQualApp
+    app = AudioQualApp()
+    app.root.update()       # procesar eventos pendientes
+    # ... inspeccionar widgets ...
+    cleanup_thread_scheduler()
+    app.root.destroy()
+
+La funcion auxiliar _pump_events(root, ms) ejecuta root.update() en bucle
+durante N milisegundos. Es necesaria para que CTkToplevel (settings, etc.)
+procese sus callbacks internos de customtkinter.
+
+CHECKS (VUI_001 a VUI_015):
+
+  VUI_001  App arranca sin errores
+           AudioQualApp() + root.update() sin excepcion.
+
+  VUI_002  Ventana principal renderiza completa
+           Verifica que top_bar, content_frame, status_bar existen
+           via winfo_exists().
+
+  VUI_003  Logo visible
+           title_label existe y tiene imagen (_image != None) o texto
+           fallback "WaxCheck".
+
+  VUI_004  Botones existen y tienen comando
+           Verifica 6 botones: add_files_btn, clear_btn, spectrogram_btn,
+           metadata_btn, settings_btn, watcher_btn.
+           Cada uno debe existir (winfo_exists) y tener _command callable.
+           NOTA: NO se invoca add_files_btn porque abre filedialog (bloquea).
+
+  VUI_005  Empty state / drop zone visible
+           empty_state.winfo_viewable() == True (sin archivos cargados).
+
+  VUI_006  Tabla con 7 columnas
+           len(ResultsTable.COLUMNS) == 7 y IDs son:
+           filename, format, duration, declared_bitrate,
+           cutoff_frequency, detected_quality, status.
+
+  VUI_007  Headers clickables (sorting)
+           Invoca _on_header_click("filename"), verifica _sort_column == "filename".
+           Invoca de nuevo, verifica que _sort_ascending se invirtio.
+           Restaura estado original al terminar.
+
+  VUI_008  Resize no rompe layout
+           Cambia geometry a 1000x700, 900x800, 1100x750.
+           pump_events entre cada cambio. Sin excepcion = OK.
+
+  VUI_009  Settings abre y cierra
+           Invoca main_window._on_open_settings().
+           pump_events(200ms) para que CTkToplevel se procese.
+           Busca CTkToplevel en root.winfo_children().
+           Llama grab_release() + destroy().
+
+  VUI_010  Spectrogram sin archivo (no-op)
+           Invoca _show_spectrogram_window() sin archivo seleccionado.
+           Debe retornar sin error (no hay _selected_result).
+
+  VUI_011  Metadata sin archivo (no-op)
+           Invoca _on_edit_metadata() sin archivo seleccionado.
+           Debe retornar sin error (get_selected_result() == None).
+
+  VUI_012  Player controls existen
+           _player_controls is not None y winfo_exists().
+
+  VUI_013  Clear button funciona
+           Invoca _on_clear() sin archivos cargados.
+           Debe completar sin crash.
+
+  VUI_014  Status bar completa
+           status_label y count_label existen y tienen texto no vacio.
+
+  VUI_015  Sin excepciones no manejadas
+           ExceptionCapture (sobreescribe sys.excepthook y threading.excepthook)
+           registra cualquier excepcion durante todos los checks.
+           Este check verifica que la lista esta vacia.
+
+MODOS DE EJECUCION:
+
+  Standalone:
+    python tests/verify_ui.py
+    -> Output legible con colores: [OK] / [FAIL] por check
+    -> Exit code 0 si todo pasa, 1 si hay fallos
+
+  JSON (para integracion con run_tests.py):
+    python tests/verify_ui.py --json
+    -> Output JSON con lista de resultados
+    -> Usado por run_tests.py via subprocess
+
+  Como suite (llamada desde Python):
+    from tests.verify_ui import run_as_suite
+    results = run_as_suite()
+    -> Resetea tk_utils._initialized y _shutting_down antes de crear app
+    -> Retorna lista de dicts {id, description, test_type, status, detail}
+
+
+CAPA 1: TESTS DE ALGORITMO (tests/run_tests.py)
+-------------------------------------------------
+Runner principal que ejecuta 4 suites:
+
+  --suite detection       Tests de deteccion de frecuencia de corte
+  --suite classification  Tests de clasificacion de calidad
+  --suite ui              Tests basicos de instanciacion (UI_001 a UI_003)
+  --suite verify          UI Verification (VUI_001 a VUI_015)
+  (sin flag)              Ejecuta TODAS las suites
+
+La suite "verify" se ejecuta en SUBPROCESS para evitar conflictos de
+tkinter. Razon: cuando la suite "ui" crea y destruye un Tk root, y luego
+"verify" crea otro, las referencias internas de CTkImage (PhotoImage)
+quedan invalidas ("pyimage8 doesn't exist"). El subprocess garantiza un
+interprete Tk fresco.
+
+Implementacion:
+  run_tests.py llama: subprocess.run([python, verify_ui.py, --json])
+  Parsea el JSON de stdout y lo integra en all_results.
+
+Formato de resultado (estandar para todas las suites):
+  {
+      "id": "VUI_001",
+      "description": "App arranca sin errores",
+      "test_type": "verify",
+      "status": "PASS",          # PASS / FAIL / SKIP
+      "detail": "AudioQualApp() + root.update() OK"
+  }
+
+
+CAPA 2: ORQUESTADOR (tests/verify_implementation.py)
+------------------------------------------------------
+Dos modos de ejecucion:
+
+MODO QUICK (--quick, default, ~15 segundos):
+
+  Fase 1: Boot (~2s)
+    - Crea AudioQualApp() en proceso
+    - Verifica que main_window, analyzer, audio_player, results_table,
+      top_bar, status_bar existen
+    - cleanup_thread_scheduler() + root.destroy()
+
+  Fase 2: Analisis (~10s)
+    - Busca 2 MP3 en tests.json
+    - AudioAnalyzer().analyze_file() para cada uno
+    - Verifica: resultado no None, cutoff > 0, status != Error,
+      detected_quality no None, cutoff >= expected minimum de tests.json
+
+MODO FULL (--full, ~2-3 minutos):
+
+  Fase 1: Boot + Analisis (en proceso, ~10s)
+    - Igual que quick mode completo
+
+  Fase 2: UI Verification (subprocess, ~5s)
+    - subprocess.run([python, verify_ui.py]) con timeout 60s
+    - Aislamiento de proceso para Tk
+
+  Fase 3: Algorithm Tests (subprocess, ~90s)
+    - subprocess.run([python, run_tests.py, --summary, --suite, detection])
+    - subprocess.run([python, run_tests.py, --summary, --suite, classification])
+    - Aislamiento de proceso (cada uno analiza los 32 archivos)
+
+Los subprocesses son necesarios para:
+  - Evitar conflictos de Tk entre fases que crean/destruyen roots
+  - Cada fase tiene estado limpio de modulos, singletons, etc.
+
+Output:
+  === WaxCheck Verificacion Rapida ===
+    [OK] Fase 1: Boot (1.8s)
+    [OK] Fase 2: Analisis de 2 archivos (9.2s)
+  RESULTADO: TODO OK
+
+  === WaxCheck Verificacion Completa ===
+    [OK] Fase 1: Boot + Analisis (11.0s)
+    [OK] Fase 2: UI Verification (7.3s)
+    [OK] Fase 3: Algorithm Tests (42.1s)
+  RESULTADO: TODO OK
+
+
+CAPA 3: SCRIPTS DE CONVENIENCIA
+---------------------------------
+
+tests/quick_check.sh (~30 segundos):
+  1. verify_implementation.py --quick  (boot + 2 archivos)
+  2. run_tests.py --summary            (32 archivos, todas las suites)
+  3. Si ambos exit 0 -> "TODO OK", si no -> "FALLOS DETECTADOS"
+
+tests/full_check.sh (~2-3 minutos):
+  1. verify_implementation.py --full   (boot + UI + algoritmo)
+  2. Exit code del full es el exit code del script
+
+
+REGISTRO DE FEATURES (tests/checklist.json)
+--------------------------------------------
+JSON con ~20 features del producto. Cada feature tiene:
+
+  - checks: lista de verificaciones (texto legible)
+  - automated: IDs de checks automatizados (VUI_001, etc.) o null
+  - manual: descripcion de verificacion manual si aplica
+  - status: "pending" (para tracking de estado)
+
+Ejemplo:
+  "column_sorting": {
+    "checks": ["Clic en header ordena", "Segundo clic invierte", ...],
+    "automated": "VUI_007",
+    "status": "pending"
+  }
+
+Sirve como referencia para saber que esta cubierto automaticamente y que
+requiere verificacion manual.
+
+
+INTEGRACION CON CLAUDE (CLAUDE.md)
+-----------------------------------
+La seccion "Post-Implementation Verification" al final de CLAUDE.md
+contiene la tabla de decision que Claude lee en cada sesion:
+
+  | Tipo de cambio              | Comando                                    |
+  |-----------------------------|--------------------------------------------|
+  | UI changes                  | bash tests/quick_check.sh                  |
+  | Algorithm/constants         | bash tests/full_check.sh                   |
+  | Simple bugfix (1-2 files)   | python tests/verify_implementation.py --quick |
+  | Large refactor (3+ files)   | bash tests/full_check.sh                   |
+  | Docs/configs only           | python tests/verify_implementation.py --quick |
+
+Regla: Claude nunca reporta una tarea como completada sin ejecutar la
+verificacion correspondiente.
+
+
+EDGE CASES MANEJADOS
+---------------------
+
+1. Singleton tk_utils._initialized
+   run_as_suite() resetea _initialized=False y _shutting_down=False antes de
+   crear la app. Necesario porque test_ui.py crea/destruye un app sin llamar
+   cleanup_thread_scheduler().
+
+2. SettingsWindow.grab_set()
+   Al abrir settings, la ventana hace grab_set() (modal). Para cerrarla en
+   tests hay que llamar grab_release() antes de destroy(), o tkinter queda
+   en estado inconsistente.
+
+3. Botones que abren dialogs
+   add_files_btn abre filedialog (bloquea el thread). Solo se verifica
+   existencia y que tiene _command callable, NUNCA se invoca.
+
+4. Conflicto pyimage entre Tk roots
+   Cuando dos Tk() roots se crean/destruyen en el mismo proceso, las
+   CTkImage internas (PhotoImage) quedan con referencias invalidas.
+   Solucion: la suite "verify" en run_tests.py se ejecuta como subprocess.
+
+5. Sin display (CI headless)
+   Guard al inicio de UIVerifier: si no hay display (DISPLAY env var en
+   Linux), retorna SKIP en todos los checks.
+
+6. ExceptionCapture
+   Sobreescribe sys.excepthook y threading.excepthook durante la ejecucion
+   de todos los checks. Captura excepciones que tkinter traga silenciosamente.
+   VUI_015 verifica que no hubo ninguna.
+
+
+DIAGRAMA DE DEPENDENCIAS
+--------------------------
+
+  quick_check.sh
+    |
+    +-- verify_implementation.py --quick
+    |     |
+    |     +-- [in-process] AudioQualApp() boot check
+    |     +-- [in-process] AudioAnalyzer().analyze_file() x 2
+    |
+    +-- run_tests.py --summary
+          |
+          +-- detection tests (32 archivos)
+          +-- classification tests (32 archivos)
+          +-- ui tests (instanciacion basica)
+          +-- verify tests (subprocess -> verify_ui.py --json)
+                |
+                +-- UIVerifier.run_all() -> 15 checks
+
+
+  full_check.sh
+    |
+    +-- verify_implementation.py --full
+          |
+          +-- [in-process] Fase 1: boot + analisis
+          +-- [subprocess] Fase 2: verify_ui.py
+          +-- [subprocess] Fase 3: run_tests.py --suite detection
+          +-- [subprocess] Fase 3: run_tests.py --suite classification
+
+
+TIEMPOS TIPICOS
+----------------
+  verify_ui.py standalone:                    ~3-5s
+  verify_implementation.py --quick:           ~7-15s
+  verify_implementation.py --full:            ~2-3min
+  run_tests.py --suite verify:                ~5s
+  run_tests.py (todas las suites):            ~50s
+  quick_check.sh:                             ~1min
+  full_check.sh:                              ~2-3min

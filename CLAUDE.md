@@ -17,12 +17,28 @@ python src/main.py
 # Install dependencies
 pip install -r requirements.txt
 
+# Run tests (full suite, ~42s — analyzes 32 audio files)
+python tests/run_tests.py
+
+# Run only UI tests (fast, ~2s, no audio analysis)
+python tests/run_tests.py --suite ui
+
+# Run only detection or classification tests
+python tests/run_tests.py --suite detection
+python tests/run_tests.py --suite classification
+
+# Summary only (no per-test output)
+python tests/run_tests.py --summary
+
+# Save results to tests/results_YYYYMMDD_HHMMSS.json
+python tests/run_tests.py --save
+
 # Build standalone app
 pyinstaller build/audioqual_macos.spec   # macOS
 pyinstaller build/audioqual_windows.spec  # Windows
 ```
 
-There is no test suite or linter configured.
+No linter is configured.
 
 ## Architecture
 
@@ -140,8 +156,22 @@ Constants are grouped by purpose:
 - **Tkinter thread safety:** All UI updates from background threads MUST go through `schedule_callback_from_thread()` (in `src/utils/tk_utils.py`). Direct tkinter calls from non-main threads cause crashes.
 - **Matplotlib backend:** Must use `'Agg'` (non-interactive), configured once at module load in `app.py`. Interactive backends conflict with tkinter.
 - **macOS event loop:** The heartbeat + event_generate pattern is required. Removing either causes UI freezes on macOS when thread callbacks fire.
-- **No test suite exists.** There are no automated tests.
+- **Test suite:** Run `python tests/run_tests.py` before and after algorithm changes. Tests in `tests.json` are append-only (never edit or delete existing entries). The test suite analyzes 32 real audio files and checks cutoff detection + classification against known baselines. Exit code 0 = all pass, 1 = regressions detected.
 
 ## Language
 
 The UI text and status messages are in Spanish (e.g., "Transcode detectado", "Analizando...", "Listo").
+
+## Post-Implementation Verification
+
+After every code change, run the appropriate verification before reporting the task as complete. See `WORKFLOW.md` for the full protocol. Quick reference:
+
+| Change type | Command | Time |
+|------------|---------|------|
+| UI changes | `bash tests/quick_check.sh` | ~30s |
+| Algorithm/constants | `bash tests/full_check.sh` | ~2-3min |
+| Simple bugfix (1-2 files) | `python tests/verify_implementation.py --quick` | ~15s |
+| Large refactor (3+ files) | `bash tests/full_check.sh` | ~2-3min |
+| Docs/configs only | `python tests/verify_implementation.py --quick` | ~15s |
+
+**Rule: never report a task as completed without running verification.**
