@@ -131,3 +131,44 @@ def icon_volume_mute(size: int = 14, color: str = _COLOR) -> ctk.CTkImage:
         return _wrap(img, size)
 
     return _get_cached(("vol_mute", size, color), factory)
+
+
+# ── Search (magnifying glass) ────────────────────────────────────
+
+
+def icon_search(size: int = 16, color: str = _COLOR) -> ctk.CTkImage:
+    """Magnifying glass icon."""
+    def factory():
+        img, draw, cs = _canvas(size)
+        sw = _sw(cs)
+        c = _c(color)
+        # Lens circle (centered at 0.43 so visual weight sits at canvas center)
+        cx, cy = cs * 0.43, cs * 0.43
+        r = cs * 0.24
+        draw.ellipse([cx - r, cy - r, cx + r, cy + r], outline=c, width=sw)
+        # Handle line (diagonal from bottom-right of circle)
+        offset = r * 0.707  # cos(45°)
+        draw.line(
+            [(cx + offset, cy + offset), (cs * 0.80, cs * 0.80)],
+            fill=c, width=sw,
+        )
+        return _wrap(img, size)
+
+    return _get_cached(("search", size, color), factory)
+
+
+# ── Close (X mark) ───────────────────────────────────────────────
+
+
+def icon_close(size: int = 12, color: str = _COLOR) -> ctk.CTkImage:
+    """X mark icon."""
+    def factory():
+        img, draw, cs = _canvas(size)
+        sw = _sw(cs)
+        c = _c(color)
+        margin = cs * 0.25
+        draw.line([(margin, margin), (cs - margin, cs - margin)], fill=c, width=sw)
+        draw.line([(cs - margin, margin), (margin, cs - margin)], fill=c, width=sw)
+        return _wrap(img, size)
+
+    return _get_cached(("close", size, color), factory)

@@ -9,6 +9,7 @@ import customtkinter as ctk
 from ..core.analyzer import AnalysisResult
 from ..utils.constants import STATUS_COLORS, THEME_COLORS, FONT_FAMILY, FONT_SIZES
 from ..utils.file_utils import format_duration
+from .icons import icon_search, icon_close
 
 
 SelectionCallback = Callable[[Optional[AnalysisResult]], None]
@@ -274,6 +275,11 @@ class ResultsTable(ctk.CTkFrame):
         # Debounce timer for reorder during batch analysis
         self._reorder_timer = None
 
+        # Search/filter state
+        self._filter_text: str = ""
+        self._filter_active: bool = False
+        self._hidden_rows: set = set()
+
         self._setup_ui()
 
     def _current_columns(self) -> List[tuple]:
@@ -353,6 +359,154 @@ class ResultsTable(ctk.CTkFrame):
         # Configure scroll frame columns to match header
         for i in range(len(self.COLUMNS)):
             self.scroll_frame.grid_columnconfigure(i, weight=0)
+
+        self._setup_search_widget()
+
+    # ─── Search / Filter ────────────────────────────────────────────
+
+    def _setup_search_widget(self):
+        """Create search button and floating search bar in the header."""
+        # Magnifying glass button in the header (top-right)
+        self._search_btn = ctk.CTkButton(
+            self.header_frame,
+            text="",
+            image=icon_search(16, THEME_COLORS["text_muted"]),
+            width=28, height=28,
+            fg_color="transparent",
+            hover_color=THEME_COLORS["bg_elevated"],
+            corner_radius=6,
+            command=self.toggle_search,
+        )
+        self._search_btn.place(relx=1.0, rely=0.5, anchor="e", x=-8)
+        self._search_btn.lift()
+
+        # Floating search bar (hidden by default, fixed size so place() works)
+        self._search_bar = ctk.CTkFrame(
+            self.header_frame,
+            fg_color=THEME_COLORS["bg_elevated"],
+            corner_radius=8,
+            height=30,
+            width=260,
+        )
+        self._search_bar.pack_propagate(False)
+
+        # Close button
+        self._search_close_btn = ctk.CTkButton(
+            self._search_bar,
+            text="",
+            image=icon_close(10, THEME_COLORS["text_muted"]),
+            width=22, height=22,
+            fg_color="transparent",
+            hover_color=THEME_COLORS["bg_frame"],
+            corner_radius=4,
+            command=self.close_search,
+        )
+        self._search_close_btn.pack(side="left", padx=(4, 0), pady=3)
+
+        # Search entry
+        self._search_entry = ctk.CTkEntry(
+            self._search_bar,
+            placeholder_text="Buscar archivo...",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
+            fg_color="transparent",
+            border_width=0,
+            height=24,
+            text_color=THEME_COLORS["text_primary"],
+        )
+        self._search_entry.pack(side="left", fill="x", expand=True, padx=(2, 8), pady=3)
+
+        # Bind events
+        self._search_entry.bind("<KeyRelease>", lambda e: self._on_search_changed())
+        self._search_entry.bind("<Escape>", lambda e: self.close_search())
+
+    def toggle_search(self):
+        """Toggle the search bar visibility."""
+        if self._filter_active:
+            self.close_search()
+        else:
+            self.open_search()
+
+    def open_search(self):
+        """Show the search bar and focus the entry."""
+        if self._filter_active:
+            self._search_entry.focus_set()
+            return
+        self._filter_active = True
+        self._search_btn.place_forget()
+        self._search_bar.place(relx=1.0, rely=0.5, anchor="e", x=-4)
+        self._search_bar.lift()
+        self._search_entry.focus_set()
+
+    def close_search(self):
+        """Hide the search bar, clear filter, restore all rows."""
+        if not self._filter_active:
+            return
+        self._filter_active = False
+        self._search_bar.place_forget()
+        self._search_btn.place(relx=1.0, rely=0.5, anchor="e", x=-8)
+        self._search_btn.lift()
+        self._search_entry.delete(0, "end")
+        self._filter_text = ""
+        self._show_all_rows()
+
+    def is_search_active(self) -> bool:
+        """Return whether the search bar is currently visible."""
+        return self._filter_active
+
+    @staticmethod
+    def _normalize(text: str) -> str:
+        """Strip non-alphanumeric chars for fuzzy matching.
+
+        E.g. "C.R.E.A.M.mp3" → "creammp3", so query "cream" matches.
+        """
+        return "".join(c for c in text.lower() if c.isalnum())
+
+    def _matches_filter(self, filename: str) -> bool:
+        """Check if filename matches the current filter (exact or fuzzy)."""
+        name = filename.lower()
+        if self._filter_text in name:
+            return True
+        return self._normalize(self._filter_text) in self._normalize(name)
+
+    def _on_search_changed(self):
+        """Handle typing in the search entry."""
+        text = self._search_entry.get().strip().lower()
+        if text == self._filter_text:
+            return
+        self._filter_text = text
+        self._apply_filter()
+
+    def _apply_filter(self):
+        """Show/hide rows based on the current filter text."""
+        if not self._filter_text:
+            self._show_all_rows()
+            return
+
+        newly_hidden = set()
+        for filepath, row in self._rows.items():
+            if self._matches_filter(row.result.filename):
+                if filepath in self._hidden_rows:
+                    self._hidden_rows.discard(filepath)
+                    row.pack(fill="x", pady=(0, 1))
+            else:
+                if filepath not in self._hidden_rows:
+                    row.pack_forget()
+                newly_hidden.add(filepath)
+
+        self._hidden_rows = newly_hidden
+
+    def _show_all_rows(self):
+        """Restore all hidden rows."""
+        if not self._hidden_rows:
+            return
+        for filepath in list(self._hidden_rows):
+            row = self._rows.get(filepath)
+            if row:
+                row.pack(fill="x", pady=(0, 1))
+        self._hidden_rows.clear()
+        # Re-apply sort order if active
+        if self._sort_column:
+            self._reorder_rows()
 
     def _create_grips(self):
         """Create drag handles between header cells for column resizing."""
@@ -562,13 +716,16 @@ class ResultsTable(ctk.CTkFrame):
         # Rebuild _rows dict in sorted order
         self._rows = dict(sorted_items)
 
-        # Re-pack rows in-place using pack(after=...) to avoid flickering
-        rows_list = list(self._rows.values())
-        if not rows_list:
+        # Re-pack only visible rows using pack(after=...) to avoid flickering
+        visible = [
+            row for fp, row in self._rows.items()
+            if fp not in self._hidden_rows
+        ]
+        if not visible:
             return
-        rows_list[0].pack(fill="x", pady=(0, 1))
-        for i in range(1, len(rows_list)):
-            rows_list[i].pack(fill="x", pady=(0, 1), after=rows_list[i - 1])
+        visible[0].pack(fill="x", pady=(0, 1))
+        for i in range(1, len(visible)):
+            visible[i].pack(fill="x", pady=(0, 1), after=visible[i - 1])
 
     def add_result(self, result: AnalysisResult):
         """Add or update a result in the table."""
@@ -589,6 +746,11 @@ class ResultsTable(ctk.CTkFrame):
             row.pack(fill="x", pady=(0, 1))
             self._rows[result.filepath] = row
 
+            # If filter is active and new file doesn't match, hide it
+            if self._filter_text and not self._matches_filter(result.filename):
+                row.pack_forget()
+                self._hidden_rows.add(result.filepath)
+
         # Maintain sort order if sorting is active (debounced during batch)
         if self._sort_column:
             self._schedule_reorder()
@@ -600,6 +762,12 @@ class ResultsTable(ctk.CTkFrame):
 
     def clear(self):
         """Clear all results from the table."""
+        # Reset search/filter state
+        self._hidden_rows.clear()
+        self._filter_text = ""
+        if self._filter_active:
+            self.close_search()
+
         # Cancel any pending reorder timer
         if self._reorder_timer is not None:
             self.after_cancel(self._reorder_timer)
@@ -647,14 +815,15 @@ class ResultsTable(ctk.CTkFrame):
         return len(self._results)
 
     def select_first(self):
-        """Select the first item in the table."""
-        if self._rows:
-            first_row = list(self._rows.values())[0]
-            self._on_row_click(first_row)
+        """Select the first visible item in the table."""
+        for fp, row in self._rows.items():
+            if fp not in self._hidden_rows:
+                self._on_row_click(row)
+                return
 
     def select_next(self) -> Optional[AnalysisResult]:
         """
-        Select the next item in the table.
+        Select the next visible item in the table.
 
         Returns:
             The newly selected result, or None if at end or no items.
@@ -662,32 +831,34 @@ class ResultsTable(ctk.CTkFrame):
         if not self._rows:
             return None
 
-        rows_list = list(self._rows.values())
+        visible = [
+            row for fp, row in self._rows.items()
+            if fp not in self._hidden_rows
+        ]
+        if not visible:
+            return None
 
         if self._selected_row is None:
-            # Nothing selected, select first
-            self._on_row_click(rows_list[0])
-            self.scroll_to_row(rows_list[0])
-            return rows_list[0].result
+            self._on_row_click(visible[0])
+            self.scroll_to_row(visible[0])
+            return visible[0].result
 
-        # Find current index
         try:
-            current_index = rows_list.index(self._selected_row)
+            current_index = visible.index(self._selected_row)
         except ValueError:
             return None
 
-        # Select next if available
         next_index = current_index + 1
-        if next_index < len(rows_list):
-            self._on_row_click(rows_list[next_index])
-            self.scroll_to_row(rows_list[next_index])
-            return rows_list[next_index].result
+        if next_index < len(visible):
+            self._on_row_click(visible[next_index])
+            self.scroll_to_row(visible[next_index])
+            return visible[next_index].result
 
-        return None  # At end of list
+        return None
 
     def select_previous(self) -> Optional[AnalysisResult]:
         """
-        Select the previous item in the table.
+        Select the previous visible item in the table.
 
         Returns:
             The newly selected result, or None if at start or no items.
@@ -695,28 +866,30 @@ class ResultsTable(ctk.CTkFrame):
         if not self._rows:
             return None
 
-        rows_list = list(self._rows.values())
+        visible = [
+            row for fp, row in self._rows.items()
+            if fp not in self._hidden_rows
+        ]
+        if not visible:
+            return None
 
         if self._selected_row is None:
-            # Nothing selected, select last
-            self._on_row_click(rows_list[-1])
-            self.scroll_to_row(rows_list[-1])
-            return rows_list[-1].result
+            self._on_row_click(visible[-1])
+            self.scroll_to_row(visible[-1])
+            return visible[-1].result
 
-        # Find current index
         try:
-            current_index = rows_list.index(self._selected_row)
+            current_index = visible.index(self._selected_row)
         except ValueError:
             return None
 
-        # Select previous if available
         prev_index = current_index - 1
         if prev_index >= 0:
-            self._on_row_click(rows_list[prev_index])
-            self.scroll_to_row(rows_list[prev_index])
-            return rows_list[prev_index].result
+            self._on_row_click(visible[prev_index])
+            self.scroll_to_row(visible[prev_index])
+            return visible[prev_index].result
 
-        return None  # At start of list
+        return None
 
     def remove_result(self, filepath: str) -> Optional[AnalysisResult]:
         """
@@ -743,6 +916,7 @@ class ResultsTable(ctk.CTkFrame):
         # Remove from data structures
         del self._rows[filepath]
         del self._results[filepath]
+        self._hidden_rows.discard(filepath)
         row.destroy()
 
         if not was_selected:
@@ -810,6 +984,8 @@ class ResultsTable(ctk.CTkFrame):
 
         row = self._rows.pop(old_filepath)
         result = self._results.pop(old_filepath)
+        was_hidden = old_filepath in self._hidden_rows
+        self._hidden_rows.discard(old_filepath)
 
         # Update the dataclass fields
         result.filepath = new_filepath
@@ -821,6 +997,15 @@ class ResultsTable(ctk.CTkFrame):
 
         # Refresh the row display
         row.update_result(result)
+
+        # Re-evaluate filter with new filename
+        if self._filter_text:
+            matches = self._matches_filter(result.filename)
+            if not matches:
+                row.pack_forget()
+                self._hidden_rows.add(new_filepath)
+            elif was_hidden:
+                row.pack(fill="x", pady=(0, 1))
 
     def get_ordered_filepaths(self) -> List[str]:
         """

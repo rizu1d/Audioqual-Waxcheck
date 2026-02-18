@@ -161,10 +161,26 @@ class AudioQualApp:
         self.root.bind(f"<{mod}-E>", self._handle_edit_metadata)
         self.root.bind(f"<{mod}-i>", self._handle_edit_metadata)
         self.root.bind(f"<{mod}-I>", self._handle_edit_metadata)
+        self.root.bind(f"<{mod}-f>", self._handle_search)
+        self.root.bind(f"<{mod}-F>", self._handle_search)
         self.root.bind("<Escape>", self._handle_stop)
+
+    def _is_text_entry(self, event) -> bool:
+        """Return True if the event originated from a text entry widget."""
+        try:
+            return event.widget.winfo_class() in ("Entry", "TEntry")
+        except Exception:
+            return False
+
+    def _handle_search(self, event):
+        """Toggle the search bar in the results table."""
+        self.main_window.results_table.toggle_search()
+        return "break"
 
     def _handle_space(self, event):
         """Toggle play/pause for the selected file."""
+        if self._is_text_entry(event):
+            return
         if self.audio_player.get_state() == PlayerState.STOPPED:
             # Nothing loaded yet — load selected and play
             selected = self.main_window.results_table.get_selected_result()
@@ -177,11 +193,15 @@ class AudioQualApp:
 
     def _handle_delete(self, event):
         """Remove the selected file from the list."""
+        if self._is_text_entry(event):
+            return
         self.main_window.remove_selected_file()
         return "break"
 
     def _handle_up(self, event):
         """Select the previous file in the list."""
+        if self._is_text_entry(event):
+            return
         result = self.main_window.results_table.select_previous()
         if result:
             self._on_result_selected(result)
@@ -192,6 +212,8 @@ class AudioQualApp:
 
     def _handle_down(self, event):
         """Select the next file in the list."""
+        if self._is_text_entry(event):
+            return
         result = self.main_window.results_table.select_next()
         if result:
             self._on_result_selected(result)
@@ -202,6 +224,8 @@ class AudioQualApp:
 
     def _handle_return(self, event):
         """Load and play the selected file."""
+        if self._is_text_entry(event):
+            return
         selected = self.main_window.results_table.get_selected_result()
         if not selected:
             return "break"
@@ -220,6 +244,8 @@ class AudioQualApp:
 
     def _handle_seek_back(self, event):
         """Seek backward 5 seconds (only while playing/paused)."""
+        if self._is_text_entry(event):
+            return
         state = self.audio_player.get_state()
         if state in (PlayerState.PLAYING, PlayerState.PAUSED):
             pos = self.audio_player.get_position()
@@ -228,6 +254,8 @@ class AudioQualApp:
 
     def _handle_seek_forward(self, event):
         """Seek forward 5 seconds (only while playing/paused)."""
+        if self._is_text_entry(event):
+            return
         state = self.audio_player.get_state()
         if state in (PlayerState.PLAYING, PlayerState.PAUSED):
             pos = self.audio_player.get_position()
@@ -240,7 +268,10 @@ class AudioQualApp:
         return "break"
 
     def _handle_stop(self, event):
-        """Stop playback."""
+        """Stop playback, or close search bar if active."""
+        if self.main_window.results_table.is_search_active():
+            self.main_window.results_table.close_search()
+            return "break"
         self.audio_player.stop()
         return "break"
 
