@@ -1,13 +1,11 @@
 """Main application window."""
 
-import os
 import threading
 import tkinter as tk
 from tkinter import filedialog
 from typing import List, Optional
 
 import customtkinter as ctk
-from PIL import Image
 
 try:
     from tkinterdnd2 import DND_FILES
@@ -101,11 +99,11 @@ class MainWindow(ctk.CTkFrame):
             text="",
             image=self._logo_icon,
         )
-        self.title_label.grid(row=0, column=0, padx=16, pady=12)
+        self.title_label.grid(row=0, column=0, padx=0, pady=12)
 
         # Controls frame (aligned right)
         self.controls_frame = ctk.CTkFrame(self.top_bar, fg_color="transparent")
-        self.controls_frame.grid(row=0, column=2, padx=16, pady=12, sticky="e")
+        self.controls_frame.grid(row=0, column=2, padx=0, pady=12, sticky="e")
 
         # Unified button/icon sizes
         ICON_SIZE = 44
@@ -127,7 +125,7 @@ class MainWindow(ctk.CTkFrame):
             hover_color=THEME_COLORS["bg_elevated"],
         )
         self.add_files_btn._canvas.configure(takefocus=False)
-        self.add_files_btn.grid(row=0, column=0, padx=6)
+        self.add_files_btn.grid(row=0, column=0, padx=(0, 6))
 
         # Load watcher icons (OFF = initial state, ON = when active)
         self._watcher_icon_off = load_svg_icon("watcher-icon-OFF.svg", ICON_SIZE)
@@ -168,13 +166,7 @@ class MainWindow(ctk.CTkFrame):
         self.clear_btn.grid(row=0, column=2, padx=6)
 
         # Load spectrogram icon
-        icon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "spectrum.jpg")
-        icon_image = Image.open(icon_path)
-        self._toggle_icon = ctk.CTkImage(
-            light_image=icon_image,
-            dark_image=icon_image,
-            size=(ICON_SIZE, ICON_SIZE)
-        )
+        self._toggle_icon = load_svg_icon("spectrum-iconV2.svg", ICON_SIZE)
 
         # Spectrogram window button
         self.spectrogram_btn = ctk.CTkButton(
@@ -225,7 +217,7 @@ class MainWindow(ctk.CTkFrame):
             hover_color=THEME_COLORS["bg_elevated"],
         )
         self.settings_btn._canvas.configure(takefocus=False)
-        self.settings_btn.grid(row=0, column=5, padx=6)
+        self.settings_btn.grid(row=0, column=5, padx=(6, 0))
 
     def _setup_content_area(self):
         """Set up the main content area."""

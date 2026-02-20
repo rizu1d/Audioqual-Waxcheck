@@ -85,10 +85,14 @@ class AudioQualApp:
         self.root.minsize(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)
 
         # Set app icon (dock/taskbar)
-        icon_path = os.path.join(os.path.dirname(__file__), "assets", "logo-WaxCheck.png")
         try:
+            from .utils.icon_utils import load_svg_icon
+            import cairosvg
             from PIL import Image, ImageTk
-            icon_img = Image.open(icon_path)
+            import io
+            svg_path = os.path.join(os.path.dirname(__file__), "assets", "logo-waxcheckV2.svg")
+            png_bytes = cairosvg.svg2png(url=svg_path, output_width=256, output_height=256)
+            icon_img = Image.open(io.BytesIO(png_bytes))
             self._app_icon = ImageTk.PhotoImage(icon_img)
             self.root.iconphoto(True, self._app_icon)
         except Exception:
@@ -507,6 +511,10 @@ class AudioQualApp:
             self._folder_watcher.cleanup()
         self._cleanup()
         cleanup_thread_scheduler()
+        # Cancel all pending after callbacks to avoid TclError on destroyed window
+        # (customtkinter's scaling_tracker fires periodic checks that can race with destroy)
+        for after_id in self.root.tk.call('after', 'info'):
+            self.root.after_cancel(after_id)
         self.root.destroy()
 
 
