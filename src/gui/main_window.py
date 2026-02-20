@@ -32,6 +32,7 @@ from ..utils.constants import (
     SUPPORTED_FORMATS,
 )
 from ..utils.file_utils import get_audio_files_from_path
+from ..utils.icon_utils import load_svg_icon
 from ..utils.tk_utils import schedule_callback_from_thread
 
 
@@ -94,27 +95,12 @@ class MainWindow(ctk.CTkFrame):
         self.top_bar.grid_columnconfigure(1, weight=1)
 
         # Logo
-        logo_path = os.path.join(os.path.dirname(__file__), "..", "assets", "logo-WaxCheck.png")
-        try:
-            logo_image = Image.open(logo_path)
-            self._logo_icon = ctk.CTkImage(
-                light_image=logo_image,
-                dark_image=logo_image,
-                size=(64, 64),
-            )
-            self.title_label = ctk.CTkLabel(
-                self.top_bar,
-                text="",
-                image=self._logo_icon,
-            )
-        except Exception:
-            # Fallback to text if logo not found
-            self.title_label = ctk.CTkLabel(
-                self.top_bar,
-                text="WaxCheck",
-                font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["title"], weight="bold"),
-                text_color=THEME_COLORS["text_primary"],
-            )
+        self._logo_icon = load_svg_icon("logo-waxcheckV2.svg", 64)
+        self.title_label = ctk.CTkLabel(
+            self.top_bar,
+            text="",
+            image=self._logo_icon,
+        )
         self.title_label.grid(row=0, column=0, padx=16, pady=12)
 
         # Controls frame (aligned right)
@@ -122,17 +108,11 @@ class MainWindow(ctk.CTkFrame):
         self.controls_frame.grid(row=0, column=2, padx=16, pady=12, sticky="e")
 
         # Unified button/icon sizes
-        ICON_SIZE = 28
+        ICON_SIZE = 44
         BUTTON_SIZE = 48
 
-        # Load add files icon (using drop-icon.png)
-        add_icon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "drop-icon.png")
-        add_icon_image = Image.open(add_icon_path)
-        self._add_icon = ctk.CTkImage(
-            light_image=add_icon_image,
-            dark_image=add_icon_image,
-            size=(ICON_SIZE, ICON_SIZE)
-        )
+        # Load add files icon
+        self._add_icon = load_svg_icon("drop-iconV2.svg", ICON_SIZE)
 
         # Add files button (always visible)
         self.add_files_btn = ctk.CTkButton(
@@ -142,21 +122,17 @@ class MainWindow(ctk.CTkFrame):
             command=self._on_add_files_click,
             width=BUTTON_SIZE,
             height=BUTTON_SIZE,
-            corner_radius=12,
-            fg_color=THEME_COLORS["bg_elevated"],
-            hover_color=THEME_COLORS["primary_dark"],
+            corner_radius=8,
+            fg_color="transparent",
+            hover_color=THEME_COLORS["bg_elevated"],
         )
         self.add_files_btn._canvas.configure(takefocus=False)
         self.add_files_btn.grid(row=0, column=0, padx=6)
 
-        # Load watcher icon
-        watcher_icon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "watcher-icon.png")
-        watcher_icon_image = Image.open(watcher_icon_path)
-        self._watcher_icon = ctk.CTkImage(
-            light_image=watcher_icon_image,
-            dark_image=watcher_icon_image,
-            size=(ICON_SIZE, ICON_SIZE)
-        )
+        # Load watcher icons (OFF = initial state, ON = when active)
+        self._watcher_icon_off = load_svg_icon("watcher-icon-OFF.svg", ICON_SIZE)
+        self._watcher_icon_on = load_svg_icon("watcher-iconV3.svg", ICON_SIZE)
+        self._watcher_icon = self._watcher_icon_off
 
         # Watcher button
         self.watcher_btn = ctk.CTkButton(
@@ -166,23 +142,17 @@ class MainWindow(ctk.CTkFrame):
             command=self._on_toggle_watcher,
             width=BUTTON_SIZE,
             height=BUTTON_SIZE,
-            corner_radius=12,
-            fg_color=THEME_COLORS["bg_elevated"],
-            hover_color=THEME_COLORS["primary_dark"],
+            corner_radius=8,
+            fg_color="transparent",
+            hover_color=THEME_COLORS["bg_elevated"],
         )
         self.watcher_btn._canvas.configure(takefocus=False)
         self.watcher_btn.grid(row=0, column=1, padx=6)
 
         # Load clean icon
-        clean_icon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "clean.jpg")
-        clean_icon_image = Image.open(clean_icon_path)
-        self._clean_icon = ctk.CTkImage(
-            light_image=clean_icon_image,
-            dark_image=clean_icon_image,
-            size=(ICON_SIZE, ICON_SIZE)
-        )
+        self._clean_icon = load_svg_icon("clean-iconV2.svg", ICON_SIZE)
 
-        # Clear button with elevated background
+        # Clear button
         self.clear_btn = ctk.CTkButton(
             self.controls_frame,
             text="",
@@ -190,9 +160,9 @@ class MainWindow(ctk.CTkFrame):
             command=self._on_clear,
             width=BUTTON_SIZE,
             height=BUTTON_SIZE,
-            corner_radius=12,
-            fg_color=THEME_COLORS["bg_elevated"],
-            hover_color=THEME_COLORS["primary_dark"],
+            corner_radius=8,
+            fg_color="transparent",
+            hover_color=THEME_COLORS["bg_elevated"],
         )
         self.clear_btn._canvas.configure(takefocus=False)
         self.clear_btn.grid(row=0, column=2, padx=6)
@@ -206,7 +176,7 @@ class MainWindow(ctk.CTkFrame):
             size=(ICON_SIZE, ICON_SIZE)
         )
 
-        # Spectrogram window button with elevated background
+        # Spectrogram window button
         self.spectrogram_btn = ctk.CTkButton(
             self.controls_frame,
             text="",
@@ -214,21 +184,15 @@ class MainWindow(ctk.CTkFrame):
             command=self._on_show_spectrogram,
             width=BUTTON_SIZE,
             height=BUTTON_SIZE,
-            corner_radius=12,
-            fg_color=THEME_COLORS["bg_elevated"],
-            hover_color=THEME_COLORS["primary_dark"],
+            corner_radius=8,
+            fg_color="transparent",
+            hover_color=THEME_COLORS["bg_elevated"],
         )
         self.spectrogram_btn._canvas.configure(takefocus=False)
         self.spectrogram_btn.grid(row=0, column=3, padx=6)
 
         # Load metadata icon
-        meta_icon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "metadata-icon.png")
-        meta_icon_image = Image.open(meta_icon_path)
-        self._meta_icon = ctk.CTkImage(
-            light_image=meta_icon_image,
-            dark_image=meta_icon_image,
-            size=(ICON_SIZE, ICON_SIZE)
-        )
+        self._meta_icon = load_svg_icon("Metadata-iconV2.svg", ICON_SIZE)
 
         # Metadata editor button
         self.metadata_btn = ctk.CTkButton(
@@ -238,16 +202,15 @@ class MainWindow(ctk.CTkFrame):
             command=self._on_edit_metadata,
             width=BUTTON_SIZE,
             height=BUTTON_SIZE,
-            corner_radius=12,
-            fg_color=THEME_COLORS["bg_elevated"],
-            hover_color=THEME_COLORS["primary_dark"],
+            corner_radius=8,
+            fg_color="transparent",
+            hover_color=THEME_COLORS["bg_elevated"],
         )
         self.metadata_btn._canvas.configure(takefocus=False)
         self.metadata_btn.grid(row=0, column=4, padx=6)
 
-        # Settings icon (programmatic)
-        from .icons import icon_settings
-        self._settings_icon = icon_settings(ICON_SIZE)
+        # Settings icon
+        self._settings_icon = load_svg_icon("settings-iconV2.svg", ICON_SIZE)
 
         # Settings button
         self.settings_btn = ctk.CTkButton(
@@ -257,9 +220,9 @@ class MainWindow(ctk.CTkFrame):
             command=self._on_open_settings,
             width=BUTTON_SIZE,
             height=BUTTON_SIZE,
-            corner_radius=12,
-            fg_color=THEME_COLORS["bg_elevated"],
-            hover_color=THEME_COLORS["primary_dark"],
+            corner_radius=8,
+            fg_color="transparent",
+            hover_color=THEME_COLORS["bg_elevated"],
         )
         self.settings_btn._canvas.configure(takefocus=False)
         self.settings_btn.grid(row=0, column=5, padx=6)
@@ -267,7 +230,7 @@ class MainWindow(ctk.CTkFrame):
     def _setup_content_area(self):
         """Set up the main content area."""
         self.content_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.content_frame.grid(row=1, column=0, sticky="nsew", padx=16, pady=16)
+        self.content_frame.grid(row=1, column=0, sticky="nsew", padx=16, pady=(4, 16))
         self.content_frame.grid_columnconfigure(0, weight=1)
         self.content_frame.grid_rowconfigure(0, weight=1)
 
@@ -374,15 +337,7 @@ class MainWindow(ctk.CTkFrame):
     def _setup_empty_state(self):
         """Set up the empty state overlay shown when no files are loaded."""
         # Load drop icon
-        self._drop_icon = None
-        drop_icon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "drop-icon.png")
-        if os.path.exists(drop_icon_path):
-            drop_icon_image = Image.open(drop_icon_path)
-            self._drop_icon = ctk.CTkImage(
-                light_image=drop_icon_image,
-                dark_image=drop_icon_image,
-                size=(64, 64)
-            )
+        self._drop_icon = load_svg_icon("drop-iconV2.svg", 64)
 
         # Empty state frame - overlays the results table area
         self.empty_state = ctk.CTkFrame(
@@ -744,11 +699,11 @@ class MainWindow(ctk.CTkFrame):
     def set_watcher_active(self, active: bool, folder_name: str = ""):
         """Update UI to reflect watcher state."""
         if active:
-            self.watcher_btn.configure(fg_color=THEME_COLORS["primary"])
+            self.watcher_btn.configure(image=self._watcher_icon_on)
             self._watcher_indicator.grid()
             self._start_indicator_pulse()
         else:
-            self.watcher_btn.configure(fg_color=THEME_COLORS["bg_elevated"])
+            self.watcher_btn.configure(image=self._watcher_icon_off)
             self._watcher_indicator.grid_remove()
             self._stop_indicator_pulse()
 

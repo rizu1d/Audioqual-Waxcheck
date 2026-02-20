@@ -1,13 +1,10 @@
 """Drag and drop zone for audio files."""
 
-import os
 import tkinter as tk
-from pathlib import Path
 from tkinter import filedialog
 from typing import Callable, List, Optional
 
 import customtkinter as ctk
-from PIL import Image
 
 try:
     from tkinterdnd2 import DND_FILES, TkinterDnD
@@ -16,6 +13,7 @@ except ImportError:
     HAS_DND = False
 
 from ..utils.file_utils import get_audio_files_from_path
+from ..utils.icon_utils import load_svg_icon
 from ..utils.constants import SUPPORTED_FORMATS, THEME_COLORS, FONT_FAMILY, FONT_SIZES
 
 
@@ -66,15 +64,7 @@ class FileDropZone(ctk.CTkFrame):
         self.content_frame.grid(row=0, column=0, padx=32, pady=32)
 
         # Load drop icon
-        self._drop_icon = None
-        drop_icon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "drop-icon.png")
-        if os.path.exists(drop_icon_path):
-            drop_icon_image = Image.open(drop_icon_path)
-            self._drop_icon = ctk.CTkImage(
-                light_image=drop_icon_image,
-                dark_image=drop_icon_image,
-                size=(64, 64)
-            )
+        self._drop_icon = load_svg_icon("drop-iconV2.svg", 64)
 
         # Icon label - use image or fallback to emoji
         self.icon_label = ctk.CTkLabel(
