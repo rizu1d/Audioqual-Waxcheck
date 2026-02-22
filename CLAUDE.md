@@ -156,15 +156,20 @@ Constants are grouped by purpose:
 - **Tkinter thread safety:** All UI updates from background threads MUST go through `schedule_callback_from_thread()` (in `src/utils/tk_utils.py`). Direct tkinter calls from non-main threads cause crashes.
 - **Matplotlib backend:** Must use `'Agg'` (non-interactive), configured once at module load in `app.py`. Interactive backends conflict with tkinter.
 - **macOS event loop:** The heartbeat + event_generate pattern is required. Removing either causes UI freezes on macOS when thread callbacks fire.
-- **Test suite:** Run `python tests/run_tests.py` before and after algorithm changes. Tests in `tests.json` are append-only (never edit or delete existing entries). The test suite analyzes 32 real audio files and checks cutoff detection + classification against known baselines. Exit code 0 = all pass, 1 = regressions detected.
+- **Test suite:** Run `python tests/run_tests.py` before and after algorithm changes. Tests in `tests/tests.json` are append-only (never edit or delete existing entries). The test suite analyzes 32 real audio files and checks cutoff detection + classification against known baselines. Exit code 0 = all pass, 1 = regressions detected. Each test entry has: `id`, `file` (path to audio), `description`, `expected` (with `status`, `detected_quality_in`, `cutoff_above_khz`), `known_bug`, `notes`, and `_baseline` (recorded actual values for reference).
 
 ## Language
 
 The UI text and status messages are in Spanish (e.g., "Transcode detectado", "Analizando...", "Listo").
 
+## Knowledge Base (`knowledge/`)
+
+- **ALGORITMO.txt** - Plain-Spanish explanation of the detection algorithm (useful for understanding the "why" behind `frequency_detector.py` decisions)
+- **VERIFICACION.txt** - Full architecture of the verification/testing system (layers, edge cases, dependency diagram)
+
 ## Post-Implementation Verification
 
-After every code change, run the appropriate verification before reporting the task as complete. See `WORKFLOW.md` for the full protocol. Quick reference:
+After every code change, run the appropriate verification before reporting the task as complete. See `knowledge/VERIFICACION.txt` for the full verification system architecture. Quick reference:
 
 | Change type | Command | Time |
 |------------|---------|------|

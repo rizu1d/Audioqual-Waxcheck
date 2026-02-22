@@ -511,15 +511,34 @@ class AudioQualApp:
 
     def _on_close(self):
         """Handle application close."""
+        # Hide window immediately so the user perceives instant close
+        self.root.withdraw()
+
         if self._folder_watcher:
             self._folder_watcher.cleanup()
         self._cleanup()
         cleanup_thread_scheduler()
+
+        # Destroy toplevel children first (spectrogram, metadata, settings)
+        for child in list(self.root.winfo_children()):
+            try:
+                if isinstance(child, ctk.CTkToplevel):
+                    child.destroy()
+            except Exception:
+                pass
+
         # Cancel all pending after callbacks to avoid TclError on destroyed window
         # (customtkinter's scaling_tracker fires periodic checks that can race with destroy)
-        for after_id in self.root.tk.call('after', 'info'):
-            self.root.after_cancel(after_id)
-        self.root.destroy()
+        try:
+            for after_id in self.root.tk.call('after', 'info'):
+                self.root.after_cancel(after_id)
+        except Exception:
+            pass
+
+        try:
+            self.root.destroy()
+        except Exception:
+            pass
 
 
 def create_app() -> AudioQualApp:

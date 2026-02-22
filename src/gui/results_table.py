@@ -121,9 +121,10 @@ class ResultRow(ctk.CTkFrame):
                 cell.place(x=8, rely=0.5, anchor="w")
                 self._cells[col_id] = cell
 
-        # Configure column weights - all fixed width
+        # Configure column weights - filename stretches, rest fixed
         for i, (col_id, _, width) in enumerate(self._columns):
-            self.grid_columnconfigure(i, weight=0, minsize=width)
+            w = 1 if i == 0 else 0
+            self.grid_columnconfigure(i, weight=w, minsize=width)
 
         # Bind click/hover events to the row
         self.bind("<Button-1>", self._handle_click)
@@ -275,6 +276,10 @@ class ResultsTable(ctk.CTkFrame):
         # Debounce timer for reorder during batch analysis
         self._reorder_timer = None
 
+        # Auto-resize state (distribute extra width to filename column)
+        self._resize_table_timer = None
+        self._last_table_width = 0
+
         # Search/filter state
         self._filter_text: str = ""
         self._filter_active: bool = False
@@ -339,9 +344,10 @@ class ResultsTable(ctk.CTkFrame):
             header_cell.bind("<Button-1>", lambda e, c=col_id: self._on_header_click(c))
             header_label.bind("<Button-1>", lambda e, c=col_id: self._on_header_click(c))
 
-        # Configure header column weights - all fixed
+        # Configure header column weights - filename stretches, rest fixed
         for i, (col_id, _, width) in enumerate(self.COLUMNS):
-            self.header_frame.grid_columnconfigure(i, weight=0, minsize=width)
+            w = 1 if i == 0 else 0
+            self.header_frame.grid_columnconfigure(i, weight=w, minsize=width)
 
         # Create resize grips between header cells
         self._create_grips()
@@ -361,6 +367,43 @@ class ResultsTable(ctk.CTkFrame):
             self.scroll_frame.grid_columnconfigure(i, weight=0)
 
         self._setup_search_widget()
+
+        # Auto-distribute width on resize
+        self.bind("<Configure>", self._on_table_configure)
+
+    # ─── Auto-resize ─────────────────────────────────────────────────
+
+    def _on_table_configure(self, event):
+        """Expand filename column to fill available width on resize."""
+        # Don't interfere with manual column drag
+        if self._resize_col >= 0:
+            return
+        # Debounce all Configure events into a single check
+        if self._resize_table_timer is not None:
+            self.after_cancel(self._resize_table_timer)
+        self._resize_table_timer = self.after(50, self._check_and_distribute_width)
+
+    def _check_and_distribute_width(self):
+        """Check actual width and redistribute space to filename column."""
+        self._resize_table_timer = None
+        try:
+            new_width = self.winfo_width()
+        except Exception:
+            return
+        if new_width <= 1 or new_width == self._last_table_width:
+            return
+        self._last_table_width = new_width
+        # Sum of all columns except filename (index 0)
+        fixed_total = sum(self._column_widths[1:])
+        ideal_filename = new_width - fixed_total
+        new_filename_width = max(ideal_filename, self.MIN_WIDTHS[0])
+        # Avoid unnecessary updates
+        if abs(new_filename_width - self._column_widths[0]) < 3:
+            return
+        self._column_widths[0] = new_filename_width
+        self._apply_column_widths()
+        self._reposition_grips()
+        self._refresh_all_text()
 
     # ─── Search / Filter ────────────────────────────────────────────
 
@@ -590,17 +633,18 @@ class ResultsTable(ctk.CTkFrame):
         """Propagate current column widths to header and all rows."""
         for i, (col_id, _, _) in enumerate(self.COLUMNS):
             width = self._column_widths[i]
+            w = 1 if i == 0 else 0  # filename column stretches
 
             # Update header
             self._header_cells[i].configure(width=width)
-            self.header_frame.grid_columnconfigure(i, minsize=width)
+            self.header_frame.grid_columnconfigure(i, weight=w, minsize=width)
 
             # Update all rows
             for row in self._rows.values():
                 cell_frame = row._cell_frames.get(col_id)
                 if cell_frame:
                     cell_frame.configure(width=width)
-                row.grid_columnconfigure(i, minsize=width)
+                row.grid_columnconfigure(i, weight=w, minsize=width)
                 # Keep row's _columns in sync
                 row._columns[i][2] = width
 
