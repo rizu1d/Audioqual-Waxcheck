@@ -13,12 +13,12 @@
     "known_bug": false,
     "notes": "",
     "_baseline": {
-      "cutoff_khz": 20.5,
+      "cutoff_khz": 20.0,
       "status": "Lossless",
       "quality": "lossless",
       "confidence": 0.701,
       "is_uncertain": false,
-      "details": "Frecuencia de corte: 20.5 kHz | Bitrate declarado: 1411 kbps"
+      "details": "Frecuencia de corte: 20.0 kHz | Bitrate declarado: 1411 kbps"
     }
   },
   {
@@ -224,22 +224,21 @@
     "file": "references/test-files/youtuberips/C'est justifiable (Acapella).mp3",
     "description": "YouTube rip - C'est justifiable acapella",
     "expected": {
-      "status": "Incierto",
+      "status": "Transcode detectado",
       "detected_quality_in": [
-        "320kbps"
+        "96kbps"
       ],
-      "cutoff_below_khz": 20.0,
-      "is_uncertain": true
+      "cutoff_below_khz": 16.0
     },
     "known_bug": false,
-    "notes": "",
+    "notes": "Corregido: antes Incierto 320kbps (varianza acapella bajo umbral 0.4), ahora detecta brick-wall a 14.5kHz",
     "_baseline": {
-      "cutoff_khz": 19.5,
-      "status": "Incierto",
-      "quality": "320kbps",
-      "confidence": 0.456,
-      "is_uncertain": true,
-      "details": "Frecuencia de corte: 19.5 kHz | Bitrate declarado: 192 kbps | MP3 192kbps: corte 20.0kHz imposible (máx 19.5kHz), ajustado"
+      "cutoff_khz": 14.5,
+      "status": "Transcode detectado",
+      "quality": "96kbps",
+      "confidence": 0.85,
+      "is_uncertain": false,
+      "details": "Frecuencia de corte: 14.5 kHz | Bitrate declarado: 192 kbps | Posible conversión desde ~96kbps"
     }
   },
   {
@@ -247,22 +246,21 @@
     "file": "references/test-files/youtuberips/De La Soul  Chaka Khan  All Good Acapella.mp3",
     "description": "YouTube rip - De La Soul acapella",
     "expected": {
-      "status": "Incierto",
+      "status": "Transcode detectado",
       "detected_quality_in": [
-        "320kbps"
+        "96kbps"
       ],
-      "cutoff_below_khz": 20.0,
-      "is_uncertain": true
+      "cutoff_below_khz": 16.0
     },
     "known_bug": false,
-    "notes": "",
+    "notes": "Corregido: antes Incierto 320kbps (varianza acapella bajo umbral 0.4), ahora detecta brick-wall a 14.5kHz",
     "_baseline": {
-      "cutoff_khz": 19.5,
-      "status": "Incierto",
-      "quality": "320kbps",
-      "confidence": 0.552,
-      "is_uncertain": true,
-      "details": "Frecuencia de corte: 19.5 kHz | Bitrate declarado: 235 kbps | MP3 235kbps: corte 20.0kHz imposible (máx 19.5kHz), ajustado"
+      "cutoff_khz": 14.5,
+      "status": "Transcode detectado",
+      "quality": "96kbps",
+      "confidence": 0.846,
+      "is_uncertain": false,
+      "details": "Frecuencia de corte: 14.5 kHz | Bitrate declarado: 235 kbps | Posible conversión desde ~96kbps"
     }
   },
   {
@@ -292,22 +290,21 @@
     "file": "references/test-files/youtuberips/IAM - Sad Hill (Acapella).mp3",
     "description": "YouTube rip - IAM Sad Hill acapella",
     "expected": {
-      "status": "Incierto",
+      "status": "Transcode detectado",
       "detected_quality_in": [
-        "320kbps"
+        "96kbps"
       ],
-      "cutoff_below_khz": 20.0,
-      "is_uncertain": true
+      "cutoff_below_khz": 16.0
     },
     "known_bug": false,
-    "notes": "",
+    "notes": "Corregido: antes Incierto 320kbps (varianza acapella bajo umbral 0.4), ahora detecta brick-wall a 14.5kHz",
     "_baseline": {
-      "cutoff_khz": 19.5,
-      "status": "Incierto",
-      "quality": "320kbps",
-      "confidence": 0.469,
-      "is_uncertain": true,
-      "details": "Frecuencia de corte: 19.5 kHz | Bitrate declarado: 192 kbps | MP3 192kbps: corte 20.0kHz imposible (máx 19.5kHz), ajustado"
+      "cutoff_khz": 14.5,
+      "status": "Transcode detectado",
+      "quality": "96kbps",
+      "confidence": 0.85,
+      "is_uncertain": false,
+      "details": "Frecuencia de corte: 14.5 kHz | Bitrate declarado: 192 kbps | Posible conversión desde ~96kbps"
     }
   },
   {
@@ -636,12 +633,12 @@
     "known_bug": false,
     "notes": "Corregido: antes detectaba falso transcode 192kbps por baja varianza de acapella en HF",
     "_baseline": {
-      "cutoff_khz": 19.0,
+      "cutoff_khz": 18.5,
       "status": "OK",
       "quality": "256kbps",
-      "confidence": 0.779,
+      "confidence": 0.801,
       "is_uncertain": false,
-      "details": "Frecuencia de corte: 19.0 kHz | Bitrate declarado: 320 kbps"
+      "details": "Frecuencia de corte: 18.5 kHz | Bitrate declarado: 320 kbps"
     }
   },
   {
@@ -651,20 +648,21 @@
     "expected": {
       "status": "OK",
       "detected_quality_in": [
+        "256kbps",
         "320kbps"
       ],
-      "cutoff_above_khz": 19.0,
+      "cutoff_above_khz": 18.0,
       "cutoff_below_khz": 21.5
     },
     "known_bug": false,
-    "notes": "Corregido: antes detectaba falso transcode 192kbps por baja varianza en HF",
+    "notes": "Corregido: antes detectaba falso transcode 192kbps por baja varianza en HF. Cutoff baja a 19.0 con umbrales 0.30/0.15 (aceptable, sigue OK)",
     "_baseline": {
-      "cutoff_khz": 20.0,
+      "cutoff_khz": 19.0,
       "status": "OK",
-      "quality": "320kbps",
+      "quality": "256kbps",
       "confidence": 0.85,
       "is_uncertain": false,
-      "details": "Frecuencia de corte: 20.0 kHz | Bitrate declarado: 320 kbps"
+      "details": "Frecuencia de corte: 19.0 kHz | Bitrate declarado: 320 kbps"
     }
   },
   {

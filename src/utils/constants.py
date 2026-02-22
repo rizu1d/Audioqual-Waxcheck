@@ -80,7 +80,7 @@ TRANSITION_CONFIRMATION_BANDS = 2     # Number of bands after drop that must sta
 # Instead of absolute thresholds, we check if variance DROPS significantly between bands
 TRANSITION_VARIANCE_DROP_RATIO = 0.30 # Variance must drop by at least 30% between bands
 TRANSITION_RECOVERY_THRESHOLD_DB = 3.0  # If energy rises >3dB after drop, it's not a real cutoff
-TRANSITION_MIN_PRE_VARIANCE = 0.4     # Pre-transition band must have at least 40% of reference variance (musical content)
+TRANSITION_MIN_PRE_VARIANCE = 0.30    # Pre-transition band must have at least 30% of reference variance (musical content)
 
 # Frequency-dependent variance threshold interpolation range (Layer 2)
 # At lower frequencies, musical content has higher variance; at higher frequencies
@@ -88,7 +88,7 @@ TRANSITION_MIN_PRE_VARIANCE = 0.4     # Pre-transition band must have at least 4
 # Interpolate TRANSITION_MIN_PRE_VARIANCE from base value at low freq to reduced value at high freq.
 TRANSITION_VARIANCE_FREQ_LOW_HZ = 14000   # Below this: use full TRANSITION_MIN_PRE_VARIANCE
 TRANSITION_VARIANCE_FREQ_HIGH_HZ = 20000  # Above this: use reduced minimum variance
-TRANSITION_MIN_PRE_VARIANCE_HIGH_FREQ = 0.25  # Reduced variance threshold at high frequencies
+TRANSITION_MIN_PRE_VARIANCE_HIGH_FREQ = 0.15  # Reduced variance threshold at high frequencies
 
 # Cumulative drop detection (Layer 2): detect gradual codec rolloff
 # If N consecutive bands sum > threshold in total drop, treat as cutoff
