@@ -1243,7 +1243,7 @@ def find_cutoff_by_transition(
         # (a 37% drop, close to significant). Using 35% threshold catches these
         # while avoiding false positives.
         variance_drop_ratio = (variance_low - variance_high) / variance_low if variance_low > 0.1 else 0.0
-        has_absolute_variance_drop = variance_high < 0.3
+        has_absolute_variance_drop = variance_high < 0.25
         has_relative_variance_drop = variance_drop_ratio >= 0.35
 
         # Two-band lookahead: check if band i+2 is clearly noise

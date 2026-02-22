@@ -496,18 +496,17 @@
       "detected_quality_in": [
         "96kbps"
       ],
-      "cutoff_below_khz": 15.5,
-      "is_uncertain": true
+      "cutoff_below_khz": 15.5
     },
     "known_bug": false,
-    "notes": "",
+    "notes": "is_uncertain cambió a false con P90 (gap max-percentil ya no supera 3kHz)",
     "_baseline": {
       "cutoff_khz": 14.0,
       "status": "Transcode detectado",
       "quality": "96kbps",
       "confidence": 0.822,
-      "is_uncertain": true,
-      "details": "Frecuencia de corte: 14.0 kHz | Bitrate declarado: 192 kbps | Posible conversión desde ~96kbps | Calidad variable detectada"
+      "is_uncertain": false,
+      "details": "Frecuencia de corte: 14.0 kHz | Bitrate declarado: 192 kbps | Posible conversión desde ~96kbps"
     }
   },
   {
@@ -625,47 +624,47 @@
   {
     "id": "EDGE_002",
     "file": "references/test-files/casos-excepcionales/DJ Assault - Bangapella.mp3",
-    "description": "Edge case - DJ Assault acapella",
+    "description": "Edge case - DJ Assault acapella (contenido real hasta ~19kHz)",
     "expected": {
-      "status": "Transcode detectado",
+      "status": "OK",
       "detected_quality_in": [
-        "192kbps"
+        "256kbps"
       ],
-      "cutoff_above_khz": 15.5,
-      "cutoff_below_khz": 19.5
+      "cutoff_above_khz": 18.0,
+      "cutoff_below_khz": 20.5
     },
     "known_bug": false,
-    "notes": "",
+    "notes": "Corregido: antes detectaba falso transcode 192kbps por baja varianza de acapella en HF",
     "_baseline": {
-      "cutoff_khz": 17.5,
-      "status": "Transcode detectado",
-      "quality": "192kbps",
-      "confidence": 0.711,
+      "cutoff_khz": 19.0,
+      "status": "OK",
+      "quality": "256kbps",
+      "confidence": 0.779,
       "is_uncertain": false,
-      "details": "Frecuencia de corte: 17.5 kHz | Bitrate declarado: 320 kbps | Posible conversión desde ~192kbps"
+      "details": "Frecuencia de corte: 19.0 kHz | Bitrate declarado: 320 kbps"
     }
   },
   {
     "id": "EDGE_003",
     "file": "references/test-files/casos-excepcionales/Golden Boy - Autopilot (Original).mp3",
-    "description": "Edge case - Golden Boy",
+    "description": "Edge case - Golden Boy (contenido real hasta ~20kHz)",
     "expected": {
-      "status": "Transcode detectado",
+      "status": "OK",
       "detected_quality_in": [
-        "192kbps"
+        "320kbps"
       ],
-      "cutoff_above_khz": 16.0,
-      "cutoff_below_khz": 20.0
+      "cutoff_above_khz": 19.0,
+      "cutoff_below_khz": 21.5
     },
     "known_bug": false,
-    "notes": "",
+    "notes": "Corregido: antes detectaba falso transcode 192kbps por baja varianza en HF",
     "_baseline": {
-      "cutoff_khz": 18.0,
-      "status": "Transcode detectado",
-      "quality": "192kbps",
-      "confidence": 0.704,
+      "cutoff_khz": 20.0,
+      "status": "OK",
+      "quality": "320kbps",
+      "confidence": 0.85,
       "is_uncertain": false,
-      "details": "Frecuencia de corte: 18.0 kHz | Bitrate declarado: 320 kbps | Posible conversión desde ~192kbps"
+      "details": "Frecuencia de corte: 20.0 kHz | Bitrate declarado: 320 kbps"
     }
   },
   {
@@ -701,18 +700,17 @@
         "96kbps"
       ],
       "cutoff_above_khz": 12.0,
-      "cutoff_below_khz": 16.0,
-      "is_uncertain": true
+      "cutoff_below_khz": 16.0
     },
     "known_bug": false,
-    "notes": "",
+    "notes": "is_uncertain cambió a false con P90 (gap max-percentil ya no supera 3kHz)",
     "_baseline": {
       "cutoff_khz": 14.0,
       "status": "Transcode detectado",
       "quality": "96kbps",
       "confidence": 0.776,
-      "is_uncertain": true,
-      "details": "Frecuencia de corte: 14.0 kHz | Bitrate declarado: 320 kbps | Posible conversión desde ~96kbps | Calidad variable detectada"
+      "is_uncertain": false,
+      "details": "Frecuencia de corte: 14.0 kHz | Bitrate declarado: 320 kbps | Posible conversión desde ~96kbps"
     }
   }
 ]

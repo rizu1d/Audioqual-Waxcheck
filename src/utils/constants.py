@@ -64,7 +64,7 @@ RELATIVE_MIN_ACTIVE_RATIO = 0.3       # Minimum ratio of non-silent frames requi
 
 # Segment-based percentile analysis parameters
 SEGMENT_COUNT = 50                    # Number of segments to analyze
-PREDOMINANT_PERCENTILE = 85.0         # Use 85th percentile (ignore top 15% peaks)
+PREDOMINANT_PERCENTILE = 90.0         # Use 90th percentile (ignore top 10% peaks)
 OUTLIER_THRESHOLD_KHZ = 3.0           # >3kHz difference between max and percentile = has outliers
 
 # Transition-based detection parameters (primary algorithm for detecting codec cutoff)
