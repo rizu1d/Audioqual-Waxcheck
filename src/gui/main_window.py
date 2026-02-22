@@ -184,7 +184,7 @@ class MainWindow(ctk.CTkFrame):
         self.spectrogram_btn.grid(row=0, column=3, padx=6)
 
         # Load metadata icon
-        self._meta_icon = load_svg_icon("Metadata-iconV2.svg", ICON_SIZE)
+        self._meta_icon = load_svg_icon("Metadata-iconV3.svg", ICON_SIZE)
 
         # Metadata editor button
         self.metadata_btn = ctk.CTkButton(
@@ -202,7 +202,7 @@ class MainWindow(ctk.CTkFrame):
         self.metadata_btn.grid(row=0, column=4, padx=6)
 
         # Settings icon
-        self._settings_icon = load_svg_icon("settings-iconV2.svg", ICON_SIZE)
+        self._settings_icon = load_svg_icon("settings-iconV3.svg", ICON_SIZE)
 
         # Settings button
         self.settings_btn = ctk.CTkButton(

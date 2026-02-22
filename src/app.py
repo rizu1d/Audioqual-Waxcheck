@@ -186,11 +186,15 @@ class AudioQualApp:
         if self._is_text_entry(event):
             return
         if self.audio_player.get_state() == PlayerState.STOPPED:
-            # Nothing loaded yet — load selected and play
             selected = self.main_window.results_table.get_selected_result()
             if selected:
-                self.audio_player.load(selected.filepath)
-                self.root.after(100, self.audio_player.play)
+                if self.audio_player._current_filepath == selected.filepath:
+                    # File already loaded — play directly
+                    self.audio_player.play()
+                else:
+                    # Different file — load and play
+                    self.audio_player.load(selected.filepath)
+                    self.root.after(100, self.audio_player.play)
         else:
             self.audio_player.toggle_play_pause()
         return "break"
