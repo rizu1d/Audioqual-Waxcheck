@@ -14,12 +14,14 @@ class SettingsWindow(ctk.CTkToplevel):
 
     def __init__(self, master):
         super().__init__(master)
+        self.withdraw()  # Hide until positioned
 
         self._settings = AppSettings()
 
         self._setup_window()
         self._setup_ui()
 
+        self.deiconify()  # Show at correct position
         self.lift()
         self.grab_set()
         self.focus_force()

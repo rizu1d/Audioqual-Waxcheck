@@ -41,9 +41,12 @@ class SpectrogramWindow(ctk.CTkToplevel):
         self._last_render_size = (0, 0)
         self._last_render_time = 0
 
+        self.withdraw()  # Hide until positioned
+
         self._setup_window()
         self._setup_ui()
 
+        self.deiconify()  # Show at correct position
         # Schedule initial render after window is mapped
         self.after(100, self._start_render)
 

@@ -1233,7 +1233,7 @@ def find_cutoff_by_transition(
         # shows the musical content has ended.
         #
         # We use THREE criteria (any can trigger detection):
-        # 1. Absolute threshold: post-variance < 0.3 (clearly noise)
+        # 1. Absolute threshold: post-variance < frequency-dependent musical threshold
         # 2. Relative drop: variance drops by >= 35% from pre to post band
         # 3. Two-band lookahead: if the band TWO steps ahead is clearly noise (var < 0.2)
         #    and we're in a musical band, this indicates a gradual transition
@@ -1243,7 +1243,7 @@ def find_cutoff_by_transition(
         # (a 37% drop, close to significant). Using 35% threshold catches these
         # while avoiding false positives.
         variance_drop_ratio = (variance_low - variance_high) / variance_low if variance_low > 0.1 else 0.0
-        has_absolute_variance_drop = variance_high < 0.25
+        has_absolute_variance_drop = variance_high < get_min_pre_variance(freq_high)
         has_relative_variance_drop = variance_drop_ratio >= 0.35
 
         # Two-band lookahead: check if band i+2 is clearly noise
@@ -1253,6 +1253,11 @@ def find_cutoff_by_transition(
             # If current band is musical and two bands ahead is clearly noise,
             # we're at the start of a gradual transition
             has_two_band_transition = variance_two_ahead < 0.2 and variance_high < 0.5
+            # At high frequencies (>=19kHz), natural rolloff can look like a
+            # two-band transition. Guard: the detection point must not be musical.
+            if has_two_band_transition and freq_high >= 19000:
+                if variance_high >= get_min_pre_variance(freq_high):
+                    has_two_band_transition = False
 
         is_variance_transition = is_musical_content and (has_absolute_variance_drop or has_relative_variance_drop or has_two_band_transition) and drop > 0
 
@@ -1295,13 +1300,22 @@ def find_cutoff_by_transition(
                 for k in range(1, VARIANCE_DECAY_WINDOW + 1):
                     _, _, v_k = band_stats[i + k]
                     _, _, v_prev = band_stats[i + k - 1]
-                    if v_k > v_prev + 0.05:
+                    if v_k > v_prev + 0.01:
                         all_declining = False
                         break
                 if all_declining:
-                    has_sliding_variance_decay = True
-                    sliding_total_drop_ratio = total_drop_ratio
-                    sliding_end_variance = variance_end
+                    # At high frequencies (>=19kHz), natural rolloff can mimic
+                    # decay patterns. Guard: the detection point (band i+1) must
+                    # not still contain musical content.
+                    if freq_high >= 19000:
+                        post_thresh = get_min_pre_variance(freq_high)
+                        if variance_high >= post_thresh:
+                            # Band i+1 is still musical — skip this trigger
+                            all_declining = False
+                    if all_declining:
+                        has_sliding_variance_decay = True
+                        sliding_total_drop_ratio = total_drop_ratio
+                        sliding_end_variance = variance_end
 
         if is_musical_content and (has_significant_drop or is_variance_transition or has_cumulative_drop or has_sliding_variance_decay):
             # Verify energy doesn't recover after the drop

@@ -59,8 +59,8 @@ Key insight: musical content has high temporal variance (follows dynamics), whil
 Searches 500Hz bands from 10kHz to 21kHz for the first "musical content → noise" transition.
 
 - **Phase 1** - Find the FIRST band where musical content ends:
-  - Band must have musical content (variance >= frequency-dependent threshold: 0.4 at 14kHz, interpolating down to 0.25 at 20kHz — this accommodates acapellas with lower high-frequency variance)
-  - Detection triggers on: (a) energy drop >= 8dB, (b) variance transition (absolute or relative >= 35%), (c) cumulative drop across 3 consecutive bands >= 12dB, (d) sliding-window variance decay (variance drops >= 50% across 3 consecutive bands, ending below 0.25, monotonically decreasing — catches gradual rolloffs where no single step exceeds thresholds)
+  - Band must have musical content (variance >= frequency-dependent threshold: 0.30 at 14kHz, interpolating down to 0.15 at 20kHz — this accommodates acapellas with lower high-frequency variance)
+  - Detection triggers on: (a) energy drop >= 8dB, (b) variance transition (absolute: post-band variance below its own frequency-dependent musical threshold, or relative >= 35%), (c) cumulative drop across 3 consecutive bands >= 12dB, (d) sliding-window variance decay (variance drops >= 50% across 3 consecutive bands, ending below 0.25, strictly monotonically decreasing with 0.01 tolerance — catches gradual rolloffs where no single step exceeds thresholds)
   - Anti-sibilance: recovery check requires 2+ consecutive bands with both energy AND variance >= 0.3 (isolated sibilance spikes don't count)
 - **Phase 2** (fallback) - Best-score method for lossless/edge cases
 
@@ -88,6 +88,8 @@ Built with customtkinter and tkinterdnd2 for drag-and-drop:
 - **audio_player.py** - Playback engine using sounddevice callback-based OutputStream. Dual-loader: uses `soundfile` for WAV/FLAC/OGG/AIFF (low GIL contention, faster), falls back to `librosa` for MP3/M4A/AAC/WMA.
 - **player_controls.py** - Transport controls (play/pause, seek, volume, prev/next)
 - **waveform_display.py** - DJ-style amplitude bar visualization with played/unplayed coloring and gold playhead. Background thread computes peaks, main thread updates display. Playhead updates skip if movement < 2px to reduce redraws.
+- **quality_popup.py** - Floating popup explaining quality verdicts. Shows quality badge, cutoff frequency, declared vs detected bitrate comparison, and contextual explanation text. Animated entrance/exit (fade + slide). Positioned relative to the quality badge that triggered it.
+- **icons.py** - Programmatic icon generation using PIL.ImageDraw. Draws icons at 2x resolution on transparent RGBA canvases, wrapped in CTkImage for HiDPI. Module-level cache prevents regeneration.
 
 Icon assets live in `src/assets/` as SVGs (V2/V3 versions) with PNG fallbacks. Fonts: Outfit (UI) and Space Mono (numeric data) in `src/assets/fonts/`.
 
@@ -157,6 +159,13 @@ Constants are grouped by purpose:
 - **Matplotlib backend:** Must use `'Agg'` (non-interactive), configured once at module load in `app.py`. Interactive backends conflict with tkinter.
 - **macOS event loop:** The heartbeat + pipe/createfilehandler pattern is required. Removing either causes UI freezes on macOS when thread callbacks fire.
 - **Test suite:** Run `python tests/run_tests.py` before and after algorithm changes. Tests in `tests/tests.json` are append-only (never edit or delete existing entries). The test suite analyzes 32 real audio files and checks cutoff detection + classification against known baselines. Exit code 0 = all pass, 1 = regressions detected. Each test entry has: `id`, `file` (path to audio), `description`, `expected` (with `status`, `detected_quality_in`, `cutoff_above_khz`), `known_bug`, `notes`, and `_baseline` (recorded actual values for reference).
+
+## Diagnostic Scripts (`scripts/`)
+
+- **diagnose_latour.py** - Band-by-band analysis for LaTour and YouTube rips (calibrating the noise-plateau guard)
+- **diagnose_detection.py** - Band-by-band analysis for Silicone Soul and Agoria, highlighting the "trap zone" between frequency-dependent musical threshold and fixed absolute variance drop threshold
+
+Usage: `python scripts/diagnose_latour.py` or `python scripts/diagnose_detection.py`
 
 ## Language
 

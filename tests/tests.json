@@ -50,19 +50,20 @@
     "expected": {
       "status": "OK",
       "detected_quality_in": [
-        "256kbps"
+        "256kbps",
+        "320kbps"
       ],
       "cutoff_above_khz": 17.5
     },
     "known_bug": false,
-    "notes": "",
+    "notes": "Fix: tolerancia monotónica 1d ajustada (0.05→0.01) corrige detección falsa a 19kHz",
     "_baseline": {
-      "cutoff_khz": 19.0,
+      "cutoff_khz": 20.0,
       "status": "OK",
-      "quality": "256kbps",
-      "confidence": 0.842,
+      "quality": "320kbps",
+      "confidence": 0.832,
       "is_uncertain": false,
-      "details": "Frecuencia de corte: 19.0 kHz | Bitrate declarado: 320 kbps"
+      "details": "Frecuencia de corte: 20.0 kHz | Bitrate declarado: 320 kbps"
     }
   },
   {

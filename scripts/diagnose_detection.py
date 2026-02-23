@@ -1,8 +1,12 @@
 """
-Diagnostic script: compare transition vs segment detection methods
-for LaTour and YouTube rip files to calibrate the natural rolloff guard.
+Diagnostic script: analyze Silicone Soul (BASE_003) and Agoria (BASE_002)
+to debug why Silicone Soul detects at 19kHz instead of 20kHz.
 
-Usage: python scripts/diagnose_latour.py
+Focuses on the "trap zone" hypothesis: has_absolute_variance_drop uses
+a fixed 0.25 threshold while is_musical_content uses a frequency-dependent
+threshold that goes as low as 0.15 at 20kHz.
+
+Usage: python scripts/diagnose_detection.py
 """
 
 import os
@@ -19,7 +23,6 @@ import numpy as np
 from src.core.frequency_detector import (
     analyze_frequency_cutoff,
     compute_spectrogram,
-    compute_energy_per_frequency,
     compute_reference_band_stats,
     identify_active_frames,
     find_cutoff_by_transition,
@@ -66,8 +69,7 @@ def get_min_pre_variance(freq_hz: float) -> float:
 
 def diagnose_transition_detail(spectrogram_db, frequencies, sample_rate):
     """
-    Run transition detection with detailed logging of which band/condition triggered.
-    Returns (cutoff_hz, confidence, trigger_info).
+    Run transition detection with detailed logging showing the trap zone issue.
     """
     ref_energy_per_frame, ref_mean, ref_std = compute_reference_band_stats(
         spectrogram_db, frequencies
@@ -89,14 +91,21 @@ def diagnose_transition_detail(spectrogram_db, frequencies, sample_rate):
         band_stats.append((current_freq, energy, variance))
         current_freq += TRANSITION_BAND_WIDTH_HZ
 
-    # Print all band stats
+    # Print all band stats with BOTH thresholds to highlight the trap zone
     print("  Band analysis (500Hz bands, 10kHz-21kHz):")
-    print(f"  {'Band':>12s}  {'Energy':>8s}  {'Variance':>8s}  {'MinVar':>8s}  {'Musical?':>8s}")
+    print(f"  {'Band':>12s}  {'Energy':>8s}  {'Var':>8s}  {'MusThresh':>9s}  {'Musical?':>8s}  {'AbsThresh':>9s}  {'AbsDrop?':>8s}  {'TRAP?':>5s}")
     for freq, energy, variance in band_stats:
         min_var = get_min_pre_variance(freq)
         is_musical = variance >= min_var
-        marker = " *" if is_musical else ""
-        print(f"  {freq/1000:>7.1f} kHz  {energy:>8.1f}  {variance:>8.3f}  {min_var:>8.3f}  {'YES' if is_musical else 'no':>6s}{marker}")
+        abs_drop = variance < 0.25  # Current fixed threshold
+        # Trap zone: band is considered musical but NEXT band could trigger abs_drop
+        trap = is_musical and abs_drop
+        print(
+            f"  {freq/1000:>7.1f} kHz  {energy:>8.1f}  {variance:>8.3f}  "
+            f"{min_var:>9.3f}  {'YES' if is_musical else 'no':>8s}  "
+            f"{'0.250':>9s}  {'YES' if abs_drop else 'no':>8s}  "
+            f"{'TRAP!' if trap else '':>5s}"
+        )
 
     # Helper: energy recovery check
     def energy_recovers_after(band_index, post_energy):
@@ -112,8 +121,8 @@ def diagnose_transition_detail(spectrogram_db, frequencies, sample_rate):
                 consecutive = 0
         return False
 
-    # Scan for triggers (same logic as frequency_detector.py)
-    print("\n  Transition scan:")
+    # Scan for triggers
+    print("\n  Phase 1 transition scan (looking for first trigger):")
     for i in range(len(band_stats) - 1):
         freq_low, energy_low, variance_low = band_stats[i]
         freq_high, energy_high, variance_high = band_stats[i + 1]
@@ -141,8 +150,8 @@ def diagnose_transition_detail(spectrogram_db, frequencies, sample_rate):
         is_var_transition = is_musical and (has_abs_var_drop or has_rel_var_drop or has_two_band) and drop > 0
 
         has_cumulative = False
+        cum_drop = 0.0
         if i + TRANSITION_CUMULATIVE_BANDS < len(band_stats):
-            cum_drop = 0.0
             all_dropping = True
             for k in range(TRANSITION_CUMULATIVE_BANDS):
                 _, e_c, _ = band_stats[i + k]
@@ -186,22 +195,27 @@ def diagnose_transition_detail(spectrogram_db, frequencies, sample_rate):
                 parts = []
                 if has_abs_var_drop:
                     thresh = get_min_pre_variance(freq_high)
-                    parts.append(f"abs(v={variance_high:.3f}<{thresh:.3f})")
+                    parts.append(f"abs(v_high={variance_high:.3f}<thresh={thresh:.3f})")
                 if has_rel_var_drop:
                     parts.append(f"rel({variance_drop_ratio:.1%}>=35%)")
                 if has_two_band:
                     parts.append("2band")
-                methods.append(f"1b({'+'.join(parts)})")
+                methods.append(f"1b({' + '.join(parts)})")
             if has_cumulative:
                 methods.append(f"1c(cum={cum_drop:.1f}dB)")
             if has_sliding_decay:
-                methods.append(f"1d(decay)")
+                methods.append("1d(decay)")
 
             recovers = energy_recovers_after(i, energy_high)
-            status = "BLOCKED(recovery)" if recovers else "TRIGGERED"
-            print(f"    {freq_low/1000:.1f}-{freq_high/1000:.1f}kHz: {status} by {', '.join(methods)}")
+            status = "BLOCKED(recovery)" if recovers else ">>> TRIGGERED <<<"
+            print(f"    {freq_low/1000:.1f}-{freq_high/1000:.1f}kHz: {status}")
+            for m in methods:
+                print(f"      Method: {m}")
             if not recovers:
+                print(f"    ==> DETECTION POINT: {freq_high/1000:.1f} kHz")
                 return freq_high, methods
+
+    print("    No Phase 1 trigger found (would fall through to Phase 2)")
     return None, []
 
 
@@ -228,102 +242,42 @@ def analyze_file(filepath):
         segment_cutoffs, percentile=PREDOMINANT_PERCENTILE
     )
 
-    gap = cutoff_seg - cutoff_trans
+    # Full analysis result
+    result = analyze_frequency_cutoff(samples, sr)
 
-    print(f"\n  RESULTS:")
+    print(f"\n  METHOD RESULTS:")
     print(f"    Transition:  {cutoff_trans/1000:.1f} kHz  (conf={conf_trans:.3f})")
     print(f"    Segments:    {cutoff_seg/1000:.1f} kHz  (conf={conf_seg:.3f}, outliers={has_outliers})")
-    print(f"    Gap:         {gap/1000:.1f} kHz  (segment - transition)")
-    print(f"    Conf >= 0.7: {conf_trans >= 0.7}")
-
-    # Use the actual analyze_frequency_cutoff function to get the real result
-    result = analyze_frequency_cutoff(samples, sr)
-    final = result.cutoff_frequency_hz
-    decision = f"analyze_frequency_cutoff → {final/1000:.1f}kHz (conf={result.confidence:.3f})"
+    print(f"    Gap:         {(cutoff_seg - cutoff_trans)/1000:.1f} kHz")
+    print(f"    FINAL:       {result.cutoff_frequency_khz:.1f} kHz  (conf={result.confidence:.3f})")
     if result.is_uncertain:
-        decision += f" [UNCERTAIN: {result.uncertainty_reason}]"
-
-    print(f"    ACTUAL result: {final/1000:.1f} kHz  (conf={result.confidence:.3f}, uncertain={result.is_uncertain})")
-    if result.uncertainty_reason:
-        print(f"    Reason:      {result.uncertainty_reason}")
+        print(f"    UNCERTAIN:   {result.uncertainty_reason}")
 
     # Detailed transition diagnosis
-    print(f"\n  TRANSITION DETAIL:")
+    print(f"\n  DETAILED TRANSITION DIAGNOSIS:")
     trigger_freq, trigger_methods = diagnose_transition_detail(spectrogram_db, frequencies, sr)
 
-    return {
-        "filename": filename,
-        "cutoff_transition": cutoff_trans,
-        "conf_transition": conf_trans,
-        "cutoff_segment": cutoff_seg,
-        "conf_segment": conf_seg,
-        "has_outliers": has_outliers,
-        "gap": gap,
-        "decision": decision,
-        "final_cutoff": final,
-    }
+    return result
 
 
 def main():
-    test_dir = os.path.join(project_dir, "references", "test-files")
+    base_dir = os.path.join(project_dir, "references", "test-files", "base")
 
-    # LaTour file
-    latour = os.path.join(test_dir, "casos-excepcionales", "LaTour - People Are Still Having Sex.mp3")
+    files = [
+        os.path.join(base_dir, "Silicone Soul - Chic-O-Laa (H-Foundation Remix).mp3"),
+        os.path.join(base_dir, "Agoria - Teardrops (Don't Stop The Music) (Nick Morgan Remix).mp3"),
+    ]
 
-    # YouTube rips
-    yt_dir = os.path.join(test_dir, "youtuberips")
-
-    # Other exceptional cases
-    exc_dir = os.path.join(test_dir, "casos-excepcionales")
-
-    files_to_analyze = []
-
-    # Priority: LaTour first
-    if os.path.exists(latour):
-        files_to_analyze.append(latour)
-    else:
-        print(f"WARNING: LaTour file not found at {latour}")
-
-    # YouTube rips
-    if os.path.isdir(yt_dir):
-        for f in sorted(os.listdir(yt_dir)):
-            if f.endswith(('.mp3', '.wav', '.flac', '.m4a', '.aiff', '.aif')):
-                files_to_analyze.append(os.path.join(yt_dir, f))
-
-    # Other exceptional cases (skip LaTour since already included)
-    if os.path.isdir(exc_dir):
-        for f in sorted(os.listdir(exc_dir)):
-            if f.endswith(('.mp3', '.wav', '.flac', '.m4a', '.aiff', '.aif')) and "LaTour" not in f:
-                files_to_analyze.append(os.path.join(exc_dir, f))
-
-    print(f"Analyzing {len(files_to_analyze)} files...\n")
-
-    results = []
-    for filepath in files_to_analyze:
+    for filepath in files:
+        if not os.path.exists(filepath):
+            print(f"WARNING: File not found: {filepath}")
+            continue
         try:
-            result = analyze_file(filepath)
-            results.append(result)
+            analyze_file(filepath)
         except Exception as e:
-            print(f"\n  ERROR analyzing {os.path.basename(filepath)}: {e}")
-
-    # Summary table
-    print(f"\n\n{'='*120}")
-    print("SUMMARY TABLE")
-    print(f"{'='*120}")
-    print(f"{'File':<55s}  {'Trans':>7s}  {'Conf':>5s}  {'Seg':>7s}  {'Conf':>5s}  {'Gap':>6s}  {'Out':>3s}  {'Decision':<35s}  {'Final':>7s}")
-    print("-" * 120)
-    for r in results:
-        print(
-            f"{r['filename'][:54]:<55s}  "
-            f"{r['cutoff_transition']/1000:>6.1f}k  "
-            f"{r['conf_transition']:>5.3f}  "
-            f"{r['cutoff_segment']/1000:>6.1f}k  "
-            f"{r['conf_segment']:>5.3f}  "
-            f"{r['gap']/1000:>5.1f}k  "
-            f"{'Y' if r['has_outliers'] else 'N':>3s}  "
-            f"{r['decision']:<35s}  "
-            f"{r['final_cutoff']/1000:>6.1f}k"
-        )
+            print(f"ERROR analyzing {os.path.basename(filepath)}: {e}")
+            import traceback
+            traceback.print_exc()
 
 
 if __name__ == "__main__":

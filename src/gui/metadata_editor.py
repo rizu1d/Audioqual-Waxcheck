@@ -155,6 +155,7 @@ class MetadataEditor(ctk.CTkToplevel):
         on_save: Optional[Callable[[str, Optional[str]], None]] = None,
     ):
         super().__init__(master)
+        self.withdraw()  # Hide until positioned
 
         self._filepath = filepath
         self._on_save = on_save
@@ -188,7 +189,8 @@ class MetadataEditor(ctk.CTkToplevel):
         self._setup_ui()
         self._read_metadata()
 
-        # Make modal
+        # Show and make modal
+        self.deiconify()  # Show at correct position
         self.lift()
         self.grab_set()
         self.focus_force()
@@ -1160,10 +1162,18 @@ class MetadataEditor(ctk.CTkToplevel):
     def _show_error(self, message: str):
         """Show an error message in a simple dialog."""
         error_win = ctk.CTkToplevel(self)
+        error_win.withdraw()  # Hide until positioned
         error_win.title("Error")
-        error_win.geometry("350x120")
+        w, h = 350, 120
+        error_win.geometry(f"{w}x{h}")
         error_win.resizable(False, False)
         error_win.configure(fg_color=THEME_COLORS["bg_primary"])
+        # Center over parent
+        error_win.update_idletasks()
+        px = self.winfo_rootx() + (self.winfo_width() - w) // 2
+        py = self.winfo_rooty() + (self.winfo_height() - h) // 2
+        error_win.geometry(f"{w}x{h}+{px}+{py}")
+        error_win.deiconify()  # Show at correct position
         error_win.grab_set()
 
         ctk.CTkLabel(
@@ -1187,10 +1197,19 @@ class MetadataEditor(ctk.CTkToplevel):
     def _show_warning(self, message: str):
         """Show a warning message (non-blocking, auto-closes parent won't wait)."""
         warn_win = ctk.CTkToplevel(self.master)
+        warn_win.withdraw()  # Hide until positioned
         warn_win.title("Aviso")
-        warn_win.geometry("380x120")
+        w, h = 380, 120
+        warn_win.geometry(f"{w}x{h}")
         warn_win.resizable(False, False)
         warn_win.configure(fg_color=THEME_COLORS["bg_primary"])
+        # Center over parent
+        warn_win.update_idletasks()
+        parent = self.master
+        px = parent.winfo_rootx() + (parent.winfo_width() - w) // 2
+        py = parent.winfo_rooty() + (parent.winfo_height() - h) // 2
+        warn_win.geometry(f"{w}x{h}+{px}+{py}")
+        warn_win.deiconify()  # Show at correct position
         warn_win.grab_set()
 
         ctk.CTkLabel(

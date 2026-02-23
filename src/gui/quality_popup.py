@@ -64,6 +64,11 @@ def _determine_case(result: AnalysisResult) -> int:
     if level == "bueno":
         if is_lossless_fmt:
             return 6  # Lossless con posible transcode
+        # Check if declared bitrate exceeds detected
+        detected_kbps = _detected_bitrate_int(result.detected_quality)
+        if (result.declared_bitrate and detected_kbps
+                and result.declared_bitrate > detected_kbps):
+            return 9  # Bueno pero bitrate real < declarado
         return 5      # Lossy verificado
 
     # excelente
@@ -149,6 +154,15 @@ def _build_explanation(result: AnalysisResult, case: int) -> str:
             f"ninguna compresión ni transcode. Calidad perfecta para "
             f"cualquier uso profesional."
         )
+    if case == 9:
+        return (
+            f"Archivo {fmt} con bitrate declarado de {declared}. Sin embargo, "
+            f"el contenido espectral se extiende hasta {cutoff}, lo que sitúa "
+            f"su calidad real en torno a {real}. Aunque no alcanza la máxima "
+            f"calidad de un {declared} nativo, el archivo conserva un rango "
+            f"frecuencial amplio y es apto para uso profesional en DJ sets "
+            f"y producción."
+        )
     # case 8
     return (
         f"Archivo {fmt} a {declared} con contenido espectral que se "
@@ -168,6 +182,7 @@ _VERIFIED_MESSAGES = {
     5: ("Calidad verificada", "Archivo legítimo"),
     7: ("Lossless verificado", "Máxima calidad"),
     8: ("Calidad verificada", "Máxima calidad MP3"),
+    9: ("Calidad aceptable", "Apto para uso profesional"),
 }
 
 
