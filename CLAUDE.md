@@ -66,7 +66,7 @@ Searches 500Hz bands from 10kHz to 21kHz for the first "musical content → nois
 
 **Secondary method: Segment-based percentile analysis**
 
-Divides audio into 50 temporal segments, finds cutoff per segment, uses 85th percentile as the predominant cutoff (ignores top 15% peaks/outliers).
+Divides audio into 50 temporal segments, finds cutoff per segment, uses 90th percentile as the predominant cutoff (ignores top 10% peaks/outliers).
 
 **Decision logic:**
 - Transition confidence >= 0.7 → use it, UNLESS noise-plateau pattern detected (segments much lower with outliers and gap > 2kHz → trust segments instead, as transition may be seeing noise-to-silence rather than music-to-noise). The noise-plateau guard verifies the gap bands actually lack musical content before overriding transition — if bands between the segment and transition cutoffs have musical variance (frequency-dependent threshold), the transition is trusted (prevents false positives on older recordings with genuine high-frequency content like LaTour).
@@ -84,12 +84,12 @@ Built with customtkinter and tkinterdnd2 for drag-and-drop:
 - **spectrogram_window.py** - Separate `CTkToplevel` window; background thread renders matplotlib figure to PIL Image via Agg backend, then progressive left-to-right reveal animation (12 steps, 25ms each). Displays reliability label ("Fiabilidad: Alta/Media/Baja") with color instead of raw confidence percentage.
 - **results_table.py** - Analysis results with status colors (ttk.Treeview). Supports draggable column resize grips with 30ms throttling and minimum column widths. `update_filepath()` re-keys results when files are renamed.
 - **metadata_editor.py** - iTunes-style metadata editor (`CTkToplevel`). Edits ID3 tags (MP3/WAV/AIFF) and Vorbis comments (FLAC). Fields: title, artist, album, genre (combobox with 300+ genre autocomplete), year, track/disc numbers, compilation, BPM, comments. Optional file renaming on save ("Artist - Title.ext") controlled by `AppSettings.rename_on_save`.
-- **settings_window.py** - Modal configuration panel. Currently one setting: `rename_on_save` (rename file on disk when saving metadata).
+- **settings_window.py** - Modal configuration panel. Settings: `rename_on_save` (rename file on disk when saving metadata), `watcher_folder` and `watcher_auto_start` (FolderWatcher configuration).
 - **audio_player.py** - Playback engine using sounddevice callback-based OutputStream. Dual-loader: uses `soundfile` for WAV/FLAC/OGG/AIFF (low GIL contention, faster), falls back to `librosa` for MP3/M4A/AAC/WMA.
 - **player_controls.py** - Transport controls (play/pause, seek, volume, prev/next)
 - **waveform_display.py** - DJ-style amplitude bar visualization with played/unplayed coloring and gold playhead. Background thread computes peaks, main thread updates display. Playhead updates skip if movement < 2px to reduce redraws.
 
-Icon assets live in `src/assets/` (drop-icon.png, spectrum.jpg, clean.jpg, wave-icon.png, metadata-icon.png, settings-icon.png).
+Icon assets live in `src/assets/` as SVGs (V2/V3 versions) with PNG fallbacks. Fonts: Outfit (UI) and Space Mono (numeric data) in `src/assets/fonts/`.
 
 ### Application Entry & Wiring
 
@@ -105,11 +105,11 @@ Four threading patterns are used:
 3. **Audio playback** (`audio_player.py`): sounddevice callback-based OutputStream runs in audio thread. File loading in background thread.
 4. **Waveform rendering** (`waveform_display.py`): Background thread computes peaks, delivers via `schedule_callback_from_thread`.
 
-All background-to-UI communication uses `schedule_callback_from_thread()` from `src/utils/tk_utils.py`, which combines `root.after(0, callback)` with `event_generate("<<ThreadCallback>>")` to wake macOS's dormant event loop.
+All background-to-UI communication uses `schedule_callback_from_thread()` from `src/utils/tk_utils.py`. On macOS, it uses an OS-level pipe + `createfilehandler` (backed by kqueue) with a keep-alive thread for reliable event loop waking. On other platforms, it falls back to `event_generate("<<ThreadCallback>>")`.
 
 ### macOS Event Loop Workaround
 
-`app.py` runs a 50ms heartbeat (`_heartbeat` → `update_idletasks`) to keep macOS tkinter responsive. Combined with the `event_generate` wake-up in `tk_utils.py`, this prevents UI freezes when callbacks are scheduled from threads.
+`app.py` runs a 200ms heartbeat (`_heartbeat` → `update_idletasks`) to keep macOS tkinter responsive. Combined with the pipe + createfilehandler wake-up in `tk_utils.py`, this prevents UI freezes when callbacks are scheduled from threads.
 
 ### Keyboard Shortcuts (`app.py → _setup_keyboard_bindings`)
 
@@ -143,7 +143,7 @@ Constants are grouped by purpose:
 - **STATUS_*** - Analysis status strings (in Spanish)
 - **RELIABILITY_COLORS** - Green/gold/red for Alta/Media/Baja fiabilidad display in spectrogram panel
 - **THEME_COLORS, STATUS_COLORS** - Purple/gold/dark gray UI palette
-- **FONT_FAMILY ("Inter"), FONT_SIZES, FONT_WEIGHTS** - Typography
+- **FONT_FAMILY ("Outfit"), FONT_FAMILY_MONO ("Space Mono"), FONT_SIZES, FONT_WEIGHTS** - Typography
 - **Window/panel dimensions** - WINDOW_WIDTH, PANEL_WIDTH, MIN_* constraints
 
 ## Memory Management
@@ -155,7 +155,7 @@ Constants are grouped by purpose:
 
 - **Tkinter thread safety:** All UI updates from background threads MUST go through `schedule_callback_from_thread()` (in `src/utils/tk_utils.py`). Direct tkinter calls from non-main threads cause crashes.
 - **Matplotlib backend:** Must use `'Agg'` (non-interactive), configured once at module load in `app.py`. Interactive backends conflict with tkinter.
-- **macOS event loop:** The heartbeat + event_generate pattern is required. Removing either causes UI freezes on macOS when thread callbacks fire.
+- **macOS event loop:** The heartbeat + pipe/createfilehandler pattern is required. Removing either causes UI freezes on macOS when thread callbacks fire.
 - **Test suite:** Run `python tests/run_tests.py` before and after algorithm changes. Tests in `tests/tests.json` are append-only (never edit or delete existing entries). The test suite analyzes 32 real audio files and checks cutoff detection + classification against known baselines. Exit code 0 = all pass, 1 = regressions detected. Each test entry has: `id`, `file` (path to audio), `description`, `expected` (with `status`, `detected_quality_in`, `cutoff_above_khz`), `known_bug`, `notes`, and `_baseline` (recorded actual values for reference).
 
 ## Language

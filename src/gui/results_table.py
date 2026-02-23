@@ -44,33 +44,21 @@ class QualityBadge(ctk.CTkFrame):
         display_text = level.capitalize()
         self.configure(width=self._calculate_width(display_text))
 
-        # Container for horizontal layout
-        inner = ctk.CTkFrame(self, fg_color="transparent")
-        inner.place(relx=0.5, rely=0.5, anchor="center")
-
-        # Colored dot (7px)
-        self._dot = ctk.CTkLabel(
-            inner,
-            text="",
-            image=icon_quality_dot(7, colors["dot"]),
-            width=7,
-            height=7,
-            fg_color="transparent",
-        )
-        self._dot.pack(side="left", padx=(0, 6))
-
-        # Quality text
+        # Compound label anchored left so dots align vertically across all rows
         self._label = ctk.CTkLabel(
-            inner,
-            text=display_text,
+            self,
+            text=f"  {display_text}",
+            image=icon_quality_dot(7, colors["dot"]),
+            compound="left",
             font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
             text_color=colors["text"],
             fg_color="transparent",
         )
-        self._label.pack(side="left")
+        self._label.place(x=10, rely=0.5, anchor="w")
 
     def _calculate_width(self, text: str) -> int:
-        return max(len(text) * 8 + 36, 80)
+        # 10px left + dot(7) + gap(~6) + text + 12px right
+        return len(text) * 6 + 35
 
     def update_quality(self, cutoff_khz: float, status: str = ""):
         """Update badge for new cutoff frequency."""
@@ -87,8 +75,11 @@ class QualityBadge(ctk.CTkFrame):
             border_color=colors["border"],
             width=self._calculate_width(display_text),
         )
-        self._dot.configure(image=icon_quality_dot(7, colors["dot"]))
-        self._label.configure(text=display_text, text_color=colors["text"])
+        self._label.configure(
+            text=f"  {display_text}",
+            image=icon_quality_dot(7, colors["dot"]),
+            text_color=colors["text"],
+        )
 
 
 class ResultRow(ctk.CTkFrame):

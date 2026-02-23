@@ -1,30 +1,30 @@
 <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="borderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#6a5a9a"/>
-      <stop offset="50%" stop-color="#8878b8"/>
-      <stop offset="100%" stop-color="#524479"/>
+      <stop offset="0%" stop-color="#7a6aaa"/>
+      <stop offset="50%" stop-color="#9888c8"/>
+      <stop offset="100%" stop-color="#624889"/>
     </linearGradient>
     <linearGradient id="innerBorderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#9a8cc4"/>
-      <stop offset="30%" stop-color="#b8aad4"/>
-      <stop offset="70%" stop-color="#8878b0"/>
-      <stop offset="100%" stop-color="#7060a0"/>
+      <stop offset="0%" stop-color="#aa9cd4"/>
+      <stop offset="30%" stop-color="#c8bae4"/>
+      <stop offset="70%" stop-color="#9888c0"/>
+      <stop offset="100%" stop-color="#8070b0"/>
     </linearGradient>
   </defs>
   
   <!-- Outer frame -->
-  <rect x="15" y="15" width="170" height="170" rx="22" fill="none" stroke="url(#borderGrad)" stroke-width="3" opacity="0.8"/>
-  
+  <rect x="15" y="15" width="170" height="170" rx="22" fill="none" stroke="url(#borderGrad)" stroke-width="3" opacity="0.95"/>
+
   <!-- Middle frame -->
-  <rect x="22" y="22" width="156" height="156" rx="18" fill="none" stroke="url(#innerBorderGrad)" stroke-width="2.5" opacity="0.6"/>
+  <rect x="22" y="22" width="156" height="156" rx="18" fill="none" stroke="url(#innerBorderGrad)" stroke-width="2.5" opacity="0.8"/>
   
   <!-- Inner fill -->
   <rect x="28" y="28" width="144" height="144" rx="14" fill="#0a0812"/>
   
   <!-- Broom & Dust icon -->
   <g transform="translate(36, 36) scale(4)">
-    <path fill="none" stroke="#9a8cc4" stroke-width="1.2" opacity="0.4" d="M26 20h-6v-2h6zm4 8h-6v-2h6zm-2-4h-6v-2h6z"/>
-    <path fill="#9a8cc4" opacity="0.5" d="M17.003 20a4.9 4.9 0 0 0-2.404-4.173L22 3l-1.73-1l-7.577 13.126a5.7 5.7 0 0 0-5.243 1.503C3.706 20.24 3.996 28.682 4.01 29.04a1 1 0 0 0 1 .96h14.991a1 1 0 0 0 .6-1.8c-3.54-2.656-3.598-8.146-3.598-8.2m-5.073-3.003A3.11 3.11 0 0 1 15.004 20c0 .038.002.208.017.469l-5.9-2.624a3.8 3.8 0 0 1 2.809-.848M15.45 28A5.2 5.2 0 0 1 14 25h-2a6.5 6.5 0 0 0 .968 3h-2.223A16.6 16.6 0 0 1 10 24H8a17.3 17.3 0 0 0 .665 4H6c.031-1.836.29-5.892 1.803-8.553l7.533 3.35A13 13 0 0 0 17.596 28Z"/>
+    <path fill="none" stroke="#aa9cd4" stroke-width="1.2" opacity="0.6" d="M26 20h-6v-2h6zm4 8h-6v-2h6zm-2-4h-6v-2h6z"/>
+    <path fill="#aa9cd4" opacity="0.7" d="M17.003 20a4.9 4.9 0 0 0-2.404-4.173L22 3l-1.73-1l-7.577 13.126a5.7 5.7 0 0 0-5.243 1.503C3.706 20.24 3.996 28.682 4.01 29.04a1 1 0 0 0 1 .96h14.991a1 1 0 0 0 .6-1.8c-3.54-2.656-3.598-8.146-3.598-8.2m-5.073-3.003A3.11 3.11 0 0 1 15.004 20c0 .038.002.208.017.469l-5.9-2.624a3.8 3.8 0 0 1 2.809-.848M15.45 28A5.2 5.2 0 0 1 14 25h-2a6.5 6.5 0 0 0 .968 3h-2.223A16.6 16.6 0 0 1 10 24H8a17.3 17.3 0 0 0 .665 4H6c.031-1.836.29-5.892 1.803-8.553l7.533 3.35A13 13 0 0 0 17.596 28Z"/>
   </g>
 </svg>
