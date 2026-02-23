@@ -1253,9 +1253,9 @@ def find_cutoff_by_transition(
             # If current band is musical and two bands ahead is clearly noise,
             # we're at the start of a gradual transition
             has_two_band_transition = variance_two_ahead < 0.2 and variance_high < 0.5
-            # At high frequencies (>=19kHz), natural rolloff can look like a
+            # At high frequencies (>=18kHz), natural rolloff can look like a
             # two-band transition. Guard: the detection point must not be musical.
-            if has_two_band_transition and freq_high >= 19000:
+            if has_two_band_transition and freq_high >= 18000:
                 if variance_high >= get_min_pre_variance(freq_high):
                     has_two_band_transition = False
 
@@ -1304,10 +1304,10 @@ def find_cutoff_by_transition(
                         all_declining = False
                         break
                 if all_declining:
-                    # At high frequencies (>=19kHz), natural rolloff can mimic
+                    # At high frequencies (>=18kHz), natural rolloff can mimic
                     # decay patterns. Guard: the detection point (band i+1) must
                     # not still contain musical content.
-                    if freq_high >= 19000:
+                    if freq_high >= 18000:
                         post_thresh = get_min_pre_variance(freq_high)
                         if variance_high >= post_thresh:
                             # Band i+1 is still musical — skip this trigger

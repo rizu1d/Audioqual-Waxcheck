@@ -134,8 +134,8 @@ def diagnose_transition_detail(spectrogram_db, frequencies, sample_rate):
         if i + 2 < len(band_stats):
             _, _, v2 = band_stats[i + 2]
             has_two_band = v2 < 0.2 and variance_high < 0.5
-            # HF guard: at >=19kHz, detection point must not be musical
-            if has_two_band and freq_high >= 19000:
+            # HF guard: at >=18kHz, detection point must not be musical
+            if has_two_band and freq_high >= 18000:
                 if variance_high >= get_min_pre_variance(freq_high):
                     has_two_band = False
         is_var_transition = is_musical and (has_abs_var_drop or has_rel_var_drop or has_two_band) and drop > 0
@@ -169,8 +169,8 @@ def diagnose_transition_detail(spectrogram_db, frequencies, sample_rate):
                         all_declining = False
                         break
                 if all_declining:
-                    # High-frequency guard (>=19kHz): skip if band i+1 is still musical
-                    if freq_high >= 19000:
+                    # High-frequency guard (>=18kHz): skip if band i+1 is still musical
+                    if freq_high >= 18000:
                         post_thresh = get_min_pre_variance(freq_high)
                         if variance_high >= post_thresh:
                             all_declining = False

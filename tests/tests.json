@@ -28,19 +28,20 @@
     "expected": {
       "status": "OK",
       "detected_quality_in": [
-        "256kbps"
+        "256kbps",
+        "320kbps"
       ],
       "cutoff_above_khz": 17.0
     },
     "known_bug": false,
-    "notes": "",
+    "notes": "Fix: guard HF 18kHz mejora detección de 18.5→19.5 kHz (cruza tier 256→320)",
     "_baseline": {
-      "cutoff_khz": 18.5,
+      "cutoff_khz": 19.5,
       "status": "OK",
-      "quality": "256kbps",
-      "confidence": 0.817,
+      "quality": "320kbps",
+      "confidence": 0.801,
       "is_uncertain": false,
-      "details": "Frecuencia de corte: 18.5 kHz | Bitrate declarado: 320 kbps"
+      "details": "Frecuencia de corte: 19.5 kHz | Bitrate declarado: 320 kbps"
     }
   },
   {
@@ -622,24 +623,25 @@
   {
     "id": "EDGE_002",
     "file": "references/test-files/casos-excepcionales/DJ Assault - Bangapella.mp3",
-    "description": "Edge case - DJ Assault acapella (contenido real hasta ~19kHz)",
+    "description": "Edge case - DJ Assault acapella (contenido real hasta ~19.5kHz)",
     "expected": {
       "status": "OK",
       "detected_quality_in": [
-        "256kbps"
+        "256kbps",
+        "320kbps"
       ],
       "cutoff_above_khz": 18.0,
       "cutoff_below_khz": 20.5
     },
     "known_bug": false,
-    "notes": "Corregido: antes detectaba falso transcode 192kbps por baja varianza de acapella en HF",
+    "notes": "Fix: guard HF 18kHz mejora detección de 18.5→19.5 kHz (cruza tier 256→320)",
     "_baseline": {
-      "cutoff_khz": 18.5,
+      "cutoff_khz": 19.5,
       "status": "OK",
-      "quality": "256kbps",
+      "quality": "320kbps",
       "confidence": 0.801,
       "is_uncertain": false,
-      "details": "Frecuencia de corte: 18.5 kHz | Bitrate declarado: 320 kbps"
+      "details": "Frecuencia de corte: 19.5 kHz | Bitrate declarado: 320 kbps"
     }
   },
   {
