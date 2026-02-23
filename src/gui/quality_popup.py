@@ -194,11 +194,17 @@ class QualityPopup(ctk.CTkToplevel):
         self._level = get_quality_level(result.cutoff_frequency_khz, result.status)
         self._colors = QUALITY_LEVELS[self._level]
 
+        # Animation
+        self._fade_steps = 8
+        self._fade_interval = 20  # ms per step
+        self._fading_out = False
+
         # Window setup — borderless floating popup
         self.overrideredirect(True)
         self.configure(fg_color=THEME_COLORS["bg_secondary"])
         self.transient(master)  # Child of main window — prevents going behind on macOS
         self.resizable(False, False)
+        self.attributes("-alpha", 0.0)  # Start invisible for fade-in
 
         self._build_ui()
 
@@ -206,8 +212,8 @@ class QualityPopup(ctk.CTkToplevel):
         self.update_idletasks()
         self._position_near(anchor_widget)
 
-        # Close on click outside (after a short delay to avoid catching the opening click)
-        self.after(100, self._bind_click_outside)
+        # Fade in, then bind close handlers
+        self._fade_in(step=1)
 
         # Close on Escape
         self.bind("<Escape>", lambda e: self.close())
@@ -563,6 +569,35 @@ class QualityPopup(ctk.CTkToplevel):
 
         self.geometry(f"{popup_w}x{popup_h}+{x}+{y}")
 
+    # ---------- animation ----------
+
+    def _fade_in(self, step: int):
+        """Animate opacity from 0 to 1."""
+        if step > self._fade_steps:
+            self.attributes("-alpha", 1.0)
+            # Bind close handlers after fade-in completes
+            self.after(50, self._bind_click_outside)
+            return
+        try:
+            self.attributes("-alpha", step / self._fade_steps)
+            self.after(self._fade_interval, self._fade_in, step + 1)
+        except tk.TclError:
+            pass
+
+    def _fade_out(self, step: int):
+        """Animate opacity from 1 to 0, then destroy."""
+        if step < 0:
+            try:
+                self.destroy()
+            except tk.TclError:
+                pass
+            return
+        try:
+            self.attributes("-alpha", step / self._fade_steps)
+            self.after(self._fade_interval, self._fade_out, step - 1)
+        except tk.TclError:
+            pass
+
     # ---------- close logic ----------
 
     def _bind_click_outside(self):
@@ -587,14 +622,13 @@ class QualityPopup(ctk.CTkToplevel):
 
     def close(self):
         """Close the popup and clean up."""
-        if not self._listening:
+        if not self._listening or self._fading_out:
             return
         self._listening = False
+        self._fading_out = True
 
         if self._on_close:
             self._on_close()
 
-        try:
-            self.destroy()
-        except tk.TclError:
-            pass
+        # Fade out then destroy
+        self._fade_out(self._fade_steps - 1)
