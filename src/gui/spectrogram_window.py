@@ -6,12 +6,39 @@ from typing import Optional
 
 import customtkinter as ctk
 from matplotlib.backends.backend_agg import FigureCanvasAgg
+from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.figure import Figure
+from matplotlib.ticker import FuncFormatter, MultipleLocator
 import numpy as np
 from PIL import Image
 
 from ..core.frequency_detector import FrequencyAnalysis
-from ..utils.constants import THEME_COLORS, FONT_FAMILY, FONT_SIZES, RELIABILITY_COLORS
+from ..utils.constants import (
+    THEME_COLORS, FONT_FAMILY, FONT_SIZES, RELIABILITY_COLORS,
+    HOP_LENGTH, SAMPLE_RATE,
+)
+
+# ── Spek-matching colormap ──────────────────────────────────────────────
+# Palette extracted from Spek's source (spek-palette.cc):
+# black → dark navy → purple → magenta → red → orange → yellow → white
+_SPEK_COLORS_RGB = [
+    (0x00, 0x00, 0x00), (0x0c, 0x00, 0x24), (0x1a, 0x00, 0x4a), (0x34, 0x00, 0x72),
+    (0x4c, 0x00, 0x96), (0x64, 0x00, 0xaa), (0x7c, 0x00, 0xb2), (0x90, 0x00, 0xb2),
+    (0xa0, 0x00, 0xa0), (0xb0, 0x00, 0x80), (0xc0, 0x00, 0x60), (0xd0, 0x00, 0x40),
+    (0xe0, 0x00, 0x20), (0xf4, 0x00, 0x00), (0xff, 0x1c, 0x00), (0xff, 0x40, 0x00),
+    (0xff, 0x60, 0x00), (0xff, 0x80, 0x00), (0xff, 0xa0, 0x00), (0xff, 0xc0, 0x00),
+    (0xff, 0xe0, 0x00), (0xff, 0xff, 0x00), (0xff, 0xff, 0x40), (0xff, 0xff, 0x80),
+    (0xff, 0xff, 0xc0), (0xff, 0xff, 0xff),
+]
+SPEK_CMAP = LinearSegmentedColormap.from_list(
+    'spek',
+    [(r / 255, g / 255, b / 255) for r, g, b in _SPEK_COLORS_RGB],
+    N=256,
+)
+
+# Spectrogram dB range (matching Spek's sensitivity)
+_SPEC_DB_MIN = -80
+_SPEC_DB_MAX = 0
 
 
 class SpectrogramWindow(ctk.CTkToplevel):
@@ -270,21 +297,42 @@ class SpectrogramWindow(ctk.CTkToplevel):
 
         fig = None
         try:
+            bg_color = THEME_COLORS["bg_primary"]
+            text_color = THEME_COLORS["text_primary"]
             dpi = 100
+
             fig = Figure(
                 figsize=(width / dpi, height / dpi),
                 dpi=dpi,
-                facecolor=THEME_COLORS["bg_primary"],
+                facecolor=bg_color,
             )
-            ax = fig.add_subplot(111)
+
+            # Layout: main spectrogram + narrow colorbar on the right
+            gs = fig.add_gridspec(
+                1, 2,
+                width_ratios=[40, 1],
+                wspace=0.05,
+            )
+            ax = fig.add_subplot(gs[0])
+            cbar_ax = fig.add_subplot(gs[1])
 
             if self._render_cancelled.is_set() or render_id != self._render_id:
                 return
 
-            # Plot spectrogram
-            self._plot_spectrogram(ax, self._current_analysis)
+            # Plot spectrogram (returns the AxesImage for colorbar)
+            im = self._plot_spectrogram(ax, self._current_analysis)
 
-            fig.tight_layout(pad=1.0)
+            # ── Colorbar (dB legend) ──
+            cbar = fig.colorbar(im, cax=cbar_ax)
+            cbar.set_label(
+                'dB', color=text_color, fontsize=9,
+                rotation=0, labelpad=12, va='center',
+            )
+            cbar.ax.tick_params(colors=text_color, labelsize=7, length=3)
+            cbar.ax.yaxis.set_major_locator(MultipleLocator(20))
+            cbar_ax.set_facecolor(bg_color)
+
+            fig.tight_layout(pad=0.8)
 
             if self._render_cancelled.is_set() or render_id != self._render_id:
                 return
@@ -318,33 +366,51 @@ class SpectrogramWindow(ctk.CTkToplevel):
                 plt.close(fig)
 
     def _plot_spectrogram(self, ax, analysis: FrequencyAnalysis):
-        """Plot the spectrogram on given axes."""
+        """Plot the spectrogram on given axes. Returns the AxesImage for colorbar."""
         spectrogram_db = analysis.spectrogram_db
         frequencies = analysis.frequencies
-
         n_frames = spectrogram_db.shape[1]
 
-        ax.set_facecolor(THEME_COLORS["bg_primary"])
+        # Calculate time extent from STFT parameters
+        duration_sec = n_frames * HOP_LENGTH / SAMPLE_RATE
 
-        ax.imshow(
+        bg_color = THEME_COLORS["bg_primary"]
+        text_color = THEME_COLORS["text_primary"]
+
+        ax.set_facecolor(bg_color)
+
+        # Plot with Spek colormap and matching dB range
+        im = ax.imshow(
             spectrogram_db,
             aspect='auto',
             origin='lower',
-            cmap='magma',
-            extent=[0, n_frames, frequencies[0] / 1000, frequencies[-1] / 1000],
-            vmin=-80,
-            vmax=0,
+            cmap=SPEK_CMAP,
+            extent=[0, duration_sec, frequencies[0] / 1000, frequencies[-1] / 1000],
+            vmin=_SPEC_DB_MIN,
+            vmax=_SPEC_DB_MAX,
+            interpolation='bilinear',
         )
 
-        # Labels
-        ax.set_xlabel('Tiempo (frames)', fontsize=10, color=THEME_COLORS["text_primary"])
-        ax.set_ylabel('Frecuencia (kHz)', fontsize=10, color=THEME_COLORS["text_primary"])
-        ax.set_title('Espectrograma', fontsize=12, color=THEME_COLORS["text_primary"])
+        # ── X-axis: time as m:ss ──
+        def _format_time(x, _pos):
+            minutes = int(x // 60)
+            seconds = int(x % 60)
+            return f"{minutes}:{seconds:02d}"
 
-        # Limit y-axis
-        ax.set_ylim(0, min(24, frequencies[-1] / 1000))
+        ax.xaxis.set_major_formatter(FuncFormatter(_format_time))
 
-        ax.tick_params(colors=THEME_COLORS["text_primary"], labelsize=8)
+        # ── Y-axis: frequency in kHz ──
+        max_khz = min(24, frequencies[-1] / 1000)
+        ax.set_ylim(0, max_khz)
+        ax.yaxis.set_major_locator(MultipleLocator(2))
+
+        # ── Styling ──
+        ax.tick_params(colors=text_color, labelsize=8, length=3)
+        for spine in ax.spines.values():
+            spine.set_edgecolor(text_color)
+            spine.set_alpha(0.2)
+
+        return im
 
     def _on_render_complete(self, render_id: int, image: Image.Image):
         """Handle render completion in main thread."""
