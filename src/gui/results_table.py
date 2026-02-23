@@ -1,59 +1,94 @@
-"""Results table for displaying analysis results with pill-style status badges."""
+"""Results table for displaying analysis results with quality level badges."""
 
-import tkinter as tk
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
 import customtkinter as ctk
 
 from ..core.analyzer import AnalysisResult
-from ..utils.constants import STATUS_COLORS, THEME_COLORS, FONT_FAMILY, FONT_SIZES
+from ..utils.constants import (
+    STATUS_COLORS, THEME_COLORS, FONT_FAMILY, FONT_FAMILY_MONO, FONT_SIZES,
+    QUALITY_LEVELS, get_quality_level,
+    STATUS_PENDING, STATUS_ANALYZING, STATUS_ERROR,
+)
 from ..utils.file_utils import format_duration
-from .icons import icon_search, icon_close
+from .icons import icon_search, icon_close, icon_quality_dot
 
 
 SelectionCallback = Callable[[Optional[AnalysisResult]], None]
 
+# Columns that use monospace font (numeric data)
+_MONO_COLUMNS = {"duration", "declared_bitrate", "cutoff_frequency", "detected_quality"}
 
-class StatusBadge(ctk.CTkFrame):
-    """Pill-shaped status badge with colored background."""
 
-    def __init__(self, master, status: str, **kwargs):
-        # Get color for status
-        bg_color = STATUS_COLORS.get(status, THEME_COLORS["text_muted"])
+class QualityBadge(ctk.CTkFrame):
+    """Pill-shaped quality badge with colored dot, text, and semi-transparent bg."""
+
+    def __init__(self, master, cutoff_khz: float, status: str = "", **kwargs):
+        level = get_quality_level(cutoff_khz, status)
+        colors = QUALITY_LEVELS[level]
 
         super().__init__(
             master,
-            fg_color=bg_color,
+            fg_color=colors["bg"],
+            border_color=colors["border"],
+            border_width=1,
             corner_radius=12,
             height=24,
             **kwargs
         )
 
-        # Prevent frame from shrinking
         self.pack_propagate(False)
-        self.configure(width=self._calculate_width(status))
+        self._level = level
 
-        # Label with status text
-        self.label = ctk.CTkLabel(
-            self,
-            text=status,
-            font=ctk.CTkFont(family=FONT_FAMILY, size=11),
-            text_color="#FFFFFF",
+        display_text = level.capitalize()
+        self.configure(width=self._calculate_width(display_text))
+
+        # Container for horizontal layout
+        inner = ctk.CTkFrame(self, fg_color="transparent")
+        inner.place(relx=0.5, rely=0.5, anchor="center")
+
+        # Colored dot (7px)
+        self._dot = ctk.CTkLabel(
+            inner,
+            text="",
+            image=icon_quality_dot(7, colors["dot"]),
+            width=7,
+            height=7,
             fg_color="transparent",
         )
-        self.label.place(relx=0.5, rely=0.5, anchor="center")
+        self._dot.pack(side="left", padx=(0, 6))
+
+        # Quality text
+        self._label = ctk.CTkLabel(
+            inner,
+            text=display_text,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
+            text_color=colors["text"],
+            fg_color="transparent",
+        )
+        self._label.pack(side="left")
 
     def _calculate_width(self, text: str) -> int:
-        """Calculate badge width based on text length."""
-        # Approximate width: ~7px per character + padding
-        return max(len(text) * 7 + 24, 70)
+        return max(len(text) * 8 + 36, 80)
 
-    def update_status(self, status: str):
-        """Update the badge status and color."""
-        bg_color = STATUS_COLORS.get(status, THEME_COLORS["text_muted"])
-        self.configure(fg_color=bg_color, width=self._calculate_width(status))
-        self.label.configure(text=status)
+    def update_quality(self, cutoff_khz: float, status: str = ""):
+        """Update badge for new cutoff frequency."""
+        level = get_quality_level(cutoff_khz, status)
+        if level == self._level:
+            return
+
+        colors = QUALITY_LEVELS[level]
+        self._level = level
+        display_text = level.capitalize()
+
+        self.configure(
+            fg_color=colors["bg"],
+            border_color=colors["border"],
+            width=self._calculate_width(display_text),
+        )
+        self._dot.configure(image=icon_quality_dot(7, colors["dot"]))
+        self._label.configure(text=display_text, text_color=colors["text"])
 
 
 class ResultRow(ctk.CTkFrame):
@@ -82,7 +117,7 @@ class ResultRow(ctk.CTkFrame):
         self._columns = [list(col) for col in columns]
         self._cells: Dict[str, ctk.CTkLabel] = {}
         self._cell_frames: Dict[str, ctk.CTkFrame] = {}
-        self._badge: Optional[StatusBadge] = None
+        self._badge: Optional[QualityBadge] = None
         self._hover_state = False  # Track current hover state to avoid redundant configure calls
 
         # Prevent frame from shrinking
@@ -105,17 +140,41 @@ class ResultRow(ctk.CTkFrame):
             self._cell_frames[col_id] = cell_frame
 
             if col_id == "status":
-                # Badge for status
-                self._badge = StatusBadge(cell_frame, result.status)
-                self._badge.place(x=8, rely=0.5, anchor="w")
+                # Quality badge or text label depending on analysis state
+                if result.status in (STATUS_PENDING, STATUS_ANALYZING, STATUS_ERROR):
+                    cell = ctk.CTkLabel(
+                        cell_frame,
+                        text=result.status,
+                        anchor="w",
+                        font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["small"]),
+                        text_color=STATUS_COLORS.get(result.status, THEME_COLORS["text_muted"]),
+                        fg_color="transparent",
+                    )
+                    cell.place(x=8, rely=0.5, anchor="w")
+                    self._cells[col_id] = cell
+                    self._badge = None
+                else:
+                    self._badge = QualityBadge(cell_frame, result.cutoff_frequency_khz, result.status)
+                    self._badge.place(x=8, rely=0.5, anchor="w")
             else:
-                # Normal label for other columns
+                # Determine font: monospace for numeric data
+                if col_id in _MONO_COLUMNS:
+                    font = ctk.CTkFont(family=FONT_FAMILY_MONO, size=FONT_SIZES["small"])
+                else:
+                    font = ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["body"] - 1)
+
+                # Frequency column gets lavender color
+                if col_id == "cutoff_frequency":
+                    text_color = THEME_COLORS["freq_glow"]
+                else:
+                    text_color = THEME_COLORS["text_primary"]
+
                 cell = ctk.CTkLabel(
                     cell_frame,
                     text=self._get_value(col_id, width),
                     anchor="w",
-                    font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["body"] - 1),
-                    text_color=THEME_COLORS["text_primary"],
+                    font=font,
+                    text_color=text_color,
                     fg_color="transparent",
                 )
                 cell.place(x=8, rely=0.5, anchor="w")
@@ -201,19 +260,53 @@ class ResultRow(ctk.CTkFrame):
         """Update the row with new result data."""
         self.result = result
 
-        # Update all cells with proper width for truncation
-        for col_id, cell in self._cells.items():
-            # Find width for this column
-            width = 100  # default
+        # Update all non-status cells
+        for col_id, cell in list(self._cells.items()):
+            if col_id == "status":
+                continue
+            width = 100
             for cid, _, w in self._columns:
                 if cid == col_id:
                     width = w
                     break
             cell.configure(text=self._get_value(col_id, width))
 
-        # Update badge
-        if self._badge:
-            self._badge.update_status(result.status)
+        # Handle status column: transition between text label and quality badge
+        is_final = result.status not in (STATUS_PENDING, STATUS_ANALYZING, STATUS_ERROR)
+        status_frame = self._cell_frames.get("status")
+
+        if is_final and self._badge:
+            # Already has a badge — just update it
+            self._badge.update_quality(result.cutoff_frequency_khz, result.status)
+        elif is_final and not self._badge:
+            # Transition: text → badge (analysis completed)
+            if "status" in self._cells:
+                self._cells["status"].destroy()
+                del self._cells["status"]
+            if status_frame:
+                self._badge = QualityBadge(status_frame, result.cutoff_frequency_khz, result.status)
+                self._badge.place(x=8, rely=0.5, anchor="w")
+        elif not is_final:
+            # Still pending/analyzing/error — update text label
+            if self._badge:
+                self._badge.destroy()
+                self._badge = None
+            if "status" in self._cells:
+                self._cells["status"].configure(
+                    text=result.status,
+                    text_color=STATUS_COLORS.get(result.status, THEME_COLORS["text_muted"]),
+                )
+            elif status_frame:
+                cell = ctk.CTkLabel(
+                    status_frame,
+                    text=result.status,
+                    anchor="w",
+                    font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["small"]),
+                    text_color=STATUS_COLORS.get(result.status, THEME_COLORS["text_muted"]),
+                    fg_color="transparent",
+                )
+                cell.place(x=8, rely=0.5, anchor="w")
+                self._cells["status"] = cell
 
     def refresh_text(self):
         """Re-truncate all cell text based on current column widths."""
@@ -238,8 +331,8 @@ class ResultsTable(ctk.CTkFrame):
         ("duration", "Duración", 80),
         ("declared_bitrate", "Bitrate", 80),
         ("cutoff_frequency", "Frec. Corte", 100),
-        ("detected_quality", "Calidad Det.", 100),
-        ("status", "Estado", 170),
+        ("detected_quality", "Bitrate Real", 100),
+        ("status", "Calidad", 130),
     ]
 
     MIN_WIDTHS = [100, 50, 60, 60, 70, 70, 90]
@@ -263,10 +356,10 @@ class ResultsTable(ctk.CTkFrame):
         # Resize state
         self._header_cells: List[ctk.CTkFrame] = []
         self._header_labels: Dict[str, ctk.CTkLabel] = {}
-        self._grips: List[tk.Frame] = []
         self._resize_col: int = -1
         self._resize_start_x: int = 0
-        self._resize_start_width: int = 0
+        self._resize_start_left: int = 0
+        self._resize_start_right: int = 0
         self._resize_throttle_id = None
 
         # Sort state
@@ -302,7 +395,7 @@ class ResultsTable(ctk.CTkFrame):
         # Header row
         self.header_frame = ctk.CTkFrame(
             self,
-            fg_color=THEME_COLORS["bg_frame"],
+            fg_color=THEME_COLORS["bg_secondary"],
             corner_radius=0,
             height=36,
         )
@@ -330,27 +423,27 @@ class ResultsTable(ctk.CTkFrame):
 
             header_label = ctk.CTkLabel(
                 header_cell,
-                text=col_name,
+                text=col_name.upper(),
                 anchor="w",
-                font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
-                text_color=THEME_COLORS["text_muted"],
+                font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["header"], weight="bold"),
+                text_color=THEME_COLORS["primary"],
                 fg_color="transparent",
                 cursor="hand2",
             )
             header_label.place(x=8, rely=0.5, anchor="w")
             self._header_labels[col_id] = header_label
 
-            # Bind click for sorting
-            header_cell.bind("<Button-1>", lambda e, c=col_id: self._on_header_click(c))
-            header_label.bind("<Button-1>", lambda e, c=col_id: self._on_header_click(c))
+            # Bind events for sorting and column resize
+            for widget in (header_cell, header_label):
+                widget.bind("<Motion>", self._on_header_motion)
+                widget.bind("<ButtonPress-1>", self._on_header_press)
+                widget.bind("<B1-Motion>", self._on_header_b1_drag)
+                widget.bind("<ButtonRelease-1>", self._on_header_b1_release)
 
         # Configure header column weights - filename stretches, rest fixed
         for i, (col_id, _, width) in enumerate(self.COLUMNS):
             w = 1 if i == 0 else 0
             self.header_frame.grid_columnconfigure(i, weight=w, minsize=width)
-
-        # Create resize grips between header cells
-        self._create_grips()
 
         # Scrollable content frame
         self.scroll_frame = ctk.CTkScrollableFrame(
@@ -402,7 +495,6 @@ class ResultsTable(ctk.CTkFrame):
             return
         self._column_widths[0] = new_filename_width
         self._apply_column_widths()
-        self._reposition_grips()
         self._refresh_all_text()
 
     # ─── Search / Filter ────────────────────────────────────────────
@@ -551,83 +643,140 @@ class ResultsTable(ctk.CTkFrame):
         if self._sort_column:
             self._reorder_rows()
 
-    def _create_grips(self):
-        """Create drag handles between header cells for column resizing."""
-        self._grips = []
-        for i in range(len(self.COLUMNS) - 1):
-            # Use plain tk.Frame for reliable event capture
-            grip = tk.Frame(
-                self.header_frame,
-                width=8,
-                cursor="sb_h_double_arrow",
-                bg=THEME_COLORS["bg_frame"],
-                bd=0,
-                highlightthickness=0,
-            )
+    # ─── Column resize (boundary-based, no grip widgets) ────────────
 
-            # Position at the border between column i and i+1
-            x = sum(self._column_widths[:i + 1]) - 4
-            grip.place(x=x, y=0, width=8, relheight=1.0)
+    _RESIZE_GRAB_ZONE = 6  # px from column boundary to trigger resize
 
-            # Bind drag events
-            col_index = i  # capture in closure
-            grip.bind("<ButtonPress-1>", lambda e, c=col_index: self._on_grip_press(e, c))
-            grip.bind("<B1-Motion>", lambda e, c=col_index: self._on_grip_drag(e, c))
-            grip.bind("<ButtonRelease-1>", lambda e, c=col_index: self._on_grip_release(e, c))
+    def _find_resize_boundary(self, event):
+        """Return column index if event is near a column boundary, else -1."""
+        try:
+            hx = event.x_root - self.header_frame.winfo_rootx()
+        except Exception:
+            return -1
+        cumulative = 0
+        for i in range(len(self._column_widths) - 1):
+            cumulative += self._column_widths[i]
+            if abs(hx - cumulative) <= self._RESIZE_GRAB_ZONE:
+                return i
+        return -1
 
-            self._grips.append(grip)
+    def _find_header_column(self, event):
+        """Return the col_id at the event's x position."""
+        try:
+            hx = event.x_root - self.header_frame.winfo_rootx()
+        except Exception:
+            return None
+        cumulative = 0
+        for i, (col_id, _, _) in enumerate(self.COLUMNS):
+            cumulative += self._column_widths[i]
+            if hx < cumulative:
+                return col_id
+        return self.COLUMNS[-1][0] if self.COLUMNS else None
 
-    def _reposition_grips(self):
-        """Reposition all grip handles based on current column widths."""
-        for i, grip in enumerate(self._grips):
-            x = sum(self._column_widths[:i + 1]) - 4
-            grip.place_configure(x=x)
+    def _on_header_motion(self, event):
+        """Change cursor when near column boundary."""
+        if self._resize_col >= 0:
+            return
+        col = self._find_resize_boundary(event)
+        new_cursor = "sb_h_double_arrow" if col >= 0 else "hand2"
+        if getattr(self, '_header_cursor', None) != new_cursor:
+            self._header_cursor = new_cursor
+            for cell in self._header_cells:
+                cell.configure(cursor=new_cursor)
+            for label in self._header_labels.values():
+                label.configure(cursor=new_cursor)
 
-    def _on_grip_press(self, event, col_index: int):
-        """Start column resize drag."""
-        self._resize_col = col_index
-        self._resize_start_x = event.x_root
-        self._resize_start_width = self._column_widths[col_index]
+    def _on_header_press(self, event):
+        """Start column resize if near boundary, otherwise trigger sort."""
+        col = self._find_resize_boundary(event)
+        if col >= 0:
+            self._resize_col = col
+            self._resize_start_x = event.x_root
+            self._resize_start_left = self._column_widths[col]
+            self._resize_start_right = self._column_widths[col + 1]
+        else:
+            col_id = self._find_header_column(event)
+            if col_id:
+                self._on_header_click(col_id)
 
-    def _on_grip_drag(self, event, col_index: int):
+    def _compute_resize(self, dx):
+        """Compute new column widths for a drag of dx pixels.
+
+        Trades space between the two columns adjacent to the boundary,
+        keeping all other columns (and the total) unchanged.
+        """
+        col = self._resize_col
+
+        if col == 0:
+            # Boundary col0/col1: only adjust col1 (col0 auto-fills via weight=1)
+            # Drag right → col1 shrinks; drag left → col1 grows
+            new_right = self._resize_start_right - dx
+            new_right = max(self.MIN_WIDTHS[1], new_right)
+            # Prevent col0 from going below its minimum
+            try:
+                tw = self.winfo_width()
+                if tw > 1:
+                    others = sum(self._column_widths[j] for j in range(2, len(self._column_widths)))
+                    max_col1 = tw - others - self.MIN_WIDTHS[0]
+                    new_right = min(new_right, max(max_col1, self.MIN_WIDTHS[1]))
+            except Exception:
+                pass
+            self._column_widths[1] = new_right
+        else:
+            # Trade space between col and col+1
+            # Clamp dx so neither side goes below its minimum
+            max_dx_right = self._resize_start_right - self.MIN_WIDTHS[col + 1]
+            max_dx_left = self._resize_start_left - self.MIN_WIDTHS[col]
+            dx = max(-max_dx_left, min(dx, max_dx_right))
+
+            self._column_widths[col] = self._resize_start_left + dx
+            self._column_widths[col + 1] = self._resize_start_right - dx
+
+    def _on_header_b1_drag(self, event):
         """Handle column resize drag motion (throttled)."""
         if self._resize_col < 0:
             return
-
         dx = event.x_root - self._resize_start_x
-        new_width = max(self.MIN_WIDTHS[col_index], self._resize_start_width + dx)
-        self._column_widths[col_index] = new_width
-
-        # Throttle UI updates to ~30ms
+        self._compute_resize(dx)
         if self._resize_throttle_id is None:
             self._resize_throttle_id = self.after(30, self._apply_resize)
 
-    def _on_grip_release(self, event, col_index: int):
+    def _on_header_b1_release(self, event):
         """End column resize drag."""
         if self._resize_col < 0:
             return
-
-        # Cancel pending throttled update
         if self._resize_throttle_id is not None:
             self.after_cancel(self._resize_throttle_id)
             self._resize_throttle_id = None
-
-        # Final width update
         dx = event.x_root - self._resize_start_x
-        self._column_widths[col_index] = max(
-            self.MIN_WIDTHS[col_index], self._resize_start_width + dx
-        )
-
+        self._compute_resize(dx)
         self._resize_col = -1
+        self._sync_filename_width()
         self._apply_column_widths()
-        self._reposition_grips()
         self._refresh_all_text()
 
     def _apply_resize(self):
         """Apply column width change during drag (called by throttle timer)."""
         self._resize_throttle_id = None
+        self._sync_filename_width()
         self._apply_column_widths()
-        self._reposition_grips()
+
+    def _sync_filename_width(self):
+        """Keep filename column width in sync with actual rendered width.
+
+        Column 0 has grid weight=1, so it always fills remaining space.
+        After resizing any other column, _column_widths[0] must be updated
+        to match reality, otherwise boundary detection drifts.
+        """
+        try:
+            table_width = self.winfo_width()
+        except Exception:
+            return
+        if table_width <= 1:
+            return
+        fixed_total = sum(self._column_widths[1:])
+        self._column_widths[0] = max(table_width - fixed_total, self.MIN_WIDTHS[0])
+        self._last_table_width = table_width
 
     def _apply_column_widths(self):
         """Propagate current column widths to header and all rows."""
@@ -712,11 +861,12 @@ class ResultsTable(ctk.CTkFrame):
                 if cid == col_id:
                     orig_name = cname
                     break
+            header_text = orig_name.upper()
             if col_id == self._sort_column:
-                arrow = " \u25B2" if self._sort_ascending else " \u25BC"
-                label.configure(text=orig_name + arrow)
+                arrow = "\u25B2" if self._sort_ascending else "\u25BC"
+                label.configure(text=header_text + arrow)
             else:
-                label.configure(text=orig_name)
+                label.configure(text=header_text)
 
     def _get_sort_key(self, result: AnalysisResult):
         """Get sort key for a result based on current sort column."""

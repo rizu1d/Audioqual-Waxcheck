@@ -57,6 +57,10 @@ class AudioQualApp:
     """
 
     def __init__(self):
+        # Load custom fonts before creating any UI
+        from .utils.font_utils import load_custom_fonts
+        load_custom_fonts()
+
         # Create root window with drag-and-drop support if available
         if HAS_DND:
             self.root = TkinterDnD.Tk()

@@ -8,7 +8,7 @@ from PIL import Image
 
 from .audio_player import AudioPlayer, PlayerState
 from .waveform_display import WaveformDisplay
-from ..utils.constants import THEME_COLORS, FONT_FAMILY, FONT_SIZES, SAMPLE_RATE
+from ..utils.constants import THEME_COLORS, FONT_FAMILY, FONT_FAMILY_MONO, FONT_SIZES, SAMPLE_RATE
 
 
 def format_time(seconds: float) -> str:
@@ -36,7 +36,7 @@ class PlayerControls(ctk.CTkFrame):
         on_next: Optional[Callable[[], None]] = None,
         **kwargs
     ):
-        super().__init__(master, fg_color=THEME_COLORS["primary_dark"], **kwargs)
+        super().__init__(master, fg_color=THEME_COLORS["purple_deep"], **kwargs)
 
         self._player = audio_player
         self._on_prev = on_prev
@@ -112,63 +112,65 @@ class PlayerControls(ctk.CTkFrame):
         transport_frame = ctk.CTkFrame(self, fg_color="transparent")
         transport_frame.grid(row=0, column=0, padx=(12, 8), pady=8)
 
-        # Previous button
+        # Previous button — circular, transparent
         self._prev_btn = ctk.CTkButton(
             transport_frame,
-            text="" if self._prev_icon else "⏮",
+            text="" if self._prev_icon else "\u23ee",
             image=self._prev_icon,
             command=self._on_prev_click,
-            width=BUTTON_SIZE,
-            height=BUTTON_SIZE,
-            corner_radius=8,
+            width=30,
+            height=30,
+            corner_radius=15,
             fg_color="transparent",
             hover_color=THEME_COLORS["bg_elevated"],
             text_color=THEME_COLORS["text_primary"],
-            font=ctk.CTkFont(size=16),
+            font=ctk.CTkFont(size=14),
         )
         self._prev_btn._canvas.configure(takefocus=False)
         self._prev_btn.grid(row=0, column=0, padx=2)
 
-        # Play/Pause button
+        # Play/Pause button — circular, cream-tinted bg
         self._play_btn = ctk.CTkButton(
             transport_frame,
-            text="" if self._play_icon else "▶",
+            text="" if self._play_icon else "\u25b6",
             image=self._play_icon,
             command=self._on_play_click,
-            width=BUTTON_SIZE,
-            height=BUTTON_SIZE,
-            corner_radius=8,
-            fg_color=THEME_COLORS["bg_elevated"],
-            hover_color=THEME_COLORS["primary"],
+            width=34,
+            height=34,
+            corner_radius=17,
+            fg_color="#3b354c",              # rgba(243,241,229,0.12) on purple_deep
+            hover_color="#4c465a",           # rgba(243,241,229,0.20) on purple_deep
+            border_width=1,
+            border_color="#423b51",          # rgba(243,241,229,0.15) on purple_deep
             text_color=THEME_COLORS["text_primary"],
-            font=ctk.CTkFont(size=16),
+            font=ctk.CTkFont(size=15),
         )
         self._play_btn._canvas.configure(takefocus=False)
         self._play_btn.grid(row=0, column=1, padx=2)
 
-        # Next button
+        # Next button — circular, transparent
         self._next_btn = ctk.CTkButton(
             transport_frame,
-            text="" if self._next_icon else "⏭",
+            text="" if self._next_icon else "\u23ed",
             image=self._next_icon,
             command=self._on_next_click,
-            width=BUTTON_SIZE,
-            height=BUTTON_SIZE,
-            corner_radius=8,
+            width=30,
+            height=30,
+            corner_radius=15,
             fg_color="transparent",
             hover_color=THEME_COLORS["bg_elevated"],
             text_color=THEME_COLORS["text_primary"],
-            font=ctk.CTkFont(size=16),
+            font=ctk.CTkFont(size=14),
         )
         self._next_btn._canvas.configure(takefocus=False)
         self._next_btn.grid(row=0, column=2, padx=2)
 
-        # Time display
+        # Time display — Space Mono, cream at ~50% opacity
         self._time_label = ctk.CTkLabel(
             self,
             text="0:00 / 0:00",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
-            text_color=THEME_COLORS["text_primary"],
+            font=ctk.CTkFont(family=FONT_FAMILY_MONO, size=11),
+            text_color="#8b868e",  # rgba(243,241,229,0.50) on purple_deep
             width=90,
         )
         self._time_label.grid(row=0, column=1, padx=8, pady=8)
@@ -199,7 +201,7 @@ class PlayerControls(ctk.CTkFrame):
         )
         self._volume_label.grid(row=0, column=0, padx=(0, 4))
 
-        # Volume slider
+        # Volume slider — purple fill instead of gold
         self._volume_slider = ctk.CTkSlider(
             volume_frame,
             from_=0,
@@ -207,8 +209,8 @@ class PlayerControls(ctk.CTkFrame):
             width=80,
             height=16,
             button_color=THEME_COLORS["text_primary"],
-            button_hover_color=THEME_COLORS["accent"],
-            progress_color=THEME_COLORS["accent"],
+            button_hover_color=THEME_COLORS["text_primary"],
+            progress_color=THEME_COLORS["primary"],
             fg_color=THEME_COLORS["primary_muted"],
             command=self._on_volume_change,
         )

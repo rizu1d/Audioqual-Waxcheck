@@ -128,44 +128,101 @@ MIN_MAIN_WIDTH = 500         # Ancho mínimo del panel principal (selector de ar
 MIN_SPECTRUM_WIDTH = 300     # Ancho mínimo del panel de espectrogramas
 DIVIDER_WIDTH = 6            # Ancho del divisor arrastrable (px)
 
-# Theme colors - Premium purple/gold/black palette (refined)
+# Theme colors - Premium purple/gold/dark palette (v2 — matches HTML prototype)
+# All semi-transparent values are precalculated as solid hex on their expected background.
 THEME_COLORS = {
     # Violeta refinado
-    "primary": "#8B7EC8",           # Violeta más luminoso
-    "primary_dark": "#5D5478",      # Violeta para hover/bordes
+    "primary": "#7969A8",           # Color principal morado
+    "primary_dark": "#524479",      # Hover/bordes
     "primary_muted": "#3D3650",     # Violeta muy suave para fondos
+    "purple_deep": "#231c38",       # Fondo player bar (~50% mix #3a2d5c + #0c0b14)
 
     # Acento
-    "accent": "#F5C842",            # Dorado
+    "accent": "#FCC844",            # Dorado
 
     # Texto
-    "text_primary": "#F5F3E8",      # Crema cálido
+    "text_primary": "#F3F1E5",      # Crema cálido
     "text_secondary": "#9A9A9A",    # Gris medio para subtítulos
-    "text_muted": "#666666",        # Gris suave para headers tabla
+    "text_muted": "#6b6b7b",        # Gris suave para texto secundario
+    "freq_glow": "#b8aad4",         # Lavanda para columna de frecuencia
 
-    # Fondos (NO negro puro)
-    "bg_primary": "#121214",        # Gris muy oscuro (base)
-    "bg_secondary": "#18181C",      # Gris para tabla
-    "bg_tertiary": "#1E1E24",       # Gris para drop zone
-    "bg_elevated": "#252530",       # Gris para elementos elevados
+    # Fondos
+    "bg_primary": "#0c0b14",        # Fondo principal app
+    "bg_secondary": "#13121d",      # Surface: toolbar, headers, statusbar
+    "bg_tertiary": "#1a1928",       # Surface hover
+    "bg_elevated": "#252530",       # Elementos elevados (paneles)
     "bg_frame": "#1A1A20",          # Frames
+
+    # Bordes (rgba purple sobre #0c0b14, precalculados)
+    "border": "#1c192a",            # rgba(121,105,168,0.15)
+    "border_hover": "#2c2740",      # rgba(121,105,168,0.30)
+
+    # Toolbar buttons (rgba purple sobre #0c0b14, precalculados)
+    "toolbar_btn": "#12101c",       # rgba(121,105,168,0.06)
+    "toolbar_btn_hover": "#1b1828", # rgba(121,105,168,0.14)
+    "toolbar_btn_active": "#1d1a2b",# rgba(121,105,168,0.16)
 
     # Scrollbar
     "scrollbar_track": "#1E1E24",
-    "scrollbar_thumb": "#5D5478",
-    "scrollbar_thumb_hover": "#8B7EC8",
+    "scrollbar_thumb": "#524479",
+    "scrollbar_thumb_hover": "#7969A8",
 
-    # Filas
-    "row_selected": "#2D2D38",
-    "row_hover": "#222228",
+    # Filas (rgba purple sobre #0c0b14, precalculados)
+    "row_selected": "#161422",      # rgba(121,105,168,0.10)
+    "row_hover": "#12101c",         # rgba(121,105,168,0.06)
 }
 
 # Reliability label colors (for spectrogram panel confidence display)
 RELIABILITY_COLORS = {
     "high": "#5DB88C",    # Verde esmeralda (mismo que STATUS_OK)
-    "medium": "#F5C842",  # Dorado/amarillo (mismo que accent)
+    "medium": "#FCC844",  # Dorado/amarillo (mismo que accent)
     "low": "#E05555",     # Rojo coral (mismo que STATUS_TRANSCODE)
 }
+
+# Quality level badge colors (precalculated rgba on #0c0b14 background)
+QUALITY_LEVELS = {
+    "bajo": {
+        "text": "#E85555",
+        "dot": "#E85555",
+        "bg": "#1d1019",       # rgba(232,85,85,0.08)
+        "border": "#26131b",   # rgba(232,85,85,0.12)
+    },
+    "medio": {
+        "text": "#FCC844",
+        "dot": "#FCC844",
+        "bg": "#1f1a17",       # rgba(252,200,68,0.08)
+        "border": "#282119",   # rgba(252,200,68,0.12)
+    },
+    "bueno": {
+        "text": "#6BCB77",
+        "dot": "#6BCB77",
+        "bg": "#131a1b",       # rgba(107,203,119,0.08)
+        "border": "#17221f",   # rgba(107,203,119,0.12)
+    },
+    "excelente": {
+        "text": "#6BA3E8",
+        "dot": "#6BA3E8",
+        "bg": "#131724",       # rgba(107,163,232,0.08)
+        "border": "#171d2d",   # rgba(107,163,232,0.12)
+    },
+}
+
+
+def get_quality_level(cutoff_freq_khz: float, status: str = "") -> str:
+    """Map cutoff frequency to quality level for badge display.
+
+    Returns: "bajo", "medio", "bueno", or "excelente"
+    """
+    if status == STATUS_LOSSLESS:
+        return "excelente"
+    if cutoff_freq_khz <= 14.0:
+        return "bajo"
+    elif cutoff_freq_khz <= 18.0:
+        return "medio"
+    elif cutoff_freq_khz <= 20.0:
+        return "bueno"
+    else:
+        return "excelente"
 
 # Colors for status - softened premium palette
 STATUS_COLORS = {
@@ -180,14 +237,16 @@ STATUS_COLORS = {
     STATUS_VARIABLE: "#D08A45",     # Naranja terroso
 }
 
-# Typography (Inter - fuente geométrica moderna)
-FONT_FAMILY = "Inter"
+# Typography
+FONT_FAMILY = "Outfit"          # Fuente principal UI (antes "Inter")
+FONT_FAMILY_MONO = "Space Mono" # Fuente monoespaciada para datos numéricos
 FONT_SIZES = {
     "title": 28,
     "heading": 18,
     "body": 14,
     "caption": 12,
     "small": 11,
+    "header": 10,   # Headers de tabla (uppercase)
 }
 FONT_WEIGHTS = {
     "bold": "bold",

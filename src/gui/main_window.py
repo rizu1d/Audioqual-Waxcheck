@@ -26,6 +26,7 @@ from ..utils.constants import (
     MIN_WINDOW_HEIGHT,
     THEME_COLORS,
     FONT_FAMILY,
+    FONT_FAMILY_MONO,
     FONT_SIZES,
     SUPPORTED_FORMATS,
 )
@@ -120,9 +121,9 @@ class MainWindow(ctk.CTkFrame):
             command=self._on_add_files_click,
             width=BUTTON_SIZE,
             height=BUTTON_SIZE,
-            corner_radius=8,
-            fg_color="transparent",
-            hover_color=THEME_COLORS["bg_elevated"],
+            corner_radius=9,
+            fg_color=THEME_COLORS["toolbar_btn"],
+            hover_color=THEME_COLORS["toolbar_btn_hover"],
         )
         self.add_files_btn._canvas.configure(takefocus=False)
         self.add_files_btn.grid(row=0, column=0, padx=(0, 6))
@@ -140,9 +141,9 @@ class MainWindow(ctk.CTkFrame):
             command=self._on_toggle_watcher,
             width=BUTTON_SIZE,
             height=BUTTON_SIZE,
-            corner_radius=8,
-            fg_color="transparent",
-            hover_color=THEME_COLORS["bg_elevated"],
+            corner_radius=9,
+            fg_color=THEME_COLORS["toolbar_btn"],
+            hover_color=THEME_COLORS["toolbar_btn_hover"],
         )
         self.watcher_btn._canvas.configure(takefocus=False)
         self.watcher_btn.grid(row=0, column=1, padx=6)
@@ -158,9 +159,9 @@ class MainWindow(ctk.CTkFrame):
             command=self._on_clear,
             width=BUTTON_SIZE,
             height=BUTTON_SIZE,
-            corner_radius=8,
-            fg_color="transparent",
-            hover_color=THEME_COLORS["bg_elevated"],
+            corner_radius=9,
+            fg_color=THEME_COLORS["toolbar_btn"],
+            hover_color=THEME_COLORS["toolbar_btn_hover"],
         )
         self.clear_btn._canvas.configure(takefocus=False)
         self.clear_btn.grid(row=0, column=2, padx=6)
@@ -176,9 +177,9 @@ class MainWindow(ctk.CTkFrame):
             command=self._on_show_spectrogram,
             width=BUTTON_SIZE,
             height=BUTTON_SIZE,
-            corner_radius=8,
-            fg_color="transparent",
-            hover_color=THEME_COLORS["bg_elevated"],
+            corner_radius=9,
+            fg_color=THEME_COLORS["toolbar_btn"],
+            hover_color=THEME_COLORS["toolbar_btn_hover"],
         )
         self.spectrogram_btn._canvas.configure(takefocus=False)
         self.spectrogram_btn.grid(row=0, column=3, padx=6)
@@ -194,9 +195,9 @@ class MainWindow(ctk.CTkFrame):
             command=self._on_edit_metadata,
             width=BUTTON_SIZE,
             height=BUTTON_SIZE,
-            corner_radius=8,
-            fg_color="transparent",
-            hover_color=THEME_COLORS["bg_elevated"],
+            corner_radius=9,
+            fg_color=THEME_COLORS["toolbar_btn"],
+            hover_color=THEME_COLORS["toolbar_btn_hover"],
         )
         self.metadata_btn._canvas.configure(takefocus=False)
         self.metadata_btn.grid(row=0, column=4, padx=6)
@@ -212,9 +213,9 @@ class MainWindow(ctk.CTkFrame):
             command=self._on_open_settings,
             width=BUTTON_SIZE,
             height=BUTTON_SIZE,
-            corner_radius=8,
-            fg_color="transparent",
-            hover_color=THEME_COLORS["bg_elevated"],
+            corner_radius=9,
+            fg_color=THEME_COLORS["toolbar_btn"],
+            hover_color=THEME_COLORS["toolbar_btn_hover"],
         )
         self.settings_btn._canvas.configure(takefocus=False)
         self.settings_btn.grid(row=0, column=5, padx=(6, 0))
@@ -277,15 +278,27 @@ class MainWindow(ctk.CTkFrame):
         self.status_bar = ctk.CTkFrame(
             self,
             height=36,
-            fg_color=THEME_COLORS["primary_dark"],
+            fg_color=THEME_COLORS["bg_secondary"],
             corner_radius=0,
+            border_width=1,
+            border_color=THEME_COLORS["border"],
         )
         # Adjust row number since player controls is now row 2
         status_row = 3 if self._audio_player else 2
         self.status_bar.grid(row=status_row, column=0, sticky="ew", padx=16, pady=(0, 16))
         self.status_bar.grid_columnconfigure(2, weight=1)
 
-        # Watcher indicator (hidden by default)
+        # Green status dot (always visible)
+        self._status_dot = ctk.CTkLabel(
+            self.status_bar,
+            text="\u25CF",
+            font=ctk.CTkFont(size=8),
+            text_color="#6BCB77",
+            width=12,
+        )
+        self._status_dot.grid(row=0, column=0, padx=(16, 0), pady=8)
+
+        # Watcher indicator (hidden by default, appears after status dot)
         self._watcher_indicator = ctk.CTkLabel(
             self.status_bar,
             text="\u25CF",
@@ -293,17 +306,18 @@ class MainWindow(ctk.CTkFrame):
             text_color="#5DB88C",
             width=16,
         )
+        # Will be shown in column 0 when watcher active (replaces status dot)
         self._watcher_indicator.grid(row=0, column=0, padx=(16, 0), pady=8)
         self._watcher_indicator.grid_remove()
 
-        # Status label
+        # Status label — green for "Listo"
         self.status_label = ctk.CTkLabel(
             self.status_bar,
             text="Listo",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
-            text_color=THEME_COLORS["text_primary"],
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["small"]),
+            text_color="#6BCB77",
         )
-        self.status_label.grid(row=0, column=1, padx=(8, 16), pady=8)
+        self.status_label.grid(row=0, column=1, padx=(4, 16), pady=8)
 
         # Progress bar (hidden by default)
         self.progress_bar = ctk.CTkProgressBar(
@@ -317,12 +331,12 @@ class MainWindow(ctk.CTkFrame):
         self.progress_bar.set(0)
         self.progress_bar.grid_remove()
 
-        # File count label
+        # File count label — Space Mono, muted color
         self.count_label = ctk.CTkLabel(
             self.status_bar,
             text="0 archivos",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
-            text_color=THEME_COLORS["text_primary"],
+            font=ctk.CTkFont(family=FONT_FAMILY_MONO, size=11),
+            text_color=THEME_COLORS["text_muted"],
         )
         self.count_label.grid(row=0, column=3, padx=16, pady=8)
 
@@ -578,9 +592,12 @@ class MainWindow(ctk.CTkFrame):
             self.progress_bar.grid()
             self.progress_bar.set(0)
             self.add_files_btn.configure(state="disabled")
+            self._status_dot.configure(text_color=THEME_COLORS["accent"])
+            self.status_label.configure(text_color=THEME_COLORS["text_primary"])
         else:
             self.progress_bar.grid_remove()
-            self.status_label.configure(text="Listo")
+            self.status_label.configure(text="Listo", text_color="#6BCB77")
+            self._status_dot.configure(text_color="#6BCB77")
             self.add_files_btn.configure(state="normal")
 
     def _on_selection_changed(self, result: Optional[AnalysisResult]):

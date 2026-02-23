@@ -26,11 +26,11 @@ class WaveformDisplay(ctk.CTkFrame):
     HEIGHT = 50
     BAR_WIDTH = 2
 
-    # Colors
-    COLOR_BG = THEME_COLORS["bg_primary"]
-    COLOR_UNPLAYED = THEME_COLORS["primary_muted"]
-    COLOR_PLAYED = THEME_COLORS["text_primary"]
-    COLOR_PLAYHEAD = THEME_COLORS["accent"]
+    # Colors — matched to player bar background
+    COLOR_BG = THEME_COLORS["purple_deep"]
+    COLOR_UNPLAYED = "#32294c"                    # rgba(121,105,168,0.18) on purple_deep
+    COLOR_PLAYED = THEME_COLORS["primary"]        # Purple (#7969A8)
+    COLOR_PLAYHEAD = THEME_COLORS["text_primary"] # Cream (#F3F1E5)
 
     def __init__(
         self,
@@ -72,7 +72,7 @@ class WaveformDisplay(ctk.CTkFrame):
             text="",
             image=None,
             fg_color=self.COLOR_BG,
-            corner_radius=4,
+            corner_radius=0,
             height=self.HEIGHT,
         )
         self._image_label.grid(row=0, column=0, sticky="ew")

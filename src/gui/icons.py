@@ -10,7 +10,7 @@ from typing import Tuple
 import customtkinter as ctk
 from PIL import Image, ImageDraw
 
-_COLOR = "#F5F3E8"
+_COLOR = "#F3F1E5"
 _STROKE_RATIO = 0.036
 
 _cache: dict = {}
@@ -155,6 +155,23 @@ def icon_search(size: int = 16, color: str = _COLOR) -> ctk.CTkImage:
         return _wrap(img, size)
 
     return _get_cached(("search", size, color), factory)
+
+
+# ── Quality dot (colored circle for badges) ──────────────────────
+
+
+def icon_quality_dot(size: int = 7, color: str = "#E85555") -> ctk.CTkImage:
+    """Small filled circle for quality level badges."""
+    def factory():
+        cs = size * 2  # Retina resolution
+        img = Image.new("RGBA", (cs, cs), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        c = _c(color)
+        margin = 1
+        draw.ellipse([margin, margin, cs - margin - 1, cs - margin - 1], fill=c)
+        return ctk.CTkImage(light_image=img, dark_image=img, size=(size, size))
+
+    return _get_cached(("quality_dot", size, color), factory)
 
 
 # ── Close (X mark) ───────────────────────────────────────────────
