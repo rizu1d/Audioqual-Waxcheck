@@ -43,6 +43,7 @@ class QualityBadge(ctk.CTkFrame):
 
         self.pack_propagate(False)
         self._level = level
+        self._colors = colors
         self._on_badge_click = on_badge_click
 
         display_text = level.capitalize()
@@ -66,6 +67,24 @@ class QualityBadge(ctk.CTkFrame):
             self.bind("<Button-1>", self._fire_badge_click, add="+")
             self._label.bind("<Button-1>", self._fire_badge_click, add="+")
 
+        # Hover glow
+        self.bind("<Enter>", self._on_hover_enter)
+        self.bind("<Leave>", self._on_hover_leave)
+        self._label.bind("<Enter>", self._on_hover_enter)
+        self._label.bind("<Leave>", self._on_hover_leave)
+
+    def _on_hover_enter(self, event):
+        self.configure(
+            fg_color=self._colors["bg_hover"],
+            border_color=self._colors["border_hover"],
+        )
+
+    def _on_hover_leave(self, event):
+        self.configure(
+            fg_color=self._colors["bg"],
+            border_color=self._colors["border"],
+        )
+
     def _fire_badge_click(self, event):
         """Fire the badge click callback."""
         if self._on_badge_click:
@@ -83,6 +102,7 @@ class QualityBadge(ctk.CTkFrame):
 
         colors = QUALITY_LEVELS[level]
         self._level = level
+        self._colors = colors
         display_text = level.capitalize()
 
         self.configure(

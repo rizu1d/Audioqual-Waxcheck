@@ -186,24 +186,32 @@ QUALITY_LEVELS = {
         "dot": "#E85555",
         "bg": "#1d1019",       # rgba(232,85,85,0.08)
         "border": "#26131b",   # rgba(232,85,85,0.12)
+        "bg_hover": "#2e1a24",     # rgba(232,85,85,0.18)
+        "border_hover": "#3d1f2b", # rgba(232,85,85,0.25)
     },
     "medio": {
         "text": "#FCC844",
         "dot": "#FCC844",
         "bg": "#1f1a17",       # rgba(252,200,68,0.08)
         "border": "#282119",   # rgba(252,200,68,0.12)
+        "bg_hover": "#332b1e",     # rgba(252,200,68,0.18)
+        "border_hover": "#413524", # rgba(252,200,68,0.25)
     },
     "bueno": {
         "text": "#6BCB77",
         "dot": "#6BCB77",
         "bg": "#131a1b",       # rgba(107,203,119,0.08)
         "border": "#17221f",   # rgba(107,203,119,0.12)
+        "bg_hover": "#1a2824",     # rgba(107,203,119,0.18)
+        "border_hover": "#20332c", # rgba(107,203,119,0.25)
     },
     "excelente": {
         "text": "#6BA3E8",
         "dot": "#6BA3E8",
         "bg": "#131724",       # rgba(107,163,232,0.08)
         "border": "#171d2d",   # rgba(107,163,232,0.12)
+        "bg_hover": "#1a2236",     # rgba(107,163,232,0.18)
+        "border_hover": "#1f2b42", # rgba(107,163,232,0.25)
     },
 }
 
