@@ -214,6 +214,8 @@ def get_quality_level(cutoff_freq_khz: float, status: str = "") -> str:
     Returns: "bajo", "medio", "bueno", or "excelente"
     """
     if status == STATUS_LOSSLESS:
+        if cutoff_freq_khz < 20.5:
+            return "bueno"  # Lossless format but cutoff suggests transcode from lossy
         return "excelente"
     if cutoff_freq_khz <= 14.0:
         return "bajo"
@@ -223,6 +225,10 @@ def get_quality_level(cutoff_freq_khz: float, status: str = "") -> str:
         return "bueno"
     else:
         return "excelente"
+
+
+# Quality popup dimensions
+POPUP_WIDTH = 380
 
 # Colors for status - softened premium palette
 STATUS_COLORS = {

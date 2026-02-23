@@ -13,6 +13,7 @@ from ..utils.constants import (
 )
 from ..utils.file_utils import format_duration
 from .icons import icon_search, icon_close, icon_quality_dot
+from .quality_popup import QualityPopup
 
 
 SelectionCallback = Callable[[Optional[AnalysisResult]], None]
@@ -24,7 +25,8 @@ _MONO_COLUMNS = {"duration", "declared_bitrate", "cutoff_frequency", "detected_q
 class QualityBadge(ctk.CTkFrame):
     """Pill-shaped quality badge with colored dot, text, and semi-transparent bg."""
 
-    def __init__(self, master, cutoff_khz: float, status: str = "", **kwargs):
+    def __init__(self, master, cutoff_khz: float, status: str = "",
+                 on_badge_click: Optional[Callable] = None, **kwargs):
         level = get_quality_level(cutoff_khz, status)
         colors = QUALITY_LEVELS[level]
 
@@ -35,11 +37,13 @@ class QualityBadge(ctk.CTkFrame):
             border_width=1,
             corner_radius=12,
             height=24,
+            cursor="hand2",
             **kwargs
         )
 
         self.pack_propagate(False)
         self._level = level
+        self._on_badge_click = on_badge_click
 
         display_text = level.capitalize()
         self.configure(width=self._calculate_width(display_text))
@@ -53,8 +57,19 @@ class QualityBadge(ctk.CTkFrame):
             font=ctk.CTkFont(family=FONT_FAMILY, size=11, weight="bold"),
             text_color=colors["text"],
             fg_color="transparent",
+            cursor="hand2",
         )
         self._label.place(x=10, rely=0.5, anchor="w")
+
+        # Badge click bindings (add="+" so row click also fires)
+        if on_badge_click:
+            self.bind("<Button-1>", self._fire_badge_click, add="+")
+            self._label.bind("<Button-1>", self._fire_badge_click, add="+")
+
+    def _fire_badge_click(self, event):
+        """Fire the badge click callback."""
+        if self._on_badge_click:
+            self._on_badge_click(event)
 
     def _calculate_width(self, text: str) -> int:
         # 10px left + dot(7) + gap(~6) + text + 12px right
@@ -91,6 +106,7 @@ class ResultRow(ctk.CTkFrame):
         result: AnalysisResult,
         columns: list,
         on_click: Optional[Callable] = None,
+        on_badge_click: Optional[Callable] = None,
         **kwargs
     ):
         super().__init__(
@@ -103,6 +119,7 @@ class ResultRow(ctk.CTkFrame):
 
         self.result = result
         self.on_click = on_click
+        self._on_badge_click = on_badge_click
         self._selected = False
         # Store as mutable list of lists so widths can be updated
         self._columns = [list(col) for col in columns]
@@ -145,7 +162,10 @@ class ResultRow(ctk.CTkFrame):
                     self._cells[col_id] = cell
                     self._badge = None
                 else:
-                    self._badge = QualityBadge(cell_frame, result.cutoff_frequency_khz, result.status)
+                    self._badge = QualityBadge(
+                        cell_frame, result.cutoff_frequency_khz, result.status,
+                        on_badge_click=self._handle_badge_click,
+                    )
                     self._badge.place(x=8, rely=0.5, anchor="w")
             else:
                 # Determine font: monospace for numeric data
@@ -226,6 +246,11 @@ class ResultRow(ctk.CTkFrame):
         if self.on_click:
             self.on_click(self)
 
+    def _handle_badge_click(self, event):
+        """Handle click specifically on the quality badge."""
+        if self._on_badge_click and self._badge:
+            self._on_badge_click(self.result, self._badge)
+
     def _on_enter(self, event):
         """Handle mouse enter (hover)."""
         if not self._selected and not self._hover_state:
@@ -275,7 +300,10 @@ class ResultRow(ctk.CTkFrame):
                 self._cells["status"].destroy()
                 del self._cells["status"]
             if status_frame:
-                self._badge = QualityBadge(status_frame, result.cutoff_frequency_khz, result.status)
+                self._badge = QualityBadge(
+                    status_frame, result.cutoff_frequency_khz, result.status,
+                    on_badge_click=self._handle_badge_click,
+                )
                 self._badge.place(x=8, rely=0.5, anchor="w")
         elif not is_final:
             # Still pending/analyzing/error — update text label
@@ -340,6 +368,7 @@ class ResultsTable(ctk.CTkFrame):
         self._results: Dict[str, AnalysisResult] = {}
         self._rows: Dict[str, ResultRow] = {}
         self._selected_row: Optional[ResultRow] = None
+        self._quality_popup: Optional[QualityPopup] = None
 
         # Mutable column widths (source of truth for current widths)
         self._column_widths: List[int] = [w for _, _, w in self.COLUMNS]
@@ -807,6 +836,29 @@ class ResultsTable(ctk.CTkFrame):
         if self.on_selection_changed:
             self.on_selection_changed(row.result)
 
+    def _on_badge_click(self, result: AnalysisResult, badge_widget):
+        """Handle click on a quality badge — show explanation popup."""
+        self._close_quality_popup()
+        self._quality_popup = QualityPopup(
+            self.winfo_toplevel(),
+            result,
+            badge_widget,
+            on_close=self._on_popup_closed,
+        )
+
+    def _close_quality_popup(self):
+        """Close the quality popup if open."""
+        if self._quality_popup:
+            try:
+                self._quality_popup.close()
+            except Exception:
+                pass
+            self._quality_popup = None
+
+    def _on_popup_closed(self):
+        """Callback when popup closes itself."""
+        self._quality_popup = None
+
     # ─── Column sorting ──────────────────────────────────────────────
 
     # Severity ordering for status column (higher = more problematic)
@@ -927,6 +979,7 @@ class ResultsTable(ctk.CTkFrame):
                 result,
                 self._current_columns(),
                 on_click=self._on_row_click,
+                on_badge_click=self._on_badge_click,
             )
             row.pack(fill="x", pady=(0, 1))
             self._rows[result.filepath] = row
@@ -947,6 +1000,7 @@ class ResultsTable(ctk.CTkFrame):
 
     def clear(self):
         """Clear all results from the table."""
+        self._close_quality_popup()
         # Reset search/filter state
         self._hidden_rows.clear()
         self._filter_text = ""
