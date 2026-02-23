@@ -222,8 +222,6 @@ def get_quality_level(cutoff_freq_khz: float, status: str = "") -> str:
     Returns: "bajo", "medio", "bueno", or "excelente"
     """
     if status == STATUS_LOSSLESS:
-        if cutoff_freq_khz < 20.5:
-            return "bueno"  # Lossless format but cutoff suggests transcode from lossy
         return "excelente"
     if cutoff_freq_khz <= 14.0:
         return "bajo"

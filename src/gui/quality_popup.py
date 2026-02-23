@@ -187,7 +187,7 @@ class QualityPopup(ctk.CTkToplevel):
 
         self._result = result
         self._on_close = on_close
-        self._click_bind_id: Optional[str] = None
+        self._listening = False
 
         # Determine case and quality level
         self._case = _determine_case(result)
@@ -197,7 +197,7 @@ class QualityPopup(ctk.CTkToplevel):
         # Window setup — borderless floating popup
         self.overrideredirect(True)
         self.configure(fg_color=THEME_COLORS["bg_secondary"])
-        self.attributes("-topmost", True)
+        self.transient(master)  # Child of main window — prevents going behind on macOS
         self.resizable(False, False)
 
         self._build_ui()
@@ -566,24 +566,19 @@ class QualityPopup(ctk.CTkToplevel):
     # ---------- close logic ----------
 
     def _bind_click_outside(self):
-        """Bind global click to detect clicks outside the popup."""
-        try:
-            root = self.winfo_toplevel().master
-            if root is None:
-                root = self.winfo_toplevel()
-            # Walk up to the actual root window
-            while root.master is not None:
-                root = root.master
-            self._root_ref = root
-            self._click_bind_id = root.bind("<Button-1>", self._on_root_click, add="+")
-        except (tk.TclError, AttributeError):
-            pass
+        """Bind mechanisms to detect clicks outside the popup."""
+        self._listening = True
+        # bind_all catches clicks on ANY widget in the app
+        self.bind_all("<Button-1>", self._on_any_click, add="+")
+        # Fallback for macOS: close when this popup window is deactivated
+        self.bind("<Deactivate>", lambda e: self.after(50, self.close))
 
-    def _on_root_click(self, event):
+    def _on_any_click(self, event):
         """Check if click was outside the popup."""
+        if not self._listening:
+            return
         try:
             widget = event.widget
-            # Check if the clicked widget belongs to this popup
             top = widget.winfo_toplevel()
             if top != self:
                 self.close()
@@ -592,13 +587,9 @@ class QualityPopup(ctk.CTkToplevel):
 
     def close(self):
         """Close the popup and clean up."""
-        # Unbind global click
-        if self._click_bind_id and hasattr(self, "_root_ref"):
-            try:
-                self._root_ref.unbind("<Button-1>", self._click_bind_id)
-            except (tk.TclError, AttributeError):
-                pass
-            self._click_bind_id = None
+        if not self._listening:
+            return
+        self._listening = False
 
         if self._on_close:
             self._on_close()
