@@ -219,18 +219,18 @@ QUALITY_LEVELS = {
 def get_quality_level(cutoff_freq_khz: float, status: str = "") -> str:
     """Map cutoff frequency to quality level for badge display.
 
+    Classification rules (based on real/detected bitrate):
+      - bajo:      ≤192 kbps  (cutoff < 18.5 kHz)
+      - bueno:     ≥256 kbps  (cutoff ≥ 18.5 kHz)
+      - excelente: only genuine lossless (FLAC/WAV/AIFF with STATUS_LOSSLESS)
+
     Returns: "bajo", "medio", "bueno", or "excelente"
     """
     if status == STATUS_LOSSLESS:
         return "excelente"
-    if cutoff_freq_khz <= 14.0:
+    if cutoff_freq_khz < 18.5:
         return "bajo"
-    elif cutoff_freq_khz <= 18.0:
-        return "medio"
-    elif cutoff_freq_khz <= 20.0:
-        return "bueno"
-    else:
-        return "excelente"
+    return "bueno"
 
 
 # Quality popup dimensions

@@ -554,7 +554,7 @@
   },
   {
     "id": "YT_017",
-    "file": "references/test-files/youtuberips/yt5s.io - Jocelyn Brown - Love's Gonna Get You (Acapella) (128 kbps).mp3",
+    "file": "references/test-files/youtuberips/Jocelyn Brown - Love's Gonna Get You.mp3",
     "description": "YouTube rip 128kbps - Jocelyn Brown acapella",
     "expected": {
       "status": "Baja calidad",

@@ -207,7 +207,7 @@ FILE_DEFS = [
     {
         "id": "YT_017",
         "subdir": "youtuberips",
-        "filename": "yt5s.io - Jocelyn Brown - Love's Gonna Get You (Acapella) (128 kbps).mp3",
+        "filename": "Jocelyn Brown - Love's Gonna Get You.mp3",
         "description": "YouTube rip 128kbps - Jocelyn Brown acapella",
         "type": "youtube-rip",
     },
