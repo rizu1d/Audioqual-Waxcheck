@@ -82,6 +82,30 @@ class AudioQualApp:
         self._setup_layout()
         self._setup_keyboard_bindings()
 
+        if sys.platform == "darwin":
+            self._setup_macos_click_fix()
+
+    def _setup_macos_click_fix(self):
+        """Workaround for macOS Cocoa backend focus issues.
+
+        On macOS, the Cocoa backend may not deliver click events to widgets
+        when the app window doesn't have keyboard focus. This ensures the
+        root window is always properly focused for click processing.
+        """
+        import tkinter as tk
+
+        def _on_any_click(event):
+            try:
+                # If no widget in the app has focus, force it to root.
+                # This handles the case where focus was lost (e.g. after
+                # closing a dialog, switching apps, or Cocoa focus quirks).
+                if self.root.focus_get() is None:
+                    self.root.focus_force()
+            except tk.TclError:
+                pass
+
+        self.root.bind_all("<Button-1>", _on_any_click, add="+")
+
     def _setup_window(self):
         """Configure the main window."""
         self.root.title("WaxCheck")
@@ -497,13 +521,19 @@ class AudioQualApp:
             self.audio_player.cleanup()
 
     def _heartbeat(self):
-        """Keep the macOS event loop alive.
+        """Keep the macOS event loop alive and drain pending callbacks.
 
-        The keep-alive pipe in tk_utils.py ensures the Cocoa run loop
-        stays active and thread callbacks are processed promptly.
-        This heartbeat acts as a safety net.
+        Three independent mechanisms process callbacks:
+          1. pipe+createfilehandler in tk_utils (primary, macOS)
+          2. after()-based 50ms poller in tk_utils (secondary, all platforms)
+          3. This heartbeat (tertiary safety net)
+
+        Even if mechanisms 1 and 2 both fail, this ensures callbacks
+        are processed within 100ms.
         """
-        self.root.after(200, self._heartbeat)
+        from .utils.tk_utils import process_pending_callbacks
+        process_pending_callbacks()
+        self.root.after(100, self._heartbeat)
 
     def run(self):
         """Start the application main loop."""

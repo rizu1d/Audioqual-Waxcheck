@@ -141,6 +141,11 @@ class ResultRow(ctk.CTkFrame):
         self.on_click = on_click
         self._on_badge_click = on_badge_click
         self._selected = False
+        # Deduplication: prevent multiple firings per physical click.
+        # Separate timestamps because both handlers should fire once per click
+        # (badge click should both open popup AND select the row).
+        self._last_row_click_time = 0
+        self._last_badge_click_time = 0
         # Store as mutable list of lists so widths can be updated
         self._columns = [list(col) for col in columns]
         self._cells: Dict[str, ctk.CTkLabel] = {}
@@ -217,7 +222,7 @@ class ResultRow(ctk.CTkFrame):
             self.grid_columnconfigure(i, weight=w, minsize=width)
 
         # Bind click/hover events to the row
-        self.bind("<Button-1>", self._handle_click)
+        self.bind("<Button-1>", self._handle_click, add="+")
         self.bind("<Enter>", self._on_enter)
         self.bind("<Leave>", self._on_leave)
 
@@ -258,16 +263,27 @@ class ResultRow(ctk.CTkFrame):
     def _bind_click_recursive(self, widget):
         """Bind click events to all descendants of the widget."""
         for child in widget.winfo_children():
-            child.bind("<Button-1>", self._handle_click)
+            child.bind("<Button-1>", self._handle_click, add="+")
             self._bind_click_recursive(child)
 
     def _handle_click(self, event):
-        """Handle click on row or its children."""
+        """Handle click on row or its children.
+
+        Uses event.time deduplication because _bind_click_recursive binds
+        this handler to every descendant widget — a single physical click
+        would otherwise fire it ~15 times (once per widget in the row).
+        """
+        if event.time == self._last_row_click_time:
+            return
+        self._last_row_click_time = event.time
         if self.on_click:
             self.on_click(self)
 
     def _handle_badge_click(self, event):
         """Handle click specifically on the quality badge."""
+        if event.time == self._last_badge_click_time:
+            return
+        self._last_badge_click_time = event.time
         if self._on_badge_click and self._badge:
             self._on_badge_click(self.result, self._badge)
 

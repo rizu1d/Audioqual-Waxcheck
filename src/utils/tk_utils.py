@@ -3,14 +3,20 @@
 On macOS, Tcl timers can stop firing when the Cocoa run loop goes dormant.
 This module uses an OS-level pipe + createfilehandler (backed by kqueue on
 macOS) to reliably wake the event loop.  A keep-alive thread writes to the
-pipe every ~50 ms so the run loop never stays dormant long enough for the
+pipe every ~200 ms so the run loop never stays dormant long enough for the
 user to perceive a freeze.
+
+Redundant callback processing ensures reliability:
+  1. Primary: pipe + createfilehandler (macOS) or <<ThreadCallback>> event (other)
+  2. Secondary: after()-based poller every 50ms (all platforms)
+  3. Tertiary: heartbeat in app.py calls process_pending_callbacks() every 100ms
 """
 import os
 import sys
 import queue
 import threading
 import time
+import traceback
 
 _callback_queue = queue.Queue()
 _pipe_write_fd = None
@@ -28,6 +34,10 @@ def init_thread_scheduler(root):
         return
     _initialized = True
     _tk_root = root
+
+    # Bind the virtual event so the non-macOS fallback path in
+    # schedule_callback_from_thread() actually drains the queue.
+    root.bind("<<ThreadCallback>>", lambda e: process_pending_callbacks())
 
     if sys.platform == 'darwin':
         try:
@@ -55,7 +65,7 @@ def init_thread_scheduler(root):
             )
             _keepalive_thread.start()
         except (AttributeError, OSError, Exception):
-            # createfilehandler not available — fallback to heartbeat-only
+            # createfilehandler not available — fallback to poller + heartbeat
             for fd in (_pipe_read_fd, _pipe_write_fd):
                 if fd is not None:
                     try:
@@ -63,6 +73,26 @@ def init_thread_scheduler(root):
                     except OSError:
                         pass
             _pipe_read_fd = _pipe_write_fd = None
+
+    # Start after()-based poller as independent backup drain mechanism.
+    # Uses Tcl's timer subsystem, independent of the pipe+filehandler path.
+    _start_callback_poller()
+
+
+def _start_callback_poller():
+    """Secondary callback drain: Tcl after() timer, independent of pipe/filehandler.
+
+    If the pipe+createfilehandler mechanism is working, this just finds
+    an empty queue on each tick (negligible overhead — one queue.Empty check).
+    If the pipe mechanism fails, this catches callbacks within 50ms.
+    """
+    if _shutting_down or _tk_root is None:
+        return
+    process_pending_callbacks()
+    try:
+        _tk_root.after(50, _start_callback_poller)
+    except Exception:
+        pass  # Window destroyed during shutdown
 
 
 def _keepalive_loop():
@@ -116,8 +146,9 @@ def process_pending_callbacks():
             callback, args = _callback_queue.get_nowait()
             try:
                 callback(*args)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[tk_utils] Callback error: {e}", file=sys.stderr)
+                traceback.print_exc(file=sys.stderr)
         except queue.Empty:
             break
 

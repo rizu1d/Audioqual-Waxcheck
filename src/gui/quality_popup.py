@@ -15,6 +15,27 @@ from ..utils.constants import (
 from .icons import icon_quality_dot
 
 
+# ---------- singleton click-outside watcher ----------
+# A single bind_all handler shared by ALL popup instances.
+# Prevents handler accumulation (each popup open/close was adding
+# a new bind_all that was never removed).
+_active_popup = None
+_click_watcher_installed = False
+
+
+def _on_global_click(event):
+    """Close the active popup if click is outside it."""
+    if _active_popup is None or not _active_popup._listening:
+        return
+    try:
+        top = event.widget.winfo_toplevel()
+        if top != _active_popup:
+            _active_popup.close()
+    except (tk.TclError, AttributeError):
+        if _active_popup:
+            _active_popup.close()
+
+
 # ---------- quality-to-numeric helpers ----------
 
 _QUALITY_TO_BITRATE = {
@@ -64,11 +85,18 @@ def _determine_case(result: AnalysisResult) -> int:
     if level == "bueno":
         if is_lossless_fmt:
             return 6  # Lossless con posible transcode
-        # Check if declared bitrate exceeds detected
+        cutoff = result.cutoff_frequency_khz
+        # For 320 kbps declared, distinguish by cutoff range
+        if result.declared_bitrate and result.declared_bitrate >= 320:
+            if 19.0 <= cutoff < 20.0:
+                return 10  # Bueno, casi 320 nativo (19-19.99 kHz)
+            if cutoff < 19.0:
+                return 9   # Bueno, calidad ~256 (18-18.99 kHz)
+        # Other bitrate discrepancies
         detected_kbps = _detected_bitrate_int(result.detected_quality)
         if (result.declared_bitrate and detected_kbps
                 and result.declared_bitrate > detected_kbps):
-            return 9  # Bueno pero bitrate real < declarado
+            return 9       # Bueno, bitrate real < declarado
         return 5      # Lossy verificado
 
     # excelente
@@ -163,6 +191,14 @@ def _build_explanation(result: AnalysisResult, case: int) -> str:
             f"frecuencial amplio y es apto para uso profesional en DJ sets "
             f"y producción."
         )
+    if case == 10:
+        return (
+            f"Archivo {fmt} con bitrate declarado de {declared}. El contenido "
+            f"espectral se extiende hasta {cutoff}, muy cercano al límite de "
+            f"20 kHz de un {declared} nativo. La diferencia es mínima y "
+            f"prácticamente imperceptible en un sistema de sonido profesional. "
+            f"El archivo es de buena calidad."
+        )
     # case 8
     return (
         f"Archivo {fmt} a {declared} con contenido espectral que se "
@@ -183,6 +219,7 @@ _VERIFIED_MESSAGES = {
     7: ("Lossless verificado", "Máxima calidad"),
     8: ("Calidad verificada", "Máxima calidad MP3"),
     9: ("Calidad aceptable", "Apto para uso profesional"),
+    10: ("Buena calidad", "Diferencia imperceptible"),
 }
 
 
@@ -617,29 +654,24 @@ class QualityPopup(ctk.CTkToplevel):
 
     def _bind_click_outside(self):
         """Bind mechanisms to detect clicks outside the popup."""
+        global _active_popup, _click_watcher_installed
         self._listening = True
-        # bind_all catches clicks on ANY widget in the app
-        self.bind_all("<Button-1>", self._on_any_click, add="+")
+        _active_popup = self
+        # Install the singleton click watcher once (never removed, near-zero
+        # overhead when no popup is active — just checks _active_popup is None).
+        if not _click_watcher_installed:
+            self.master.bind_all("<Button-1>", _on_global_click, add="+")
+            _click_watcher_installed = True
         # Fallback for macOS: close when this popup window is deactivated
         self.bind("<Deactivate>", lambda e: self.after(50, self.close))
 
-    def _on_any_click(self, event):
-        """Check if click was outside the popup."""
-        if not self._listening:
-            return
-        try:
-            widget = event.widget
-            top = widget.winfo_toplevel()
-            if top != self:
-                self.close()
-        except (tk.TclError, AttributeError):
-            self.close()
-
     def close(self):
         """Close the popup and clean up."""
+        global _active_popup
         if not self._listening or self._fading_out:
             return
         self._listening = False
+        _active_popup = None
         self._fading_out = True
 
         if self._on_close:

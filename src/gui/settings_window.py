@@ -193,6 +193,9 @@ class SettingsWindow(ctk.CTkToplevel):
 
     def _on_close(self):
         """Close settings and restore focus to parent."""
+        master = self.master
         self.grab_release()
         self.destroy()
-        self.master.focus_force()
+        # Delayed focus restoration — let destroy propagate through
+        # the Cocoa event loop before forcing focus back to parent.
+        master.after(50, lambda: master.focus_force())
