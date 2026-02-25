@@ -211,9 +211,10 @@ def generate_youtube_rip(source_path, output_path, aac_bitrate, mp3_bitrate):
         tmp_path = tmp.name
 
     try:
-        # Paso 1: lossless -> AAC
+        # Paso 1: lossless -> AAC (-vn descarta streams de video/carátula)
         run_ffmpeg([
             "-i", source_path,
+            "-vn",
             "-c:a", "aac",
             "-b:a", f"{aac_bitrate}k",
             tmp_path,
