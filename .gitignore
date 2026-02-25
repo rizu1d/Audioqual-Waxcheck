@@ -30,5 +30,11 @@ src.zip
 # Archivos de audio de prueba (muy pesados para git)
 references/test-files/
 
+# Evaluation system (generated data)
+evaluation/originals/
+evaluation/dataset/
+evaluation/results.csv
+evaluation/report.html
+
 # Claude Code (configuración local)
 .claude/
