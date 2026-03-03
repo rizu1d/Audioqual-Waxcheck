@@ -1,6 +1,7 @@
 """DJ-style waveform display with playhead and seeking."""
 
 import threading
+import time
 import tkinter as tk
 from typing import Callable, Optional
 
@@ -59,6 +60,10 @@ class WaveformDisplay(ctk.CTkFrame):
         self._is_seeking: bool = False
         self._photo_image = None
         self._last_playhead_x: int = 0  # Track last playhead position for skip optimization
+
+        # Seek throttling
+        self._last_seek_render: float = 0.0
+        self._seek_debounce_timer = None
 
         self._setup_ui()
 
@@ -347,7 +352,7 @@ class WaveformDisplay(ctk.CTkFrame):
     def _on_click(self, event):
         """Handle mouse click for seeking."""
         self._is_seeking = True
-        self._seek_to_event(event)
+        self._seek_to_event(event, force=True)
 
     def _on_drag(self, event):
         """Handle mouse drag for seeking."""
@@ -357,11 +362,20 @@ class WaveformDisplay(ctk.CTkFrame):
     def _on_release(self, event):
         """Handle mouse release after seeking."""
         if self._is_seeking:
-            self._seek_to_event(event)
+            # Cancel pending debounce — we'll fire immediately
+            if self._seek_debounce_timer:
+                self.after_cancel(self._seek_debounce_timer)
+                self._seek_debounce_timer = None
+            self._seek_to_event(event, force=True)
             self._is_seeking = False
 
-    def _seek_to_event(self, event):
-        """Seek to position based on mouse event."""
+    def _seek_to_event(self, event, force: bool = False):
+        """Seek to position based on mouse event.
+
+        Args:
+            event: Mouse event
+            force: If True, bypass throttling (used for click and release)
+        """
         if self._duration <= 0:
             return
 
@@ -372,18 +386,35 @@ class WaveformDisplay(ctk.CTkFrame):
         # Calculate ratio from click position
         x = max(0, min(event.x, width))
         ratio = x / width
-
-        # Update position immediately for responsiveness
         self._current_position = ratio
-        self._update_display()
 
-        # Call seek callback
+        now = time.monotonic()
+
+        # Throttle visual updates during drag to ~30 FPS
+        if force or (now - self._last_seek_render >= 0.033):
+            self._update_display()
+            self._last_seek_render = now
+
+        # Seek callback: immediate on click/release, debounced during drag
         if self._on_seek:
-            position_seconds = ratio * self._duration
-            self._on_seek(position_seconds)
+            if force:
+                self._fire_seek()
+            else:
+                if self._seek_debounce_timer:
+                    self.after_cancel(self._seek_debounce_timer)
+                self._seek_debounce_timer = self.after(80, self._fire_seek)
+
+    def _fire_seek(self):
+        """Fire the seek callback with the current position."""
+        self._seek_debounce_timer = None
+        if self._on_seek and self._duration > 0:
+            self._on_seek(self._current_position * self._duration)
 
     def cleanup(self):
         """Clean up resources."""
         if self._resize_timer:
             self.after_cancel(self._resize_timer)
             self._resize_timer = None
+        if self._seek_debounce_timer:
+            self.after_cancel(self._seek_debounce_timer)
+            self._seek_debounce_timer = None

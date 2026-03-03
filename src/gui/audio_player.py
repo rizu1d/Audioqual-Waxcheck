@@ -232,10 +232,10 @@ class AudioPlayer:
 
         self._schedule_callback(self._on_position_changed, position_seconds)
 
-        # If playing, restart stream from new position
-        if self._state == PlayerState.PLAYING:
-            self._stop_stream()
-            self._start_stream()
+        # No stream restart needed: the audio callback reads self._position
+        # under lock on each invocation and picks up the new position seamlessly.
+        # Restarting caused ~10ms blocking per seek (system audio API calls),
+        # which made drag-seeking stutter at 60+ events/sec.
 
     def set_volume(self, volume: float):
         """
