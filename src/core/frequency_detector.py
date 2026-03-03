@@ -1112,7 +1112,7 @@ def find_cutoff_by_transition(
     Algorithm (v3 - "First Musical Transition"):
     1. Calculate energy AND variance for each 500Hz band from 10kHz to 21kHz
     2. PHASE 1: Find the FIRST transition where:
-       - Pre-transition band has MUSICAL content (variance >= 40% of reference)
+       - Pre-transition band has MUSICAL content (variance >= freq-dependent threshold: 0.30 at 14kHz → 0.15 at 20kHz)
        - Energy drops significantly (>= 8dB)
        - Energy doesn't recover after the drop
        This catches transcodes where real music ends but noise continues.
@@ -1186,9 +1186,9 @@ def find_cutoff_by_transition(
         return False
 
     # Helper function: compute frequency-dependent variance threshold (2A)
-    # At lower frequencies (14kHz), use full TRANSITION_MIN_PRE_VARIANCE (0.4)
-    # At higher frequencies (20kHz), use reduced threshold (0.25)
-    # Acapellas have lower variance at ~16kHz (~0.35), which the fixed 0.4 misses
+    # At lower frequencies (14kHz), use full TRANSITION_MIN_PRE_VARIANCE (0.30)
+    # At higher frequencies (20kHz), use reduced threshold (0.15)
+    # Acapellas have lower variance at ~16kHz (~0.25), which a fixed threshold misses
     def get_min_pre_variance(freq_hz: float) -> float:
         if freq_hz <= TRANSITION_VARIANCE_FREQ_LOW_HZ:
             return TRANSITION_MIN_PRE_VARIANCE
@@ -1218,8 +1218,8 @@ def find_cutoff_by_transition(
         drop = energy_low - energy_high
 
         # Check if pre-transition band has MUSICAL content (high variance)
-        # Uses frequency-dependent threshold: 0.4 at 14kHz → 0.25 at 20kHz
-        # This catches acapellas where variance at ~16kHz is ~0.35 (below fixed 0.4)
+        # Uses frequency-dependent threshold: 0.30 at 14kHz → 0.15 at 20kHz
+        # This catches acapellas where variance at ~16kHz is ~0.25 (below a fixed threshold)
         min_variance = get_min_pre_variance(freq_low)
         is_musical_content = variance_low >= min_variance
 

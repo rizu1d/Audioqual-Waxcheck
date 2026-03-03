@@ -1,21 +1,24 @@
-"""Spectrogram visualization in a separate window."""
+"""Spectrogram visualization in a separate window.
+
+Uses a Canvas-based renderer inspired by Spek:
+- Spectrogram bitmap rendered via numpy + colormap LUT (no matplotlib)
+- Axes drawn natively on canvas (always crisp at any size)
+- On resize: only the bitmap scales, axes redraw at native resolution
+"""
 
 import threading
 import tkinter as tk
 from typing import Optional
 
 import customtkinter as ctk
-from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.colors import LinearSegmentedColormap
-from matplotlib.figure import Figure
-from matplotlib.ticker import FuncFormatter, MultipleLocator
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageTk
 
 from ..core.frequency_detector import FrequencyAnalysis
 from ..utils.constants import (
-    THEME_COLORS, FONT_FAMILY, FONT_SIZES, RELIABILITY_COLORS,
-    HOP_LENGTH, SAMPLE_RATE,
+    THEME_COLORS, FONT_FAMILY, FONT_FAMILY_MONO, FONT_SIZES,
+    RELIABILITY_COLORS, HOP_LENGTH, SAMPLE_RATE,
 )
 
 # ── Spek-matching colormap ──────────────────────────────────────────────
@@ -40,12 +43,31 @@ SPEK_CMAP = LinearSegmentedColormap.from_list(
 _SPEC_DB_MIN = -80
 _SPEC_DB_MAX = 0
 
+# ── Pre-build 256-entry RGB lookup table from colormap (once at import) ──
+_COLORMAP_LUT = np.zeros((256, 3), dtype=np.uint8)
+for _i in range(256):
+    _r, _g, _b, _ = SPEK_CMAP(_i / 255.0)
+    _COLORMAP_LUT[_i] = [int(_r * 255), int(_g * 255), int(_b * 255)]
+
 
 class SpectrogramWindow(ctk.CTkToplevel):
     """
     Separate window for displaying audio spectrograms with frequency cutoff visualization.
-    Uses background threading for responsive UI during rendering.
+
+    Architecture (inspired by Spek):
+    - Spectrogram bitmap: numpy array → colormap LUT → PIL Image (fast, ~50ms)
+    - Axes/labels: drawn natively on tk.Canvas (always crisp at any resolution)
+    - Resize: only bitmap scales via PIL.resize (~5ms), axes redraw natively
+    - Progressive reveal: axes visible from start, bitmap fills left-to-right
     """
+
+    # Layout padding (pixels) — similar to Spek's DIP constants
+    LPAD = 52    # Left (frequency labels)
+    TPAD = 14    # Top
+    RPAD = 62    # Right (colorbar + dB labels)
+    BPAD = 32    # Bottom (time labels)
+    CBAR_W = 10  # Colorbar strip width
+    CBAR_GAP = 8 # Gap between spectrogram and colorbar
 
     def __init__(
         self,
@@ -59,14 +81,24 @@ class SpectrogramWindow(ctk.CTkToplevel):
         self._current_analysis: FrequencyAnalysis = analysis
         self._current_filename: str = filename
         self._current_cutoff_khz: float = cutoff_khz
+
+        # Spectrogram image data
+        self._raw_spectrogram: Optional[Image.Image] = None
+        self._colorbar_strip: Optional[Image.Image] = None
+        self._spec_photo = None   # Keep reference alive for tk
+        self._cbar_photo = None
+
+        # Axis metadata (set after computation)
+        self._duration_sec: float = 0.0
+        self._max_khz: float = 0.0
+
+        # Rendering state
         self._render_thread: Optional[threading.Thread] = None
         self._render_cancelled = threading.Event()
-        self._render_id = 0
-        self._photo_image = None
-        self._resize_timer = None
-        self._render_timer = None
-        self._last_render_size = (0, 0)
-        self._last_render_time = 0
+        self._render_id: int = 0
+        self._reveal_timer = None
+        self._is_revealing: bool = False
+        self._scaled_for_reveal: Optional[Image.Image] = None
 
         self.withdraw()  # Hide until positioned
 
@@ -74,19 +106,15 @@ class SpectrogramWindow(ctk.CTkToplevel):
         self._setup_ui()
 
         self.deiconify()  # Show at correct position
-        # Schedule initial render after window is mapped
-        self.after(100, self._start_render)
+        # Schedule render after window is mapped
+        self.after(50, self._start_render)
 
     def _setup_window(self):
         """Configure the window."""
         self.title(f"Espectrograma - {self._current_filename}")
         self.geometry("800x500")
         self.minsize(400, 300)
-
-        # Dark background
         self.configure(fg_color=THEME_COLORS["bg_primary"])
-
-        # Handle window close
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _setup_ui(self):
@@ -105,14 +133,14 @@ class SpectrogramWindow(ctk.CTkToplevel):
         self.figure_frame.grid_columnconfigure(0, weight=1)
         self.figure_frame.grid_rowconfigure(0, weight=1)
 
-        # Image label for displaying rendered spectrogram
-        self._image_label = ctk.CTkLabel(
+        # Canvas for spectrogram + native axes
+        self._canvas = tk.Canvas(
             self.figure_frame,
-            text="",
-            image=None,
+            bg=THEME_COLORS["bg_frame"],
+            highlightthickness=0,
         )
-        self._image_label.grid(row=0, column=0, sticky="nsew")
-        self._image_label.grid_remove()
+        self._canvas.grid(row=0, column=0, sticky="nsew")
+        self._canvas.bind("<Configure>", self._on_canvas_configure)
 
         # Loading indicator
         self._loading_label = ctk.CTkLabel(
@@ -164,9 +192,6 @@ class SpectrogramWindow(ctk.CTkToplevel):
         )
         self.confidence_label.grid(row=0, column=1, padx=16, pady=12)
 
-        # Bind resize event
-        self.figure_frame.bind("<Configure>", self._on_resize)
-
     @staticmethod
     def _get_reliability_label(confidence: float) -> tuple[str, str]:
         """Return (text, color) for a confidence value."""
@@ -177,324 +202,40 @@ class SpectrogramWindow(ctk.CTkToplevel):
         else:
             return "Fiabilidad: Baja", RELIABILITY_COLORS["low"]
 
+    # ── Public API ──────────────────────────────────────────────────────
+
     def update_spectrogram(
         self,
         analysis: FrequencyAnalysis,
         filename: str,
         cutoff_khz: float,
     ):
-        """
-        Update the window with a new spectrogram.
-
-        Args:
-            analysis: FrequencyAnalysis object with spectral data
-            filename: Name of the file being displayed
-            cutoff_khz: Detected cutoff frequency in kHz
-        """
+        """Update the window with a new spectrogram."""
         self._current_analysis = analysis
         self._current_filename = filename
         self._current_cutoff_khz = cutoff_khz
 
-        # Update window title
+        # Update window title and info labels
         self.title(f"Espectrograma - {filename}")
-
-        # Update info labels
         self.cutoff_label.configure(text=f"Frec. de corte: {cutoff_khz:.1f} kHz")
         rel_text, rel_color = self._get_reliability_label(analysis.confidence)
         self.confidence_label.configure(text=rel_text, text_color=rel_color)
 
-        # Cancel any pending render timer
-        if self._render_timer:
-            self.after_cancel(self._render_timer)
-            self._render_timer = None
-
-        # Cancel any in-progress render
+        # Cancel ongoing work
+        self._cancel_reveal()
         self._render_cancelled.set()
 
-        # Show loading state with progress bar
-        self._image_label.grid_remove()
+        # Clear old data
+        self._raw_spectrogram = None
+        self._canvas.delete("all")
+
+        # Show loading
         self._loading_label.place(relx=0.5, rely=0.45, anchor="center")
         self._progress_bar.place(relx=0.5, rely=0.55, anchor="center")
         self._progress_bar.start()
 
-        # Schedule render after a brief delay
-        self._render_timer = self.after(100, self._start_render)
-
-    def _on_resize(self, event):
-        """Handle window resize with debouncing."""
-        if self._current_analysis is None:
-            return
-
-        # Cancel previous resize timer
-        if self._resize_timer:
-            self.after_cancel(self._resize_timer)
-
-        # Set new timer (debounce 400ms)
-        self._resize_timer = self.after(400, self._handle_resize)
-
-    def _handle_resize(self):
-        """Re-render spectrogram at new size."""
-        import time as time_module
-        self._resize_timer = None
-
-        if self._current_analysis is None:
-            return
-
-        # Skip if render just completed
-        if time_module.time() - self._last_render_time < 0.5:
-            return
-
-        # Skip if render timer is pending
-        if self._render_timer is not None:
-            return
-
-        # Skip if render is in progress
-        if self._render_thread is not None and self._render_thread.is_alive():
-            self._resize_timer = self.after(500, self._handle_resize)
-            return
-
-        # Get new dimensions
-        new_width = self.figure_frame.winfo_width()
-        new_height = self.figure_frame.winfo_height()
-
-        # Only re-render if size changed significantly (>50px)
-        old_width, old_height = self._last_render_size
-        if abs(new_width - old_width) < 50 and abs(new_height - old_height) < 50:
-            return
-
-        self._start_render()
-
-    def _start_render(self):
-        """Start the background render."""
-        self._render_timer = None
-
-        if self._current_analysis is None:
-            return
-
-        self._render_id += 1
-        current_render_id = self._render_id
-
-        # Get dimensions
-        width = self.figure_frame.winfo_width()
-        height = self.figure_frame.winfo_height()
-        width = max(width, 300) if width > 1 else 300
-        height = max(height, 200) if height > 1 else 200
-        self._last_render_size = (width, height)
-
-        # Reset cancellation flag and start background render
-        self._render_cancelled.clear()
-        self._render_thread = threading.Thread(
-            target=self._render_in_background,
-            args=(current_render_id, width, height),
-            daemon=True,
-        )
-        self._render_thread.start()
-
-    def _render_in_background(self, render_id: int, width: int, height: int):
-        """Render spectrogram in background thread."""
-        if self._render_cancelled.is_set() or render_id != self._render_id:
-            return
-
-        fig = None
-        try:
-            bg_color = THEME_COLORS["bg_primary"]
-            text_color = THEME_COLORS["text_primary"]
-            dpi = 100
-
-            fig = Figure(
-                figsize=(width / dpi, height / dpi),
-                dpi=dpi,
-                facecolor=bg_color,
-            )
-
-            # Layout: main spectrogram + narrow colorbar on the right
-            gs = fig.add_gridspec(
-                1, 2,
-                width_ratios=[40, 1],
-                wspace=0.05,
-            )
-            ax = fig.add_subplot(gs[0])
-            cbar_ax = fig.add_subplot(gs[1])
-
-            if self._render_cancelled.is_set() or render_id != self._render_id:
-                return
-
-            # Plot spectrogram (returns the AxesImage for colorbar)
-            im = self._plot_spectrogram(ax, self._current_analysis)
-
-            # ── Colorbar (dB legend) ──
-            cbar = fig.colorbar(im, cax=cbar_ax)
-            cbar.set_label(
-                'dB', color=text_color, fontsize=9,
-                rotation=0, labelpad=12, va='center',
-            )
-            cbar.ax.tick_params(colors=text_color, labelsize=7, length=3)
-            cbar.ax.yaxis.set_major_locator(MultipleLocator(20))
-            cbar_ax.set_facecolor(bg_color)
-
-            fig.tight_layout(pad=0.8)
-
-            if self._render_cancelled.is_set() or render_id != self._render_id:
-                return
-
-            # Render to PIL image
-            canvas = FigureCanvasAgg(fig)
-            canvas.draw()
-
-            buf = canvas.buffer_rgba()
-            image = Image.frombuffer(
-                'RGBA',
-                (int(fig.get_figwidth() * dpi), int(fig.get_figheight() * dpi)),
-                buf,
-                'raw',
-                'RGBA',
-                0,
-                1,
-            )
-            image = image.copy()
-
-            # Send result to main thread
-            from ..utils.tk_utils import schedule_callback_from_thread
-            schedule_callback_from_thread(self, self._on_render_complete, render_id, image)
-
-        except Exception as e:
-            print(f"Error rendering spectrogram: {e}")
-        finally:
-            if fig is not None:
-                fig.clear()
-                import matplotlib.pyplot as plt
-                plt.close(fig)
-
-    def _plot_spectrogram(self, ax, analysis: FrequencyAnalysis):
-        """Plot the spectrogram on given axes. Returns the AxesImage for colorbar."""
-        spectrogram_db = analysis.spectrogram_db
-        frequencies = analysis.frequencies
-        n_frames = spectrogram_db.shape[1]
-
-        # Calculate time extent from STFT parameters
-        duration_sec = n_frames * HOP_LENGTH / SAMPLE_RATE
-
-        bg_color = THEME_COLORS["bg_primary"]
-        text_color = THEME_COLORS["text_primary"]
-
-        ax.set_facecolor(bg_color)
-
-        # Plot with Spek colormap and matching dB range
-        im = ax.imshow(
-            spectrogram_db,
-            aspect='auto',
-            origin='lower',
-            cmap=SPEK_CMAP,
-            extent=[0, duration_sec, frequencies[0] / 1000, frequencies[-1] / 1000],
-            vmin=_SPEC_DB_MIN,
-            vmax=_SPEC_DB_MAX,
-            interpolation='bilinear',
-        )
-
-        # ── X-axis: time as m:ss ──
-        def _format_time(x, _pos):
-            minutes = int(x // 60)
-            seconds = int(x % 60)
-            return f"{minutes}:{seconds:02d}"
-
-        ax.xaxis.set_major_formatter(FuncFormatter(_format_time))
-
-        # ── Y-axis: frequency in kHz ──
-        max_khz = min(24, frequencies[-1] / 1000)
-        ax.set_ylim(0, max_khz)
-        ax.yaxis.set_major_locator(MultipleLocator(2))
-
-        # ── Styling ──
-        ax.tick_params(colors=text_color, labelsize=8, length=3)
-        for spine in ax.spines.values():
-            spine.set_edgecolor(text_color)
-            spine.set_alpha(0.2)
-
-        return im
-
-    def _on_render_complete(self, render_id: int, image: Image.Image):
-        """Handle render completion in main thread."""
-        if render_id != self._render_id:
-            return
-
-        try:
-            # Stop and hide progress bar
-            self._progress_bar.stop()
-            self._progress_bar.place_forget()
-            self._loading_label.place_forget()
-
-            # Start progressive reveal
-            self._reveal_progressive(image, render_id)
-
-        except tk.TclError:
-            # Widget was destroyed during render
-            pass
-
-    def _reveal_progressive(self, full_image: Image.Image, render_id: int):
-        """Reveal image progressively from left to right."""
-        import time as time_module
-        n_steps = 12
-        step_delay = 25  # ms between steps
-
-        def update_reveal(step: int):
-            if render_id != self._render_id:
-                return  # Cancelled
-
-            try:
-                # Calculate visible width
-                visible_width = int(full_image.width * step / n_steps)
-
-                # Create cropped image
-                cropped = full_image.crop((0, 0, visible_width, full_image.height))
-
-                # Create padded image (full size, black on right)
-                revealed = Image.new('RGBA', full_image.size, (26, 26, 31, 255))  # bg_primary color
-                revealed.paste(cropped, (0, 0))
-
-                # Update display
-                self._photo_image = ctk.CTkImage(
-                    light_image=revealed,
-                    dark_image=revealed,
-                    size=(revealed.width, revealed.height),
-                )
-                self._image_label.configure(image=self._photo_image, text="")
-                self._image_label.grid(row=0, column=0, sticky="nsew")
-                self._image_label.lift()
-
-                # Schedule next step
-                if step < n_steps:
-                    self.after(step_delay, lambda: update_reveal(step + 1))
-                else:
-                    # Final step: show complete image
-                    self._photo_image = ctk.CTkImage(
-                        light_image=full_image,
-                        dark_image=full_image,
-                        size=(full_image.width, full_image.height),
-                    )
-                    self._image_label.configure(image=self._photo_image, text="")
-                    self._last_render_time = time_module.time()
-
-            except tk.TclError:
-                # Widget was destroyed
-                pass
-
-        # Start reveal animation
-        update_reveal(1)
-
-    def _on_close(self):
-        """Handle window close."""
-        # Cancel any in-progress render
-        self._render_cancelled.set()
-        self._render_id += 1
-
-        # Cancel timers
-        if self._render_timer:
-            self.after_cancel(self._render_timer)
-        if self._resize_timer:
-            self.after_cancel(self._resize_timer)
-
-        self.destroy()
-        self.master.focus_force()
+        # Start render after brief delay for UI update
+        self.after(50, self._start_render)
 
     def is_open(self) -> bool:
         """Check if the window is still open."""
@@ -502,3 +243,337 @@ class SpectrogramWindow(ctk.CTkToplevel):
             return self.winfo_exists()
         except tk.TclError:
             return False
+
+    # ── Background computation ──────────────────────────────────────────
+
+    def _start_render(self):
+        """Start background computation of spectrogram image."""
+        if self._current_analysis is None:
+            return
+
+        self._render_id += 1
+        current_id = self._render_id
+        self._render_cancelled.clear()
+
+        self._render_thread = threading.Thread(
+            target=self._compute_in_background,
+            args=(current_id,),
+            daemon=True,
+        )
+        self._render_thread.start()
+
+    def _compute_in_background(self, render_id: int):
+        """Compute spectrogram PIL image from analysis data (no matplotlib)."""
+        if self._render_cancelled.is_set() or render_id != self._render_id:
+            return
+
+        try:
+            analysis = self._current_analysis
+            spec_db = analysis.spectrogram_db
+
+            # Normalize spectrogram to 0-255 uint8 indices
+            db_range = float(_SPEC_DB_MAX - _SPEC_DB_MIN)
+            spec = np.array(spec_db, dtype=np.float32)
+            np.clip(spec, _SPEC_DB_MIN, _SPEC_DB_MAX, out=spec)
+            spec -= _SPEC_DB_MIN
+            spec *= (255.0 / db_range)
+            indices = spec.astype(np.uint8)
+            del spec
+
+            if self._render_cancelled.is_set() or render_id != self._render_id:
+                return
+
+            # Flip vertically (low frequencies at bottom in display)
+            indices = indices[::-1]
+
+            # Apply colormap via pre-built LUT
+            rgb = _COLORMAP_LUT[indices]
+            del indices
+
+            # Create PIL image
+            img = Image.fromarray(rgb, 'RGB')
+            del rgb
+
+            # Downsample if very large (keeps memory reasonable)
+            max_w, max_h = 2048, 1024
+            if img.width > max_w or img.height > max_h:
+                ratio = min(max_w / img.width, max_h / img.height)
+                img = img.resize(
+                    (max(1, int(img.width * ratio)), max(1, int(img.height * ratio))),
+                    Image.LANCZOS,
+                )
+
+            if self._render_cancelled.is_set() or render_id != self._render_id:
+                return
+
+            # Build colorbar gradient strip
+            gradient = np.arange(255, -1, -1, dtype=np.uint8).reshape(256, 1)
+            cbar_rgb = _COLORMAP_LUT[gradient.flatten()].reshape(256, 1, 3)
+            cbar_img = Image.fromarray(cbar_rgb, 'RGB')
+
+            # Compute metadata
+            n_frames = spec_db.shape[1]
+            duration = n_frames * HOP_LENGTH / SAMPLE_RATE
+            max_khz = min(24.0, analysis.frequencies[-1] / 1000)
+
+            from ..utils.tk_utils import schedule_callback_from_thread
+            schedule_callback_from_thread(
+                self, self._on_compute_complete,
+                render_id, img, cbar_img, duration, max_khz,
+            )
+        except Exception as e:
+            print(f"Error computing spectrogram: {e}")
+
+    def _on_compute_complete(
+        self, render_id: int, spec_img: Image.Image,
+        cbar_img: Image.Image, duration: float, max_khz: float,
+    ):
+        """Handle computation completion in main thread."""
+        if render_id != self._render_id:
+            return
+
+        self._raw_spectrogram = spec_img
+        self._colorbar_strip = cbar_img
+        self._duration_sec = duration
+        self._max_khz = max_khz
+
+        try:
+            self._progress_bar.stop()
+            self._progress_bar.place_forget()
+            self._loading_label.place_forget()
+            self._start_reveal()
+        except tk.TclError:
+            pass
+
+    # ── Progressive reveal animation ────────────────────────────────────
+
+    def _start_reveal(self):
+        """Progressive left-to-right reveal: axes visible from start, bitmap fills in."""
+        self._is_revealing = True
+        self._canvas.delete("all")
+
+        cw = self._canvas.winfo_width()
+        ch = self._canvas.winfo_height()
+        spec_w = cw - self.LPAD - self.RPAD
+        spec_h = ch - self.TPAD - self.BPAD
+
+        if spec_w < 10 or spec_h < 10:
+            self._is_revealing = False
+            self._redraw()
+            return
+
+        # Pre-scale spectrogram to target size once
+        self._scaled_for_reveal = self._raw_spectrogram.resize(
+            (spec_w, spec_h), Image.LANCZOS,
+        )
+
+        # Draw axes and colorbar first (always visible from start, like Spek)
+        self._draw_colorbar(cw, ch)
+        self._draw_axes(cw, ch)
+
+        # Start progressive bitmap reveal
+        self._reveal_step_fn(1, 12, spec_w, spec_h, self._render_id)
+
+    def _reveal_step_fn(
+        self, step: int, total: int, spec_w: int, spec_h: int, render_id: int,
+    ):
+        """Single step of the progressive reveal animation."""
+        if render_id != self._render_id:
+            self._is_revealing = False
+            return
+
+        try:
+            visible_w = max(1, int(spec_w * step / total))
+
+            # Crop from pre-scaled image (essentially free — no pixel computation)
+            cropped = self._scaled_for_reveal.crop((0, 0, visible_w, spec_h))
+            self._spec_photo = ImageTk.PhotoImage(cropped)
+
+            self._canvas.delete("spectrogram")
+            self._canvas.create_image(
+                self.LPAD, self.TPAD,
+                image=self._spec_photo, anchor="nw", tags="spectrogram",
+            )
+
+            if step < total:
+                self._reveal_timer = self.after(
+                    25,
+                    lambda: self._reveal_step_fn(step + 1, total, spec_w, spec_h, render_id),
+                )
+            else:
+                # Reveal complete
+                self._is_revealing = False
+                self._scaled_for_reveal = None
+
+        except tk.TclError:
+            self._is_revealing = False
+
+    def _cancel_reveal(self):
+        """Cancel any in-progress reveal animation."""
+        if self._reveal_timer:
+            self.after_cancel(self._reveal_timer)
+            self._reveal_timer = None
+        self._is_revealing = False
+        self._scaled_for_reveal = None
+
+    # ── Canvas resize & redraw ──────────────────────────────────────────
+
+    def _on_canvas_configure(self, event):
+        """Handle canvas resize: scale bitmap instantly, redraw native axes."""
+        if self._raw_spectrogram is None:
+            return
+        if self._is_revealing:
+            # User resizing during reveal — skip to full display
+            self._cancel_reveal()
+        self._redraw()
+
+    def _redraw(self):
+        """Full redraw: scale spectrogram bitmap + draw native axes."""
+        self._canvas.delete("all")
+
+        cw = self._canvas.winfo_width()
+        ch = self._canvas.winfo_height()
+        if cw < 50 or ch < 50:
+            return
+
+        spec_w = cw - self.LPAD - self.RPAD
+        spec_h = ch - self.TPAD - self.BPAD
+        if spec_w < 10 or spec_h < 10:
+            return
+
+        # Scale spectrogram bitmap to fit (~5ms with LANCZOS)
+        scaled = self._raw_spectrogram.resize((spec_w, spec_h), Image.LANCZOS)
+        self._spec_photo = ImageTk.PhotoImage(scaled)
+        self._canvas.create_image(
+            self.LPAD, self.TPAD,
+            image=self._spec_photo, anchor="nw", tags="spectrogram",
+        )
+
+        # Draw colorbar and axes at native resolution (always crisp)
+        self._draw_colorbar(cw, ch)
+        self._draw_axes(cw, ch)
+
+    # ── Native axis drawing ─────────────────────────────────────────────
+
+    def _draw_colorbar(self, cw: int, ch: int):
+        """Draw the colorbar gradient strip."""
+        spec_h = ch - self.TPAD - self.BPAD
+        if spec_h < 10 or self._colorbar_strip is None:
+            return
+
+        cbar_x = cw - self.RPAD + self.CBAR_GAP
+        cbar_scaled = self._colorbar_strip.resize((self.CBAR_W, spec_h), Image.NEAREST)
+        self._cbar_photo = ImageTk.PhotoImage(cbar_scaled)
+        self._canvas.create_image(
+            cbar_x, self.TPAD,
+            image=self._cbar_photo, anchor="nw", tags="colorbar",
+        )
+
+    def _draw_axes(self, cw: int, ch: int):
+        """Draw axes labels and ticks natively on the canvas (always crisp)."""
+        if self._duration_sec <= 0 or self._max_khz <= 0:
+            return
+
+        text_color = THEME_COLORS["text_primary"]
+        border_color = "#3a3a3e"
+        font_tick = (FONT_FAMILY_MONO, 8)
+        font_label = (FONT_FAMILY_MONO, 9)
+
+        spec_x = self.LPAD
+        spec_y = self.TPAD
+        spec_w = cw - self.LPAD - self.RPAD
+        spec_h = ch - self.TPAD - self.BPAD
+
+        if spec_w < 10 or spec_h < 10:
+            return
+
+        # Spectrogram border
+        self._canvas.create_rectangle(
+            spec_x, spec_y, spec_x + spec_w, spec_y + spec_h,
+            outline=border_color, width=1, tags="axes",
+        )
+
+        # ── Time axis (bottom) ──
+        time_ticks = self._compute_time_ticks()
+        for t_sec, label in time_ticks:
+            frac = t_sec / self._duration_sec
+            x = spec_x + frac * spec_w
+            y = spec_y + spec_h
+            self._canvas.create_line(x, y, x, y + 4, fill=text_color, tags="axes")
+            self._canvas.create_text(
+                x, y + 6, text=label, fill=text_color,
+                font=font_tick, anchor="n", tags="axes",
+            )
+        # "min" axis label
+        self._canvas.create_text(
+            spec_x + spec_w / 2, ch - 2, text="min",
+            fill=text_color, font=font_label, anchor="s", tags="axes",
+        )
+
+        # ── Frequency axis (left) ──
+        freq_step = 2.0  # kHz
+        f = 0.0
+        while f <= self._max_khz + 0.01:
+            frac = f / self._max_khz
+            y = spec_y + spec_h - frac * spec_h
+            self._canvas.create_line(spec_x - 4, y, spec_x, y, fill=text_color, tags="axes")
+            self._canvas.create_text(
+                spec_x - 6, y, text=str(int(f)),
+                fill=text_color, font=font_tick, anchor="e", tags="axes",
+            )
+            f += freq_step
+        # "kHz" axis label
+        self._canvas.create_text(
+            spec_x - 6, spec_y - 4, text="kHz",
+            fill=text_color, font=font_label, anchor="se", tags="axes",
+        )
+
+        # ── dB axis (right of colorbar) ──
+        cbar_x = cw - self.RPAD + self.CBAR_GAP
+        db_x = cbar_x + self.CBAR_W + 4
+        for db_val in [0, -20, -40, -60, -80]:
+            frac = -db_val / (-_SPEC_DB_MIN)  # 0 dB at top, -80 dB at bottom
+            y = spec_y + frac * spec_h
+            self._canvas.create_text(
+                db_x, y, text=str(db_val),
+                fill=text_color, font=font_tick, anchor="w", tags="axes",
+            )
+        # "dB" label
+        self._canvas.create_text(
+            db_x, spec_y - 4, text="dB",
+            fill=text_color, font=font_label, anchor="sw", tags="axes",
+        )
+
+    def _compute_time_ticks(self) -> list[tuple[float, str]]:
+        """Compute nice time axis tick positions and labels."""
+        duration = self._duration_sec
+        if duration <= 0:
+            return []
+
+        # Choose a nice interval aiming for ~8 ticks
+        nice_intervals = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600]
+        raw_interval = duration / 8
+        interval = nice_intervals[-1]
+        for ni in nice_intervals:
+            if ni >= raw_interval:
+                interval = ni
+                break
+
+        ticks = []
+        t = 0.0
+        while t <= duration + 0.01:
+            mins = int(t // 60)
+            secs = int(t % 60)
+            ticks.append((t, f"{mins}:{secs:02d}"))
+            t += interval
+        return ticks
+
+    # ── Window lifecycle ────────────────────────────────────────────────
+
+    def _on_close(self):
+        """Handle window close."""
+        self._render_cancelled.set()
+        self._render_id += 1
+        self._cancel_reveal()
+        self.destroy()
+        self.master.focus_force()
