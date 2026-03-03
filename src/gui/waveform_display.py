@@ -24,7 +24,7 @@ class WaveformDisplay(ctk.CTkFrame):
 
     # Display dimensions
     HEIGHT = 50
-    BAR_WIDTH = 2
+    BAR_WIDTH = 1
 
     # Colors — matched to player bar background
     COLOR_BG = THEME_COLORS["purple_deep"]
@@ -43,7 +43,8 @@ class WaveformDisplay(ctk.CTkFrame):
         self._on_seek = on_seek
         self._samples: Optional[np.ndarray] = None
         self._peaks: Optional[np.ndarray] = None
-        self._base_image: Optional[Image.Image] = None
+        self._unplayed_image: Optional[Image.Image] = None
+        self._played_image: Optional[Image.Image] = None
         self._current_position: float = 0.0
         self._duration: float = 0.0
         self._sample_rate: int = SAMPLE_RATE
@@ -98,7 +99,8 @@ class WaveformDisplay(ctk.CTkFrame):
         self._duration = len(samples) / sample_rate if sample_rate > 0 else 0.0
         self._current_position = 0.0
         self._peaks = None
-        self._base_image = None
+        self._unplayed_image = None
+        self._played_image = None
 
         # Start rendering
         self._start_render()
@@ -112,8 +114,8 @@ class WaveformDisplay(ctk.CTkFrame):
         """
         self._current_position = max(0.0, min(1.0, ratio))
 
-        # Update display if we have a base image
-        if self._base_image is not None and not self._is_seeking:
+        # Update display if we have pre-rendered images
+        if self._unplayed_image is not None and not self._is_seeking:
             # Skip update if playhead moved less than 2 pixels (reduces ~10 updates/s to ~2-3/s)
             if self._last_width > 0:
                 new_x = int(self._current_position * self._last_width)
@@ -125,7 +127,8 @@ class WaveformDisplay(ctk.CTkFrame):
         """Clear the waveform display."""
         self._samples = None
         self._peaks = None
-        self._base_image = None
+        self._unplayed_image = None
+        self._played_image = None
         self._current_position = 0.0
         self._duration = 0.0
         self._photo_image = None
@@ -160,7 +163,8 @@ class WaveformDisplay(ctk.CTkFrame):
 
         # Clear cached data to force re-render
         self._peaks = None
-        self._base_image = None
+        self._unplayed_image = None
+        self._played_image = None
         self._start_render()
 
     def _start_render(self):
@@ -202,29 +206,34 @@ class WaveformDisplay(ctk.CTkFrame):
             if render_id != self._render_id:
                 return
 
-            # Create base image with unplayed waveform
-            base_image = self._create_base_image(peaks, width, height)
+            # Pre-render both unplayed and played images
+            unplayed_image = self._create_waveform_image(peaks, width, height, self.COLOR_UNPLAYED)
+
+            if render_id != self._render_id:
+                return
+
+            played_image = self._create_waveform_image(peaks, width, height, self.COLOR_PLAYED)
 
             if render_id != self._render_id:
                 return
 
             # Store results and update display on main thread
             from ..utils.tk_utils import schedule_callback_from_thread
-            schedule_callback_from_thread(self, self._on_render_complete, render_id, peaks, base_image)
+            schedule_callback_from_thread(self, self._on_render_complete, render_id, peaks, unplayed_image, played_image)
 
         except Exception as e:
             print(f"Error rendering waveform: {e}")
 
     def _compute_peaks(self, samples: np.ndarray, num_points: int) -> np.ndarray:
         """
-        Downsample audio to peak values for visualization.
+        Downsample audio to RMS values for visualization.
 
         Args:
             samples: Audio samples
             num_points: Number of peak values to compute
 
         Returns:
-            Normalized peak array (0.0 to 1.0)
+            Normalized peak array (0.0 to 1.0) with power curve applied
         """
         if num_points <= 0:
             return np.array([])
@@ -236,98 +245,68 @@ class WaveformDisplay(ctk.CTkFrame):
         if chunk_size <= 0:
             return np.zeros(num_points)
 
-        # Compute max absolute value in each chunk
-        peaks = np.zeros(num_points)
-        for i in range(num_points):
-            start = i * chunk_size
-            end = min(start + chunk_size, len(samples))
-            if end > start:
-                peaks[i] = np.max(np.abs(samples[start:end]))
+        # Vectorized RMS computation
+        trimmed = samples[:num_points * chunk_size]
+        chunks = trimmed.reshape(num_points, chunk_size)
+        peaks = np.sqrt(np.mean(chunks ** 2, axis=1))
 
         # Normalize to 0-1
         max_peak = np.max(peaks)
         if max_peak > 0:
             peaks = peaks / max_peak
 
+        # Power curve for dynamic range expansion
+        peaks = peaks ** 1.5
+
         return peaks
 
-    def _create_base_image(self, peaks: np.ndarray, width: int, height: int) -> Image.Image:
+    def _create_waveform_image(self, peaks: np.ndarray, width: int, height: int, color: str) -> Image.Image:
         """
-        Create the base waveform image in unplayed color.
+        Create a full waveform image in a single color.
 
         Args:
-            peaks: Normalized peak array
-            width: Image width
-            height: Image height
-
-        Returns:
-            PIL Image with waveform
-        """
-        # Create image with background color
-        image = Image.new('RGB', (width, height), self.COLOR_BG)
-        draw = ImageDraw.Draw(image)
-
-        # Draw waveform bars
-        self._draw_bars(draw, peaks, width, height, self.COLOR_UNPLAYED, 0, len(peaks))
-
-        return image
-
-    def _draw_bars(
-        self,
-        draw: ImageDraw.ImageDraw,
-        peaks: np.ndarray,
-        width: int,
-        height: int,
-        color: str,
-        start_idx: int,
-        end_idx: int,
-    ):
-        """
-        Draw waveform bars on the image.
-
-        Args:
-            draw: PIL ImageDraw object
             peaks: Normalized peak array
             width: Image width
             height: Image height
             color: Bar color
-            start_idx: Starting peak index
-            end_idx: Ending peak index (exclusive)
+
+        Returns:
+            PIL Image with waveform
         """
+        image = Image.new('RGB', (width, height), self.COLOR_BG)
+        draw = ImageDraw.Draw(image)
+
         center_y = height // 2
-        max_bar_height = int(height * 0.4)  # 40% of half-height on each side
+        max_bar_height = int(height * 0.45)  # 45% of half-height on each side
 
-        for i in range(start_idx, min(end_idx, len(peaks))):
-            x = i * self.BAR_WIDTH
+        for i in range(min(len(peaks), width)):
             bar_h = max(1, int(peaks[i] * max_bar_height))
-
-            # Draw bar above and below center
-            draw.rectangle(
-                [x, center_y - bar_h, x + self.BAR_WIDTH - 1, center_y + bar_h],
+            # With BAR_WIDTH=1, draw vertical lines
+            draw.line(
+                [(i, center_y - bar_h), (i, center_y + bar_h)],
                 fill=color,
             )
 
-    def _on_render_complete(self, render_id: int, peaks: np.ndarray, base_image: Image.Image):
+        return image
+
+    def _on_render_complete(self, render_id: int, peaks: np.ndarray, unplayed_image: Image.Image, played_image: Image.Image):
         """Handle render completion on main thread."""
         if render_id != self._render_id:
             return
 
         self._peaks = peaks
-        self._base_image = base_image
+        self._unplayed_image = unplayed_image
+        self._played_image = played_image
         self._update_display()
 
     def _update_display(self):
-        """Update the display with current position."""
-        if self._base_image is None or self._peaks is None:
+        """Update the display with current position using pre-rendered images."""
+        if self._unplayed_image is None or self._played_image is None:
             return
 
         try:
-            # Copy base image
-            display = self._base_image.copy()
-            draw = ImageDraw.Draw(display)
-
-            width = display.width
-            height = display.height
+            width = self._unplayed_image.width
+            height = self._unplayed_image.height
 
             # Calculate playhead position
             playhead_x = int(self._current_position * width)
@@ -335,13 +314,16 @@ class WaveformDisplay(ctk.CTkFrame):
             # Store for skip optimization
             self._last_playhead_x = playhead_x
 
-            # Overdraw played portion in lighter color
+            # Composite: start with unplayed, paste played portion
+            display = self._unplayed_image.copy()
+
             if playhead_x > 0:
-                num_bars = playhead_x // self.BAR_WIDTH
-                self._draw_bars(draw, self._peaks, width, height, self.COLOR_PLAYED, 0, num_bars)
+                played_strip = self._played_image.crop((0, 0, playhead_x, height))
+                display.paste(played_strip, (0, 0))
 
             # Draw playhead line
             if 0 <= playhead_x < width:
+                draw = ImageDraw.Draw(display)
                 draw.line(
                     [(playhead_x, 0), (playhead_x, height - 1)],
                     fill=self.COLOR_PLAYHEAD,
