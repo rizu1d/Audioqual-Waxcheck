@@ -688,7 +688,19 @@ class MainWindow(ctk.CTkFrame):
             self.winfo_toplevel(),
             filepath=selected.filepath,
             on_save=self.on_metadata_saved,
+            analysis_result=selected,
+            on_navigate=self._navigate_metadata_editor,
         )
+
+    def _navigate_metadata_editor(self, direction: int):
+        """Navigate to prev/next file in the results table for the metadata editor.
+
+        Returns the new AnalysisResult, or None if at boundary.
+        """
+        if direction < 0:
+            return self.results_table.select_previous()
+        else:
+            return self.results_table.select_next()
 
     def open_metadata_editor(self):
         """Public method to open metadata editor (for keyboard shortcut)."""

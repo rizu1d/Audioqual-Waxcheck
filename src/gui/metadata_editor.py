@@ -1,10 +1,11 @@
 """Metadata editor window (iTunes-style)."""
 
+import datetime
 import io
 import os
 from pathlib import Path
 from tkinter import filedialog
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, TYPE_CHECKING
 
 import customtkinter as ctk
 from PIL import Image
@@ -18,8 +19,15 @@ from mutagen.flac import FLAC, Picture
 from mutagen.wave import WAVE
 from mutagen.aiff import AIFF
 
-from ..utils.constants import THEME_COLORS, FONT_FAMILY, FONT_SIZES
+from ..utils.constants import (
+    THEME_COLORS, FONT_FAMILY, FONT_FAMILY_MONO, FONT_SIZES,
+    QUALITY_LEVELS, STATUS_TRANSCODE, STATUS_LOSSLESS, get_quality_level,
+)
+from ..utils.file_utils import format_duration
 from ..utils.settings import AppSettings
+
+if TYPE_CHECKING:
+    from ..core.analyzer import AnalysisResult
 
 # Common music genres for the combobox dropdown
 # Electronic subgenres sourced from https://en.wikipedia.org/wiki/List_of_electronic_music_genres
@@ -153,12 +161,16 @@ class MetadataEditor(ctk.CTkToplevel):
         master,
         filepath: str,
         on_save: Optional[Callable[[str, Optional[str]], None]] = None,
+        analysis_result: "Optional[AnalysisResult]" = None,
+        on_navigate: Optional[Callable[[int], "Optional[AnalysisResult]"]] = None,
     ):
         super().__init__(master)
         self.withdraw()  # Hide until positioned
 
         self._filepath = filepath
         self._on_save = on_save
+        self._analysis_result = analysis_result
+        self._on_navigate = on_navigate  # callback(direction) -> AnalysisResult or None
         self._format_type: Optional[str] = None  # "id3", "vorbis", or None
         self._fields: Dict[str, ctk.CTkEntry] = {}
         self._genre_combo: Optional[ctk.CTkComboBox] = None
@@ -170,9 +182,11 @@ class MetadataEditor(ctk.CTkToplevel):
         self._current_tab: str = "detalles"
         self._detalles_tab_btn: Optional[ctk.CTkButton] = None
         self._ilustracion_tab_btn: Optional[ctk.CTkButton] = None
+        self._archivo_tab_btn: Optional[ctk.CTkButton] = None
         self._content_frame: Optional[ctk.CTkFrame] = None
         self._detalles_content: Optional[ctk.CTkFrame] = None
         self._ilustracion_content: Optional[ctk.CTkFrame] = None
+        self._archivo_content: Optional[ctk.CTkFrame] = None
 
         # Artwork state
         self._artwork_data: Optional[bytes] = None
@@ -185,6 +199,7 @@ class MetadataEditor(ctk.CTkToplevel):
         self._remove_artwork_btn: Optional[ctk.CTkButton] = None
 
         self._detect_format()
+        self._read_header_info()  # Read artwork + title/artist before building UI
         self._setup_window()
         self._setup_ui()
         self._read_metadata()
@@ -212,6 +227,49 @@ class MetadataEditor(ctk.CTkToplevel):
             # OGG, M4A, etc. — not supported for editing
             self._format_type = None
             self._supported = False
+
+    def _read_header_info(self):
+        """Read artwork, title, and artist for the header display (before UI setup)."""
+        self._header_title = Path(self._filepath).stem
+        self._header_artist = ""
+        self._header_artwork_data: Optional[bytes] = None
+
+        try:
+            audio = MutagenFile(self._filepath)
+            if audio is None:
+                return
+
+            # Read title and artist
+            ext = Path(self._filepath).suffix.lower()
+            if ext in (".mp3", ".aiff", ".aif", ".wav"):
+                if audio.tags:
+                    title_frame = audio.tags.get("TIT2")
+                    if title_frame and title_frame.text:
+                        t = str(title_frame.text[0]).strip()
+                        if t:
+                            self._header_title = t
+                    artist_frame = audio.tags.get("TPE1")
+                    if artist_frame and artist_frame.text:
+                        self._header_artist = str(artist_frame.text[0]).strip()
+                    # Read artwork
+                    for key in audio.tags:
+                        if key.startswith("APIC"):
+                            frame = audio.tags[key]
+                            if hasattr(frame, "data") and frame.data:
+                                self._header_artwork_data = frame.data
+                                break
+            elif ext == ".flac":
+                flac = FLAC(self._filepath)
+                vals = flac.get("title", [])
+                if vals and vals[0].strip():
+                    self._header_title = vals[0].strip()
+                artist_vals = flac.get("artist", [])
+                if artist_vals:
+                    self._header_artist = artist_vals[0].strip()
+                if flac.pictures:
+                    self._header_artwork_data = flac.pictures[0].data
+        except Exception:
+            pass
 
     def _setup_window(self):
         """Configure window size, position, and appearance."""
@@ -265,43 +323,71 @@ class MetadataEditor(ctk.CTkToplevel):
             self._setup_ilustracion_tab()
             # Initially hidden (detalles is default)
 
+            # Archivo tab content
+            self._archivo_content = ctk.CTkFrame(self._content_frame, fg_color="transparent")
+            self._setup_archivo_tab()
+
         # Buttons
         self._setup_buttons()
 
     def _setup_header(self):
-        """Create header with filename and format info."""
+        """Create header with artwork thumbnail, title, and artist (iTunes-style)."""
         header = ctk.CTkFrame(self, fg_color="transparent")
         header.pack(fill="x", padx=20, pady=(16, 8))
 
-        filename = Path(self._filepath).name
-        ext = Path(self._filepath).suffix.upper().lstrip(".")
+        # Artwork thumbnail (left)
+        thumb_size = 60
+        artwork_img = self._make_header_thumbnail(thumb_size)
+        self._header_ctk_image = ctk.CTkImage(
+            light_image=artwork_img, dark_image=artwork_img,
+            size=(thumb_size, thumb_size),
+        )
+        ctk.CTkLabel(
+            header, image=self._header_ctk_image, text="",
+        ).pack(side="left", padx=(0, 14))
 
-        # Get bitrate info
-        bitrate_str = ""
-        try:
-            audio = MutagenFile(self._filepath)
-            if audio and hasattr(audio, "info") and hasattr(audio.info, "bitrate"):
-                br = audio.info.bitrate
-                if br:
-                    bitrate_str = f" - {br // 1000} kbps"
-        except Exception:
-            pass
+        # Text block (right of artwork)
+        text_frame = ctk.CTkFrame(header, fg_color="transparent")
+        text_frame.pack(side="left", fill="both", expand=True)
 
         ctk.CTkLabel(
-            header,
-            text=filename,
+            text_frame,
+            text=self._header_title,
             font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["heading"], weight="bold"),
             text_color=THEME_COLORS["text_primary"],
             anchor="w",
-        ).pack(fill="x")
+        ).pack(fill="x", pady=(6, 0))
 
-        ctk.CTkLabel(
-            header,
-            text=f"{ext}{bitrate_str}",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
-            text_color=THEME_COLORS["text_secondary"],
-            anchor="w",
-        ).pack(fill="x", pady=(2, 0))
+        if self._header_artist:
+            ctk.CTkLabel(
+                text_frame,
+                text=self._header_artist,
+                font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["body"]),
+                text_color=THEME_COLORS["text_secondary"],
+                anchor="w",
+            ).pack(fill="x", pady=(2, 0))
+
+    def _make_header_thumbnail(self, size: int) -> Image.Image:
+        """Create the header thumbnail from artwork data, or the custom placeholder."""
+        pixel_size = size * 2
+        if self._header_artwork_data:
+            try:
+                img = Image.open(io.BytesIO(self._header_artwork_data))
+                img = img.convert("RGB")
+                img = img.resize((pixel_size, pixel_size), Image.LANCZOS)
+                img = self._round_corners(img, 12)
+                return img
+            except Exception:
+                pass
+        # Use custom placeholder asset
+        placeholder_path = Path(__file__).parent.parent / "assets" / "waxcheck-empty-cover-small.png"
+        try:
+            img = Image.open(placeholder_path)
+            img = img.resize((pixel_size, pixel_size), Image.LANCZOS)
+            return img
+        except Exception:
+            # Last resort: solid dark square
+            return Image.new("RGBA", (pixel_size, pixel_size), (40, 38, 56, 255))
 
     def _setup_fields(self, parent):
         """Create the form fields."""
@@ -519,44 +605,54 @@ class MetadataEditor(ctk.CTkToplevel):
             hover_color=THEME_COLORS["bg_elevated"],
             **btn_kwargs,
         )
-        self._ilustracion_tab_btn.pack(side="left")
+        self._ilustracion_tab_btn.pack(side="left", padx=(0, 4))
+
+        self._archivo_tab_btn = ctk.CTkButton(
+            tab_bar,
+            text="Archivo",
+            command=lambda: self._switch_tab("archivo"),
+            fg_color="transparent",
+            text_color=THEME_COLORS["text_secondary"],
+            hover_color=THEME_COLORS["bg_elevated"],
+            **btn_kwargs,
+        )
+        self._archivo_tab_btn.pack(side="left")
 
     def _switch_tab(self, tab_name: str):
-        """Switch between Detalles and Ilustración tabs."""
+        """Switch between Detalles, Ilustración, and Archivo tabs."""
         if tab_name == self._current_tab:
             return
 
         self._current_tab = tab_name
 
-        if tab_name == "detalles":
-            self._ilustracion_content.pack_forget()
-            self._detalles_content.pack(fill="both", expand=True)
-            self._detalles_tab_btn.configure(
-                fg_color=THEME_COLORS["primary"],
-                text_color=THEME_COLORS["text_primary"],
-                font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"], weight="bold"),
-            )
-            self._ilustracion_tab_btn.configure(
-                fg_color="transparent",
-                text_color=THEME_COLORS["text_secondary"],
-                font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
-            )
-        else:
-            self._detalles_content.pack_forget()
-            self._ilustracion_content.pack(fill="both", expand=True)
-            self._ilustracion_tab_btn.configure(
-                fg_color=THEME_COLORS["primary"],
-                text_color=THEME_COLORS["text_primary"],
-                font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"], weight="bold"),
-            )
-            self._detalles_tab_btn.configure(
-                fg_color="transparent",
-                text_color=THEME_COLORS["text_secondary"],
-                font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
-            )
-            # Re-render artwork at correct size now that frame is visible
-            if self._artwork_data:
-                self.after(50, self._update_artwork_display)
+        tabs = {
+            "detalles": (self._detalles_tab_btn, self._detalles_content),
+            "ilustracion": (self._ilustracion_tab_btn, self._ilustracion_content),
+            "archivo": (self._archivo_tab_btn, self._archivo_content),
+        }
+
+        active_font = ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"], weight="bold")
+        inactive_font = ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"])
+
+        for name, (btn, content) in tabs.items():
+            if name == tab_name:
+                content.pack(fill="both", expand=True)
+                btn.configure(
+                    fg_color=THEME_COLORS["primary"],
+                    text_color=THEME_COLORS["text_primary"],
+                    font=active_font,
+                )
+            else:
+                content.pack_forget()
+                btn.configure(
+                    fg_color="transparent",
+                    text_color=THEME_COLORS["text_secondary"],
+                    font=inactive_font,
+                )
+
+        # Re-render artwork at correct size now that frame is visible
+        if tab_name == "ilustracion" and self._artwork_data:
+            self.after(50, self._update_artwork_display)
 
     def _setup_ilustracion_tab(self):
         """Create the artwork display tab content."""
@@ -631,6 +727,309 @@ class MetadataEditor(ctk.CTkToplevel):
             font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
         )
         # Initially hidden (shown only when artwork exists)
+
+    # ─── Archivo Tab ────────────────────────────────────────────────
+
+    def _setup_archivo_tab(self):
+        """Create the read-only file information tab."""
+        parent = self._archivo_content
+
+        scroll = ctk.CTkScrollableFrame(
+            parent,
+            fg_color="transparent",
+            scrollbar_button_color=THEME_COLORS["scrollbar_thumb"],
+            scrollbar_button_hover_color=THEME_COLORS["scrollbar_thumb_hover"],
+        )
+        scroll.pack(fill="both", expand=True)
+
+        # Use grid on the scroll frame so all rows share column alignment
+        scroll.grid_columnconfigure(0, minsize=130)  # Fixed label column
+        scroll.grid_columnconfigure(1, weight=1)      # Value column expands
+
+        rows = self._gather_file_info()
+        for idx, (label, value, kwargs) in enumerate(rows):
+            self._build_info_row(scroll, idx, label, value, **kwargs)
+
+    def _gather_file_info(self) -> list:
+        """Collect file info from os, mutagen, and analysis result.
+
+        Returns list of (label, value, kwargs_dict) tuples.
+        """
+        rows = []
+        ext = Path(self._filepath).suffix.lower()
+        result = self._analysis_result
+
+        # Open file with mutagen once
+        try:
+            audio = MutagenFile(self._filepath)
+        except Exception:
+            audio = None
+
+        # 1. Formato (first position — replaces old "tipo")
+        fmt_str = self._get_format_description(audio, ext)
+        if fmt_str:
+            rows.append(("formato", fmt_str, {}))
+
+        # 2. Duración
+        duration = None
+        if result and result.duration:
+            duration = result.duration
+        elif audio and hasattr(audio, "info") and hasattr(audio.info, "length"):
+            duration = audio.info.length
+        if duration:
+            rows.append(("duración", format_duration(duration), {"mono": True}))
+
+        # 3. Tamaño
+        try:
+            size_bytes = os.path.getsize(self._filepath)
+            rows.append(("tamaño", self._format_size(size_bytes), {"mono": True}))
+        except OSError:
+            pass
+
+        # 4. Velocidad de bits (conditional on transcode)
+        is_transcode = result and result.status == STATUS_TRANSCODE
+        if is_transcode:
+            # Declared bitrate
+            declared = None
+            if result and result.declared_bitrate:
+                declared = result.declared_bitrate
+            elif audio and hasattr(audio, "info") and hasattr(audio.info, "bitrate"):
+                declared = audio.info.bitrate // 1000 if audio.info.bitrate else None
+            if declared:
+                rows.append(("velocidad de bits declarada", f"{declared} kbps", {"mono": True}))
+            # Detected (real) bitrate
+            if result and result.detected_quality:
+                fmt = self._format_detected_quality(result.detected_quality)
+                rows.append(("velocidad de bits real", fmt, {"mono": True, "color": "#E05555"}))
+        else:
+            bitrate = None
+            if result and result.declared_bitrate:
+                bitrate = result.declared_bitrate
+            elif audio and hasattr(audio, "info") and hasattr(audio.info, "bitrate"):
+                bitrate = audio.info.bitrate // 1000 if audio.info.bitrate else None
+            if bitrate:
+                rows.append(("velocidad de bits", f"{bitrate} kbps", {"mono": True}))
+
+        # 5. Frecuencia de muestreo
+        if audio and hasattr(audio, "info") and hasattr(audio.info, "sample_rate"):
+            sr = audio.info.sample_rate
+            if sr:
+                rows.append(("frecuencia de muestreo", f"{sr:,} Hz".replace(",", "."), {"mono": True}))
+
+        # 6. Canales
+        if audio and hasattr(audio, "info") and hasattr(audio.info, "channels"):
+            ch = audio.info.channels
+            if ch:
+                ch_str = "Mono" if ch == 1 else "Estéreo" if ch == 2 else f"{ch} canales"
+                rows.append(("canales", ch_str, {}))
+
+        # 7. Volumen (ReplayGain)
+        vol = self._get_volume_info(audio, ext)
+        if vol:
+            rows.append(("volumen", vol, {"mono": True}))
+
+        # 8. Etiqueta ID3 / Vorbis
+        tag_info = self._get_tag_info(audio, ext)
+        if tag_info:
+            rows.append(("etiqueta id3", tag_info, {}))
+
+        # 9. Codificado con
+        encoder = self._get_encoder_info(audio, ext)
+        if encoder:
+            rows.append(("codificado con", encoder, {}))
+
+        # 10. Calidad (from analysis)
+        if result and result.cutoff_frequency_khz:
+            level = get_quality_level(result.cutoff_frequency_khz, result.status)
+            level_labels = {
+                "bajo": "Baja",
+                "bueno": "Buena",
+                "excelente": "Excelente",
+            }
+            label_text = level_labels.get(level, level.capitalize())
+            color = QUALITY_LEVELS.get(level, {}).get("text", THEME_COLORS["text_primary"])
+            rows.append(("calidad", label_text, {"color": color}))
+
+        # 11. Fecha de modificación
+        try:
+            mtime = os.path.getmtime(self._filepath)
+            dt = datetime.datetime.fromtimestamp(mtime)
+            rows.append(("fecha de modificación", dt.strftime("%d/%m/%Y, %H:%M"), {"mono": True}))
+        except OSError:
+            pass
+
+        # 12. Ubicación
+        rows.append(("ubicación", self._filepath, {"wrap": True, "clickable_path": self._filepath}))
+
+        return rows
+
+    def _build_info_row(self, parent, row_idx: int, label: str, value: str, *,
+                        mono: bool = False, color: str = None, wrap: bool = False,
+                        clickable_path: str = None):
+        """Build a single label-value row in the file info grid."""
+        # Label (right-aligned, fixed column)
+        ctk.CTkLabel(
+            parent,
+            text=label,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
+            text_color=THEME_COLORS["text_secondary"],
+            anchor="e",
+        ).grid(row=row_idx, column=0, sticky="ne", padx=(0, 8), pady=(3, 3))
+
+        # Value (left-aligned, expands)
+        value_color = color or THEME_COLORS["text_primary"]
+        value_font = ctk.CTkFont(
+            family=FONT_FAMILY_MONO if mono else FONT_FAMILY,
+            size=FONT_SIZES["caption"],
+        )
+
+        val_label = ctk.CTkLabel(
+            parent,
+            text=value,
+            font=value_font,
+            text_color=value_color,
+            anchor="w",
+            wraplength=260 if wrap else 0,
+            justify="left",
+        )
+        val_label.grid(row=row_idx, column=1, sticky="nw", pady=(3, 3))
+
+        if clickable_path:
+            val_label.configure(
+                cursor="hand2",
+                font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"], underline=True),
+            )
+            val_label.bind("<Button-1>", lambda e: self._reveal_in_file_manager(clickable_path))
+
+    @staticmethod
+    def _reveal_in_file_manager(filepath: str):
+        """Open the system file manager and select the file."""
+        import subprocess
+        import sys
+        try:
+            if sys.platform == "darwin":
+                subprocess.Popen(["open", "-R", filepath])
+            elif sys.platform == "win32":
+                subprocess.Popen(["explorer", "/select,", os.path.normpath(filepath)])
+            else:
+                # Linux: open the containing folder
+                subprocess.Popen(["xdg-open", os.path.dirname(filepath)])
+        except Exception:
+            pass
+
+    @staticmethod
+    def _format_size(size_bytes: int) -> str:
+        """Format file size as human-readable string (e.g., '3,3 MB')."""
+        if size_bytes < 1024:
+            return f"{size_bytes} B"
+        elif size_bytes < 1024 * 1024:
+            return f"{size_bytes / 1024:.1f} KB".replace(".", ",")
+        elif size_bytes < 1024 * 1024 * 1024:
+            return f"{size_bytes / (1024 * 1024):.1f} MB".replace(".", ",")
+        else:
+            return f"{size_bytes / (1024 * 1024 * 1024):.1f} GB".replace(".", ",")
+
+    @staticmethod
+    def _format_detected_quality(quality_str: str) -> str:
+        """Format detected quality string (e.g., '128kbps' -> '128 kbps')."""
+        s = quality_str.strip()
+        if s.lower().endswith("kbps"):
+            num = s[:-4].strip()
+            return f"{num} kbps"
+        return s
+
+    @staticmethod
+    def _get_volume_info(audio, ext: str) -> Optional[str]:
+        """Extract ReplayGain volume from tags if present."""
+        if audio is None or audio.tags is None:
+            return None
+        try:
+            if ext in (".mp3", ".aiff", ".aif", ".wav"):
+                # ID3: look for TXXX:replaygain_track_gain
+                for key in audio.tags:
+                    if key.startswith("TXXX") and "replaygain_track_gain" in key.lower():
+                        val = str(audio.tags[key].text[0]) if audio.tags[key].text else ""
+                        if val:
+                            return val
+            elif ext == ".flac":
+                vals = audio.get("replaygain_track_gain", [])
+                if vals:
+                    return vals[0]
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
+    def _get_tag_info(audio, ext: str) -> Optional[str]:
+        """Get tag format version info."""
+        if audio is None or audio.tags is None:
+            return None
+        try:
+            if ext in (".mp3", ".aiff", ".aif", ".wav"):
+                tags = audio.tags
+                if hasattr(tags, "version"):
+                    v = tags.version
+                    if isinstance(v, tuple) and len(v) >= 2:
+                        return f"v{v[0]}.{v[1]}"
+                return None
+            elif ext == ".flac":
+                return "Vorbis Comments"
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
+    def _get_encoder_info(audio, ext: str) -> Optional[str]:
+        """Get encoder info if available (e.g., LAME version).
+
+        For MP3 files, always returns a value ('Desconocido' as fallback).
+        For other formats, returns None if no encoder info is found.
+        """
+        if audio is None:
+            return "Desconocido" if ext == ".mp3" else None
+        try:
+            if hasattr(audio, "info") and hasattr(audio.info, "encoder_info"):
+                enc = audio.info.encoder_info
+                if enc:
+                    return enc
+        except Exception:
+            pass
+        return "Desconocido" if ext == ".mp3" else None
+
+    @staticmethod
+    def _get_format_description(audio, ext: str) -> Optional[str]:
+        """Get detailed format description (e.g., 'MPEG-1, Capa 3', 'FLAC (24-bit)')."""
+        try:
+            if ext == ".mp3":
+                if audio and hasattr(audio, "info"):
+                    info = audio.info
+                    version = getattr(info, "version", None)
+                    layer = getattr(info, "layer", None)
+                    if version is not None and layer is not None:
+                        return f"MPEG-{version}, Capa {layer}"
+                return "MP3"
+            elif ext == ".flac":
+                if audio and hasattr(audio, "info"):
+                    bps = getattr(audio.info, "bits_per_sample", None)
+                    if bps:
+                        return f"FLAC ({bps}-bit)"
+                return "FLAC"
+            elif ext in (".wav",):
+                if audio and hasattr(audio, "info"):
+                    bps = getattr(audio.info, "bits_per_sample", None)
+                    if bps:
+                        return f"WAV ({bps}-bit)"
+                return "WAV"
+            elif ext in (".aiff", ".aif"):
+                if audio and hasattr(audio, "info"):
+                    bps = getattr(audio.info, "bits_per_sample", None) or getattr(audio.info, "sample_size", None)
+                    if bps:
+                        return f"AIFF ({bps}-bit)"
+                return "AIFF"
+            else:
+                return ext.upper().lstrip(".")
+        except Exception:
+            return ext.upper().lstrip(".")
 
     def _on_artwork_frame_resize(self, event=None):
         """Debounced handler: re-render artwork when frame is resized."""
@@ -785,12 +1184,34 @@ class MetadataEditor(ctk.CTkToplevel):
             audio.add_picture(pic)
 
     def _setup_buttons(self):
-        """Create Cancel and Save buttons."""
+        """Create navigation arrows, Cancel and Save buttons."""
         btn_frame = ctk.CTkFrame(self, fg_color="transparent")
         btn_frame.pack(fill="x", padx=28, pady=(4, 20))
 
-        # Right-align buttons
-        btn_frame.grid_columnconfigure(0, weight=1)
+        # Left: nav arrows | Right: cancel + save
+        btn_frame.grid_columnconfigure(1, weight=1)
+
+        # Navigation arrows (left side)
+        if self._on_navigate:
+            nav_kwargs = dict(
+                width=32,
+                height=36,
+                corner_radius=8,
+                fg_color="transparent",
+                border_width=0,
+                text_color=THEME_COLORS["text_secondary"],
+                hover_color=THEME_COLORS["bg_elevated"],
+                font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["body"]),
+            )
+            prev_btn = ctk.CTkButton(
+                btn_frame, text="\u276E", command=lambda: self._navigate(-1), **nav_kwargs,
+            )
+            prev_btn.grid(row=0, column=0, padx=(0, 4))
+
+            next_btn = ctk.CTkButton(
+                btn_frame, text="\u276F", command=lambda: self._navigate(1), **nav_kwargs,
+            )
+            next_btn.grid(row=0, column=1, sticky="w")
 
         cancel_btn = ctk.CTkButton(
             btn_frame,
@@ -806,7 +1227,7 @@ class MetadataEditor(ctk.CTkToplevel):
             hover_color=THEME_COLORS["bg_elevated"],
             font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["body"]),
         )
-        cancel_btn.grid(row=0, column=1, padx=(0, 8))
+        cancel_btn.grid(row=0, column=2, padx=(0, 8))
 
         save_btn = ctk.CTkButton(
             btn_frame,
@@ -821,7 +1242,7 @@ class MetadataEditor(ctk.CTkToplevel):
             font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["body"], weight="bold"),
             state="normal" if self._supported else "disabled",
         )
-        save_btn.grid(row=0, column=2)
+        save_btn.grid(row=0, column=3)
 
     # ─── Read Metadata ──────────────────────────────────────────────
 
@@ -1229,6 +1650,27 @@ class MetadataEditor(ctk.CTkToplevel):
             fg_color=THEME_COLORS["primary"],
             hover_color=THEME_COLORS["primary_dark"],
         ).pack()
+
+    def _navigate(self, direction: int):
+        """Navigate to prev (-1) or next (+1) file, reopening the editor."""
+        if not self._on_navigate:
+            return
+        new_result = self._on_navigate(direction)
+        if new_result is None:
+            return
+        # Close this editor and open a new one for the new file
+        master = self.master
+        on_save = self._on_save
+        on_navigate = self._on_navigate
+        self.grab_release()
+        self.destroy()
+        MetadataEditor(
+            master,
+            filepath=new_result.filepath,
+            on_save=on_save,
+            analysis_result=new_result,
+            on_navigate=on_navigate,
+        )
 
     def _cancel(self):
         """Close without saving."""
