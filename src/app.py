@@ -46,6 +46,11 @@ from .utils.constants import (
     MIN_WINDOW_HEIGHT,
     THEME_COLORS,
 )
+from .utils.spectrogram_cache import (
+    save_to_cache as _save_spec_to_disk,
+    load_from_cache as _load_spec_from_disk,
+    clear_cache as _clear_spec_cache,
+)
 
 # Maximum number of spectrograms to cache in memory (LRU)
 MAX_SPECTROGRAM_CACHE = 10
@@ -164,6 +169,7 @@ class AudioQualApp:
             on_clear=self._on_clear,
             on_metadata_saved=self._on_metadata_saved,
             on_toggle_watcher=self._on_toggle_watcher,
+            on_cache_spectrogram=self._on_cache_spectrogram,
         )
 
         # Auto-start watcher if configured
@@ -334,6 +340,11 @@ class AudioQualApp:
                 self.audio_player.stop()
                 self.audio_player.load(new_filepath)
 
+    def _on_cache_spectrogram(self, result: AnalysisResult):
+        """Save downsampled spectrogram to disk cache (before freeing from RAM)."""
+        if result.frequency_analysis:
+            _save_spec_to_disk(result.filepath, result.frequency_analysis, result.cutoff_frequency_khz)
+
     def _on_result_selected(self, result: Optional[AnalysisResult]):
         """Handle result selection from the table."""
         self._selected_result = result
@@ -404,10 +415,9 @@ class AudioQualApp:
             self._reanalyze_for_spectrogram_async(self._selected_result)
 
     def _get_analysis_data(self, result: AnalysisResult):
-        """Get frequency analysis data from result or cache.
+        """Get frequency analysis data from result, memory cache, or disk cache.
 
-        Returns (None, None, None) if not available. Caller should use
-        _reanalyze_for_spectrogram_async() to fetch data in background.
+        Returns (None, None, None) if not available anywhere.
         """
         if result.frequency_analysis:
             return (
@@ -416,12 +426,20 @@ class AudioQualApp:
                 result.cutoff_frequency_khz,
             )
 
-        # Try cache
+        # Try memory cache (recently viewed)
         cached = self._spectrogram_cache.get(result.filepath)
         if cached:
-            # Move to end (most recently used)
             self._spectrogram_cache.move_to_end(result.filepath)
             return cached
+
+        # Try disk cache (saved during analysis)
+        disk = _load_spec_from_disk(result.filepath)
+        if disk:
+            analysis, cutoff_khz = disk
+            data = (analysis, result.filename, cutoff_khz)
+            # Promote to memory cache for instant re-access
+            self._cache_spectrogram(result.filepath, analysis, result.filename, cutoff_khz)
+            return data
 
         return (None, None, None)
 
@@ -628,6 +646,7 @@ class AudioQualApp:
         if self._folder_watcher:
             self._folder_watcher.cleanup()
         self._cleanup()
+        _clear_spec_cache()
         cleanup_thread_scheduler()
 
         # Destroy toplevel children first (spectrogram, metadata, settings)

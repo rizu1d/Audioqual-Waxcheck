@@ -53,6 +53,7 @@ class MainWindow(ctk.CTkFrame):
         on_clear=None,
         on_metadata_saved=None,
         on_toggle_watcher=None,
+        on_cache_spectrogram=None,
         **kwargs
     ):
         super().__init__(master, fg_color=THEME_COLORS["bg_primary"], **kwargs)
@@ -64,6 +65,7 @@ class MainWindow(ctk.CTkFrame):
         self.on_clear = on_clear
         self.on_metadata_saved = on_metadata_saved
         self.on_toggle_watcher = on_toggle_watcher
+        self.on_cache_spectrogram = on_cache_spectrogram
         self._analysis_thread: Optional[threading.Thread] = None
         # Rate limiting for progress updates (100ms minimum between updates)
         self._last_progress_update = 0
@@ -567,7 +569,10 @@ class MainWindow(ctk.CTkFrame):
         def update_ui():
             if result:
                 self.results_table.add_result(result)
-                # Free heavy spectrogram data after UI display (~100-200MB per file)
+                # Cache spectrogram in LRU before freeing (last 10 stay instant)
+                if result.frequency_analysis and self.on_cache_spectrogram:
+                    self.on_cache_spectrogram(result)
+                # Free heavy spectrogram data after caching (~100-200MB per file)
                 result.frequency_analysis = None
 
             progress = completed / total if total > 0 else 0
@@ -592,7 +597,10 @@ class MainWindow(ctk.CTkFrame):
             if result:
                 def _add_result_and_free(r):
                     self.results_table.add_result(r)
-                    # Free heavy spectrogram data after UI display
+                    # Cache spectrogram in LRU before freeing
+                    if r.frequency_analysis and self.on_cache_spectrogram:
+                        self.on_cache_spectrogram(r)
+                    # Free heavy spectrogram data after caching
                     r.frequency_analysis = None
                 schedule_callback_from_thread(self, _add_result_and_free, result)
 
