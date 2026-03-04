@@ -74,6 +74,8 @@ class AudioQualApp:
         self._spectrogram_window: Optional[SpectrogramWindow] = None
         # Currently selected result (for spectrogram display)
         self._selected_result: Optional[AnalysisResult] = None
+        # Filepath currently being re-analyzed for spectrogram (dedup guard)
+        self._spectrogram_reanalyze_pending: Optional[str] = None
 
         init_thread_scheduler(self.root)
 
@@ -365,7 +367,7 @@ class AudioQualApp:
 
         if not freq_analysis:
             # Data not in cache - re-analyze in background, open window when ready
-            self._reanalyze_for_spectrogram_async(self._selected_result)
+            self._reanalyze_for_spectrogram_async(self._selected_result, open_window=True)
             return
 
         # Check if window exists and is open
@@ -423,17 +425,34 @@ class AudioQualApp:
 
         return (None, None, None)
 
-    def _reanalyze_for_spectrogram_async(self, result: AnalysisResult):
-        """Re-analyze a single file in background thread to get spectrogram data."""
+    def _reanalyze_for_spectrogram_async(self, result: AnalysisResult, open_window: bool = False):
+        """Re-analyze a single file in background thread to get spectrogram data.
+
+        Args:
+            result: The analysis result to re-analyze
+            open_window: If True, create/open the spectrogram window when done
+        """
         import threading
 
         filepath = result.filepath
+
+        # Skip if already re-analyzing this exact file
+        if self._spectrogram_reanalyze_pending == filepath:
+            return
+
+        self._spectrogram_reanalyze_pending = filepath
+        self.main_window.status_label.configure(
+            text=f"Cargando espectrograma..."
+        )
 
         def _do_reanalyze():
             try:
                 fresh = self.analyzer.analyze_file(filepath)
                 if fresh.frequency_analysis:
                     def _on_done():
+                        self._spectrogram_reanalyze_pending = None
+                        self.main_window.status_label.configure(text="Listo")
+
                         self._cache_spectrogram(
                             filepath,
                             fresh.frequency_analysis,
@@ -450,7 +469,7 @@ class AudioQualApp:
                                     fresh.filename,
                                     fresh.cutoff_frequency_khz,
                                 )
-                            else:
+                            elif open_window:
                                 self._spectrogram_window = SpectrogramWindow(
                                     self.root,
                                     fresh.frequency_analysis,
@@ -458,8 +477,16 @@ class AudioQualApp:
                                     fresh.cutoff_frequency_khz,
                                 )
                     schedule_callback_from_thread(self.root, _on_done)
+                else:
+                    def _on_fail():
+                        self._spectrogram_reanalyze_pending = None
+                        self.main_window.status_label.configure(text="Listo")
+                    schedule_callback_from_thread(self.root, _on_fail)
             except Exception:
-                pass
+                def _on_error():
+                    self._spectrogram_reanalyze_pending = None
+                    self.main_window.status_label.configure(text="Listo")
+                schedule_callback_from_thread(self.root, _on_error)
 
         threading.Thread(target=_do_reanalyze, daemon=True).start()
 
@@ -560,6 +587,7 @@ class AudioQualApp:
         """Handle clear action - clear cache."""
         self._spectrogram_cache.clear()
         self._selected_result = None
+        self._spectrogram_reanalyze_pending = None
         # Stop audio playback
         if self.audio_player:
             self.audio_player.stop()
