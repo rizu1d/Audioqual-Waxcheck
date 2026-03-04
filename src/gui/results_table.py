@@ -1,5 +1,6 @@
 """Results table for displaying analysis results with quality level badges."""
 
+import sys
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
@@ -126,6 +127,7 @@ class ResultRow(ctk.CTkFrame):
         result: AnalysisResult,
         columns: list,
         on_click: Optional[Callable] = None,
+        on_right_click: Optional[Callable] = None,
         on_badge_click: Optional[Callable] = None,
         **kwargs
     ):
@@ -139,6 +141,7 @@ class ResultRow(ctk.CTkFrame):
 
         self.result = result
         self.on_click = on_click
+        self.on_right_click = on_right_click
         self._on_badge_click = on_badge_click
         self._selected = False
         # Deduplication: prevent multiple firings per physical click.
@@ -226,6 +229,12 @@ class ResultRow(ctk.CTkFrame):
         self.bind("<Enter>", self._on_enter)
         self.bind("<Leave>", self._on_leave)
 
+        # Right-click binding (Button-2 on macOS, Button-3 on others)
+        if sys.platform == "darwin":
+            self.bind("<Button-2>", self._handle_right_click, add="+")
+        else:
+            self.bind("<Button-3>", self._handle_right_click, add="+")
+
         # Bind click events to all descendants (needed for CTk widgets with internal structure)
         self._bind_click_recursive(self)
 
@@ -261,9 +270,13 @@ class ResultRow(ctk.CTkFrame):
         return value
 
     def _bind_click_recursive(self, widget):
-        """Bind click events to all descendants of the widget."""
+        """Bind click and right-click events to all descendants of the widget."""
         for child in widget.winfo_children():
             child.bind("<Button-1>", self._handle_click, add="+")
+            if sys.platform == "darwin":
+                child.bind("<Button-2>", self._handle_right_click, add="+")
+            else:
+                child.bind("<Button-3>", self._handle_right_click, add="+")
             self._bind_click_recursive(child)
 
     def _handle_click(self, event):
@@ -276,8 +289,21 @@ class ResultRow(ctk.CTkFrame):
         if event.time == self._last_row_click_time:
             return
         self._last_row_click_time = event.time
+        # macOS Ctrl+click = right-click
+        if sys.platform == "darwin" and (event.state & 0x4):
+            if self.on_right_click:
+                self.on_right_click(self, event)
+            return
         if self.on_click:
-            self.on_click(self)
+            self.on_click(self, event)
+
+    def _handle_right_click(self, event):
+        """Handle right-click on row or its children."""
+        if event.time == self._last_row_click_time:
+            return
+        self._last_row_click_time = event.time
+        if self.on_right_click:
+            self.on_right_click(self, event)
 
     def _handle_badge_click(self, event):
         """Handle click specifically on the quality badge."""
@@ -396,14 +422,17 @@ class ResultsTable(ctk.CTkFrame):
         self,
         master,
         on_selection_changed: Optional[SelectionCallback] = None,
+        on_context_menu: Optional[Callable] = None,
         **kwargs
     ):
         super().__init__(master, fg_color="transparent", **kwargs)
 
         self.on_selection_changed = on_selection_changed
+        self.on_context_menu = on_context_menu
         self._results: Dict[str, AnalysisResult] = {}
         self._rows: Dict[str, ResultRow] = {}
-        self._selected_row: Optional[ResultRow] = None
+        self._selected_rows: List[ResultRow] = []
+        self._anchor_row: Optional[ResultRow] = None
         self._quality_popup: Optional[QualityPopup] = None
 
         # Mutable column widths (source of truth for current widths)
@@ -858,19 +887,84 @@ class ResultsTable(ctk.CTkFrame):
         for row in self._rows.values():
             row.refresh_text()
 
-    def _on_row_click(self, row: ResultRow):
-        """Handle row click for selection."""
-        # Deselect previous row
-        if self._selected_row and self._selected_row != row:
-            self._selected_row.set_selected(False)
+    def _on_row_click(self, row: ResultRow, event=None):
+        """Handle row click for selection with modifier key support."""
+        cmd_held = False
+        shift_held = False
+        if event:
+            if sys.platform == "darwin":
+                cmd_held = bool(event.state & 0x8)   # Command
+            else:
+                cmd_held = bool(event.state & 0x4)   # Control
+            shift_held = bool(event.state & 0x1)     # Shift
 
-        # Select new row
+        if cmd_held:
+            self._toggle_selection(row)
+        elif shift_held:
+            self._extend_selection(row)
+        else:
+            self._select_single(row)
+
+    def _select_single(self, row: ResultRow):
+        """Select a single row, deselecting all others."""
+        for r in self._selected_rows:
+            if r != row:
+                r.set_selected(False)
         row.set_selected(True)
-        self._selected_row = row
-
-        # Notify callback
+        self._selected_rows = [row]
+        self._anchor_row = row
         if self.on_selection_changed:
             self.on_selection_changed(row.result)
+
+    def _toggle_selection(self, row: ResultRow):
+        """Toggle selection of a row (Cmd/Ctrl+click)."""
+        if row in self._selected_rows:
+            row.set_selected(False)
+            self._selected_rows.remove(row)
+            if self._anchor_row == row:
+                self._anchor_row = self._selected_rows[-1] if self._selected_rows else None
+        else:
+            row.set_selected(True)
+            self._selected_rows.append(row)
+            self._anchor_row = row
+        if self.on_selection_changed:
+            result = self._selected_rows[-1].result if self._selected_rows else None
+            self.on_selection_changed(result)
+
+    def _extend_selection(self, row: ResultRow):
+        """Extend selection from anchor to row (Shift+click)."""
+        if not self._anchor_row:
+            self._select_single(row)
+            return
+
+        visible = [r for fp, r in self._rows.items() if fp not in self._hidden_rows]
+        try:
+            anchor_idx = visible.index(self._anchor_row)
+            target_idx = visible.index(row)
+        except ValueError:
+            self._select_single(row)
+            return
+
+        start = min(anchor_idx, target_idx)
+        end = max(anchor_idx, target_idx)
+
+        for r in self._selected_rows:
+            r.set_selected(False)
+
+        self._selected_rows = visible[start:end + 1]
+        for r in self._selected_rows:
+            r.set_selected(True)
+        # Don't change anchor on Shift+click
+        if self.on_selection_changed:
+            self.on_selection_changed(row.result)
+
+    def _on_row_right_click(self, row: ResultRow, event):
+        """Handle right-click on a row."""
+        # If the row is not in the current selection, select it (single)
+        if row not in self._selected_rows:
+            self._select_single(row)
+        if self.on_context_menu:
+            self.on_context_menu(event)
 
     def _on_badge_click(self, result: AnalysisResult, badge_widget):
         """Handle click on a quality badge — show explanation popup."""
@@ -1015,6 +1109,7 @@ class ResultsTable(ctk.CTkFrame):
                 result,
                 self._current_columns(),
                 on_click=self._on_row_click,
+                on_right_click=self._on_row_right_click,
                 on_badge_click=self._on_badge_click,
             )
             row.pack(fill="x", pady=(0, 1))
@@ -1054,7 +1149,8 @@ class ResultsTable(ctk.CTkFrame):
         # Clear data structures immediately for responsiveness
         self._rows.clear()
         self._results.clear()
-        self._selected_row = None
+        self._selected_rows.clear()
+        self._anchor_row = None
 
         # Batch destroy widgets - do it in chunks to avoid long UI freeze
         if len(rows_to_destroy) <= 50:
@@ -1076,10 +1172,14 @@ class ResultsTable(ctk.CTkFrame):
             self.after(1, lambda: self._destroy_rows_batched(rows, end_index, batch_size))
 
     def get_selected_result(self) -> Optional[AnalysisResult]:
-        """Get the currently selected result."""
-        if self._selected_row:
-            return self._selected_row.result
+        """Get the currently selected result (last clicked if multi-selected)."""
+        if self._selected_rows:
+            return self._selected_rows[-1].result
         return None
+
+    def get_selected_results(self) -> List[AnalysisResult]:
+        """Get all selected results."""
+        return [r.result for r in self._selected_rows]
 
     def get_all_results(self) -> List[AnalysisResult]:
         """Get all results in the table."""
@@ -1093,12 +1193,12 @@ class ResultsTable(ctk.CTkFrame):
         """Select the first visible item in the table."""
         for fp, row in self._rows.items():
             if fp not in self._hidden_rows:
-                self._on_row_click(row)
+                self._select_single(row)
                 return
 
     def select_next(self) -> Optional[AnalysisResult]:
         """
-        Select the next visible item in the table.
+        Select the next visible item in the table (collapses multi-selection).
 
         Returns:
             The newly selected result, or None if at end or no items.
@@ -1113,19 +1213,21 @@ class ResultsTable(ctk.CTkFrame):
         if not visible:
             return None
 
-        if self._selected_row is None:
-            self._on_row_click(visible[0])
+        if not self._selected_rows:
+            self._select_single(visible[0])
             self.scroll_to_row(visible[0])
             return visible[0].result
 
+        # Use last selected row as reference point
+        current = self._selected_rows[-1]
         try:
-            current_index = visible.index(self._selected_row)
+            current_index = visible.index(current)
         except ValueError:
             return None
 
         next_index = current_index + 1
         if next_index < len(visible):
-            self._on_row_click(visible[next_index])
+            self._select_single(visible[next_index])
             self.scroll_to_row(visible[next_index])
             return visible[next_index].result
 
@@ -1133,7 +1235,7 @@ class ResultsTable(ctk.CTkFrame):
 
     def select_previous(self) -> Optional[AnalysisResult]:
         """
-        Select the previous visible item in the table.
+        Select the previous visible item in the table (collapses multi-selection).
 
         Returns:
             The newly selected result, or None if at start or no items.
@@ -1148,19 +1250,21 @@ class ResultsTable(ctk.CTkFrame):
         if not visible:
             return None
 
-        if self._selected_row is None:
-            self._on_row_click(visible[-1])
+        if not self._selected_rows:
+            self._select_single(visible[-1])
             self.scroll_to_row(visible[-1])
             return visible[-1].result
 
+        # Use first selected row as reference point
+        current = self._selected_rows[0]
         try:
-            current_index = visible.index(self._selected_row)
+            current_index = visible.index(current)
         except ValueError:
             return None
 
         prev_index = current_index - 1
         if prev_index >= 0:
-            self._on_row_click(visible[prev_index])
+            self._select_single(visible[prev_index])
             self.scroll_to_row(visible[prev_index])
             return visible[prev_index].result
 
@@ -1179,12 +1283,12 @@ class ResultsTable(ctk.CTkFrame):
             return None
 
         row = self._rows[filepath]
-        rows_list = list(self._rows.values())
-        was_selected = self._selected_row == row
+        was_selected = row in self._selected_rows
 
-        # Find index before removing
+        # Find index in visible rows before removing
+        visible = [r for fp, r in self._rows.items() if fp not in self._hidden_rows]
         try:
-            index = rows_list.index(row)
+            index = visible.index(row)
         except ValueError:
             index = -1
 
@@ -1192,26 +1296,68 @@ class ResultsTable(ctk.CTkFrame):
         del self._rows[filepath]
         del self._results[filepath]
         self._hidden_rows.discard(filepath)
+        if was_selected:
+            self._selected_rows.remove(row)
+        if self._anchor_row == row:
+            self._anchor_row = self._selected_rows[-1] if self._selected_rows else None
         row.destroy()
 
         if not was_selected:
-            # Selection unchanged, return current selection
-            return self._selected_row.result if self._selected_row else None
+            return self._selected_rows[-1].result if self._selected_rows else None
 
-        # Was selected — pick new selection
-        self._selected_row = None
+        # If other selections remain, use the last one
+        if self._selected_rows:
+            return self._selected_rows[-1].result
+
+        # No selections remain — pick a new one
         remaining = list(self._rows.values())
         if not remaining:
             if self.on_selection_changed:
                 self.on_selection_changed(None)
             return None
 
-        # Prefer same index (next item), fall back to last
         new_index = min(index, len(remaining) - 1)
         new_row = remaining[new_index]
-        self._on_row_click(new_row)
+        self._select_single(new_row)
         self.scroll_to_row(new_row)
         return new_row.result
+
+    def remove_results(self, filepaths: List[str]) -> Optional[AnalysisResult]:
+        """
+        Remove multiple results from the table.
+
+        Returns:
+            The newly selected result, or None if the table is now empty.
+        """
+        if not filepaths:
+            return self.get_selected_result()
+
+        for filepath in filepaths:
+            if filepath not in self._rows:
+                continue
+            row = self._rows[filepath]
+            if row in self._selected_rows:
+                self._selected_rows.remove(row)
+            if self._anchor_row == row:
+                self._anchor_row = None
+            del self._rows[filepath]
+            del self._results[filepath]
+            self._hidden_rows.discard(filepath)
+            row.destroy()
+
+        # Auto-select if nothing is selected
+        if not self._selected_rows:
+            self._anchor_row = None
+            remaining = list(self._rows.values())
+            if remaining:
+                self._select_single(remaining[0])
+                return remaining[0].result
+            else:
+                if self.on_selection_changed:
+                    self.on_selection_changed(None)
+                return None
+
+        return self._selected_rows[-1].result
 
     def scroll_to_row(self, row: ResultRow):
         """Scroll the table so that the given row is visible."""

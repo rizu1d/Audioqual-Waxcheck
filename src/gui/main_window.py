@@ -1,8 +1,11 @@
 """Main application window."""
 
+import os
+import subprocess
+import sys
 import threading
 import tkinter as tk
-from tkinter import filedialog
+from tkinter import filedialog, messagebox
 from typing import List, Optional
 
 import customtkinter as ctk
@@ -231,6 +234,7 @@ class MainWindow(ctk.CTkFrame):
         self.results_table = ResultsTable(
             self.content_frame,
             on_selection_changed=self._on_selection_changed,
+            on_context_menu=self._show_context_menu,
         )
         self.results_table.grid(row=0, column=0, sticky="nsew")
 
@@ -649,30 +653,172 @@ class MainWindow(ctk.CTkFrame):
         self.count_label.configure(text=text)
 
     def remove_selected_file(self):
-        """Remove the currently selected file from the list (not from disk)."""
-        selected = self.results_table.get_selected_result()
+        """Remove selected file(s) from the list (not from disk)."""
+        selected = self.results_table.get_selected_results()
+        if not selected:
+            return
+        self._remove_files_from_list([r.filepath for r in selected])
+
+    # ─── Context menu ─────────────────────────────────────────────────
+
+    def _show_context_menu(self, event):
+        """Show context menu for selected files."""
+        selected = self.results_table.get_selected_results()
         if not selected:
             return
 
-        # Stop playback if this file is playing
-        if self._audio_player:
-            self._audio_player.stop()
-        if self._player_controls:
-            self._player_controls.reset()
+        menu = tk.Menu(self, tearoff=0)
 
-        # Remove from table — returns the new selection (or None)
-        new_selection = self.results_table.remove_result(selected.filepath)
+        if len(selected) == 1:
+            result = selected[0]
+            menu.add_command(
+                label="Abrir espectrograma",
+                command=self._on_show_spectrogram,
+            )
+            menu.add_command(
+                label="Ver información",
+                command=self._on_edit_metadata,
+            )
+            menu.add_command(
+                label="Volver a analizar",
+                command=lambda fp=result.filepath: self._reanalyze_files([fp]),
+            )
+            menu.add_command(
+                label="Copiar ruta",
+                command=lambda fp=result.filepath: self._copy_path_to_clipboard(fp),
+            )
+            finder_label = "Mostrar en Finder" if sys.platform == "darwin" else "Mostrar en Explorador"
+            menu.add_command(
+                label=finder_label,
+                command=lambda fp=result.filepath: self._show_in_file_manager(fp),
+            )
+            menu.add_separator()
+            menu.add_command(
+                label="Quitar de la lista",
+                command=lambda fp=result.filepath: self._remove_files_from_list([fp]),
+            )
+            menu.add_command(
+                label="Mover a la papelera",
+                command=lambda fp=result.filepath: self._move_to_trash([fp]),
+            )
+        else:
+            filepaths = [r.filepath for r in selected]
+            menu.add_command(
+                label="Volver a analizar",
+                command=lambda fps=filepaths: self._reanalyze_files(fps),
+            )
+            menu.add_separator()
+            menu.add_command(
+                label="Quitar de la lista",
+                command=lambda fps=filepaths: self._remove_files_from_list(fps),
+            )
+            menu.add_command(
+                label="Mover a la papelera",
+                command=lambda fps=filepaths: self._move_to_trash(fps),
+            )
+
+        menu.tk_popup(event.x_root, event.y_root)
+
+    def _reanalyze_files(self, filepaths: List[str]):
+        """Re-analyze specific files."""
+        for filepath in filepaths:
+            self.results_table.add_result(create_pending_result(filepath))
+        self._start_analysis(filepaths)
+
+    def _copy_path_to_clipboard(self, filepath: str):
+        """Copy file path to clipboard."""
+        self.clipboard_clear()
+        self.clipboard_append(filepath)
+
+    def _show_in_file_manager(self, filepath: str):
+        """Show file in system file manager."""
+        if sys.platform == "darwin":
+            subprocess.Popen(["open", "-R", filepath])
+        elif sys.platform == "win32":
+            subprocess.Popen(["explorer", "/select,", filepath])
+        else:
+            subprocess.Popen(["xdg-open", os.path.dirname(filepath)])
+
+    def _remove_files_from_list(self, filepaths: List[str]):
+        """Remove files from the list (not from disk)."""
+        # Stop playback if any of these files is playing
+        if self._audio_player:
+            for fp in filepaths:
+                if self._audio_player._current_filepath == fp:
+                    self._audio_player.stop()
+                    if self._player_controls:
+                        self._player_controls.reset()
+                    break
+
+        new_selection = self.results_table.remove_results(filepaths)
 
         self._update_count()
         self._update_empty_state_visibility()
 
-        # Load the new selection in the player (without auto-play)
         if new_selection and self._audio_player:
             self._audio_player.load(new_selection.filepath)
 
-        # Notify app layer about new selection
         if self.on_result_selected:
             self.on_result_selected(new_selection)
+
+    def _move_to_trash(self, filepaths: List[str]):
+        """Move files to system trash with confirmation."""
+        if len(filepaths) == 1:
+            filename = os.path.basename(filepaths[0])
+            msg = f"¿Mover «{filename}» a la papelera?"
+        else:
+            msg = f"¿Mover {len(filepaths)} archivos a la papelera?"
+
+        confirmed = messagebox.askokcancel(
+            title="Mover a la papelera",
+            message=msg,
+            parent=self.winfo_toplevel(),
+        )
+        if not confirmed:
+            return
+
+        success = []
+        for fp in filepaths:
+            if self._move_file_to_trash(fp):
+                success.append(fp)
+
+        if success:
+            self._remove_files_from_list(success)
+
+    @staticmethod
+    def _move_file_to_trash(filepath: str) -> bool:
+        """Move a single file to the system trash. Returns True on success."""
+        try:
+            if sys.platform == "darwin":
+                escaped = filepath.replace("\\", "\\\\").replace('"', '\\"')
+                result = subprocess.run(
+                    ["osascript", "-e",
+                     f'tell application "Finder" to delete POSIX file "{escaped}"'],
+                    capture_output=True, text=True, timeout=10,
+                )
+                return result.returncode == 0
+            elif sys.platform == "win32":
+                try:
+                    import send2trash
+                    send2trash.send2trash(filepath)
+                    return True
+                except ImportError:
+                    result = subprocess.run(
+                        ["powershell", "-Command",
+                         'Add-Type -AssemblyName Microsoft.VisualBasic; '
+                         '[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile('
+                         f'"{filepath}", "OnlyErrorDialogs", "SendToRecycleBin")'],
+                        capture_output=True, timeout=10,
+                    )
+                    return result.returncode == 0
+            else:
+                result = subprocess.run(
+                    ["gio", "trash", filepath],
+                    capture_output=True, timeout=10,
+                )
+                return result.returncode == 0
+        except Exception:
+            return False
 
     def _on_show_spectrogram(self):
         """Handle spectrogram button click."""
