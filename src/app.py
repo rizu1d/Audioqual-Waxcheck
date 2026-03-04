@@ -364,6 +364,8 @@ class AudioQualApp:
         )
 
         if not freq_analysis:
+            # Data not in cache - re-analyze in background, open window when ready
+            self._reanalyze_for_spectrogram_async(self._selected_result)
             return
 
         # Check if window exists and is open
@@ -395,9 +397,16 @@ class AudioQualApp:
             self._spectrogram_window.update_spectrogram(
                 freq_analysis, filename, cutoff_khz
             )
+        elif self._spectrogram_window and self._spectrogram_window.is_open():
+            # Data not in cache - re-analyze in background
+            self._reanalyze_for_spectrogram_async(self._selected_result)
 
     def _get_analysis_data(self, result: AnalysisResult):
-        """Get frequency analysis data from result or cache."""
+        """Get frequency analysis data from result or cache.
+
+        Returns (None, None, None) if not available. Caller should use
+        _reanalyze_for_spectrogram_async() to fetch data in background.
+        """
         if result.frequency_analysis:
             return (
                 result.frequency_analysis,
@@ -413,6 +422,46 @@ class AudioQualApp:
             return cached
 
         return (None, None, None)
+
+    def _reanalyze_for_spectrogram_async(self, result: AnalysisResult):
+        """Re-analyze a single file in background thread to get spectrogram data."""
+        import threading
+
+        filepath = result.filepath
+
+        def _do_reanalyze():
+            try:
+                fresh = self.analyzer.analyze_file(filepath)
+                if fresh.frequency_analysis:
+                    def _on_done():
+                        self._cache_spectrogram(
+                            filepath,
+                            fresh.frequency_analysis,
+                            fresh.filename,
+                            fresh.cutoff_frequency_khz,
+                        )
+                        # Only show if this file is still selected
+                        if (self._selected_result
+                                and self._selected_result.filepath == filepath):
+                            if (self._spectrogram_window
+                                    and self._spectrogram_window.is_open()):
+                                self._spectrogram_window.update_spectrogram(
+                                    fresh.frequency_analysis,
+                                    fresh.filename,
+                                    fresh.cutoff_frequency_khz,
+                                )
+                            else:
+                                self._spectrogram_window = SpectrogramWindow(
+                                    self.root,
+                                    fresh.frequency_analysis,
+                                    fresh.filename,
+                                    fresh.cutoff_frequency_khz,
+                                )
+                    schedule_callback_from_thread(self.root, _on_done)
+            except Exception:
+                pass
+
+        threading.Thread(target=_do_reanalyze, daemon=True).start()
 
     def _cache_spectrogram(
         self,

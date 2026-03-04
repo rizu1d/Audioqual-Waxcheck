@@ -25,7 +25,7 @@ class AnalysisResult:
 
     Note: frequency_analysis is only populated temporarily during analysis
     and passed to the UI for visualization. It's NOT stored permanently
-    to avoid memory accumulation (~4MB per file).
+    to avoid memory accumulation (~100-200MB per file depending on duration).
     """
     filepath: str
     filename: str
@@ -67,7 +67,7 @@ class AudioAnalyzer:
         sample_rate: int = SAMPLE_RATE,
         n_fft: int = FFT_SIZE,
         hop_length: int = HOP_LENGTH,
-        max_workers: int = 4,
+        max_workers: int = 2,
     ):
         self.sample_rate = sample_rate
         self.n_fft = n_fft
@@ -189,8 +189,6 @@ class AudioAnalyzer:
                         error=str(e),
                     )
 
-                results.append(result)
-
                 # Capture values inside lock to avoid race condition
                 with self._state.lock:
                     self._state.completed_files += 1
@@ -210,12 +208,15 @@ class AudioAnalyzer:
                         confidence=result.confidence,
                         details=result.details,
                         error=result.error,
-                        frequency_analysis=None,  # Don't store - saves ~4MB per file
+                        frequency_analysis=None,  # Don't store heavy spectrogram data
                         is_uncertain=result.is_uncertain,
                         uncertainty_reason=result.uncertainty_reason,
                         display_cutoff_override=result.display_cutoff_override,
                     )
                     self._state.results[filepath] = stored_result
+
+                # Use lightweight copy (no spectrogram) for results list
+                results.append(stored_result)
 
                 if progress_callback:
                     # Pass full result with frequency_analysis for UI display
@@ -227,7 +228,7 @@ class AudioAnalyzer:
                     )
 
         finally:
-            self._executor.shutdown(wait=False)
+            self._executor.shutdown(wait=True)
             self._executor = None
             with self._state.lock:
                 self._state.is_running = False

@@ -567,6 +567,8 @@ class MainWindow(ctk.CTkFrame):
         def update_ui():
             if result:
                 self.results_table.add_result(result)
+                # Free heavy spectrogram data after UI display (~100-200MB per file)
+                result.frequency_analysis = None
 
             progress = completed / total if total > 0 else 0
             self.progress_bar.set(progress)
@@ -588,7 +590,11 @@ class MainWindow(ctk.CTkFrame):
             # Store pending update - will be flushed on final or next allowed update
             # Still add result to table immediately to not lose data
             if result:
-                schedule_callback_from_thread(self, self.results_table.add_result, result)
+                def _add_result_and_free(r):
+                    self.results_table.add_result(r)
+                    # Free heavy spectrogram data after UI display
+                    r.frequency_analysis = None
+                schedule_callback_from_thread(self, _add_result_and_free, result)
 
     def _set_analyzing_state(self, is_analyzing: bool):
         """Set UI state for analyzing/ready."""
