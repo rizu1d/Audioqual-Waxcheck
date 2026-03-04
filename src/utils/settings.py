@@ -14,6 +14,7 @@ _DEFAULTS: Dict[str, Any] = {
     "rename_on_save": False,
     "watcher_folder": "",
     "watcher_auto_start": False,
+    "output_device": "",
 }
 
 
@@ -56,6 +57,15 @@ class AppSettings:
     @watcher_auto_start.setter
     def watcher_auto_start(self, value: bool):
         self._data["watcher_auto_start"] = value
+        self._save()
+
+    @property
+    def output_device(self) -> str:
+        return self._data.get("output_device", "")
+
+    @output_device.setter
+    def output_device(self, value: str):
+        self._data["output_device"] = value
         self._save()
 
     # ─── Persistence ─────────────────────────────────────────────────

@@ -21,6 +21,7 @@ except ImportError:
 from scipy import signal
 
 from ..utils.constants import SAMPLE_RATE
+from ..utils.settings import AppSettings
 
 
 class PlayerState(Enum):
@@ -271,6 +272,25 @@ class AudioPlayer:
         """Get loaded audio samples for visualization."""
         return self._samples
 
+    def _get_output_device(self):
+        """Resolve the configured output device name to a sounddevice index.
+
+        Returns None (system default) if the setting is empty or the device
+        is no longer connected.
+        """
+        name = AppSettings().output_device
+        if not name:
+            return None
+        try:
+            for dev in sd.query_devices():
+                if dev["name"] == name and dev["max_output_channels"] > 0:
+                    return dev["index"]
+        except Exception:
+            pass
+        # Device not found — reset setting and fall back to system default
+        AppSettings().output_device = ""
+        return None
+
     def _start_stream(self):
         """Start the audio output stream."""
         with self._lock:
@@ -279,6 +299,8 @@ class AudioPlayer:
             self._stream_generation += 1
             gen = self._stream_generation
 
+        device = self._get_output_device()
+
         try:
             stream = sd.OutputStream(
                 samplerate=self._sample_rate,
@@ -286,11 +308,30 @@ class AudioPlayer:
                 dtype='float32',
                 callback=self._audio_callback,
                 finished_callback=lambda: self._on_stream_finished(gen),
+                device=device,
             )
             stream.start()
             with self._lock:
                 self._stream = stream
         except Exception as e:
+            # If a custom device failed, retry with system default
+            if device is not None:
+                print(f"Error opening device {device}, falling back to default: {e}")
+                AppSettings().output_device = ""
+                try:
+                    stream = sd.OutputStream(
+                        samplerate=self._sample_rate,
+                        channels=1,
+                        dtype='float32',
+                        callback=self._audio_callback,
+                        finished_callback=lambda: self._on_stream_finished(gen),
+                    )
+                    stream.start()
+                    with self._lock:
+                        self._stream = stream
+                    return
+                except Exception:
+                    pass
             print(f"Error starting audio stream: {e}")
             self._set_state(PlayerState.STOPPED)
 

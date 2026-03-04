@@ -5,6 +5,12 @@ from tkinter import filedialog
 
 import customtkinter as ctk
 
+try:
+    import sounddevice as sd
+    HAS_SOUNDDEVICE = True
+except ImportError:
+    HAS_SOUNDDEVICE = False
+
 from ..utils.constants import THEME_COLORS, FONT_FAMILY, FONT_SIZES
 from ..utils.settings import AppSettings
 
@@ -31,7 +37,7 @@ class SettingsWindow(ctk.CTkToplevel):
         self.bind("<Escape>", lambda e: self._on_close())
 
     def _setup_window(self):
-        w, h = 460, 400
+        w, h = 460, 500
         self.geometry(f"{w}x{h}")
         self.resizable(False, False)
         self.title("Configuración")
@@ -53,6 +59,63 @@ class SettingsWindow(ctk.CTkToplevel):
             text_color=THEME_COLORS["text_primary"],
             anchor="w",
         ).pack(fill="x", padx=24, pady=(20, 4))
+
+        # Section: Salida de audio
+        ctk.CTkLabel(
+            self,
+            text="Salida de audio",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["body"], weight="bold"),
+            text_color=THEME_COLORS["text_primary"],
+            anchor="w",
+        ).pack(fill="x", padx=28, pady=(0, 8))
+
+        # Build device list
+        self._device_names = []  # actual device names (parallel to dropdown values)
+        dropdown_values = ["Por defecto del sistema"]
+
+        if HAS_SOUNDDEVICE:
+            try:
+                default_out_idx = sd.default.device[1]
+                for dev in sd.query_devices():
+                    if dev["max_output_channels"] > 0:
+                        name = dev["name"]
+                        label = name
+                        if dev["index"] == default_out_idx:
+                            label += "  (por defecto)"
+                        self._device_names.append(name)
+                        dropdown_values.append(label)
+            except Exception:
+                pass
+
+        # Determine preselected value
+        saved = self._settings.output_device
+        selected = dropdown_values[0]
+        if saved:
+            for i, name in enumerate(self._device_names):
+                if name == saved:
+                    selected = dropdown_values[i + 1]  # +1 because index 0 is "Por defecto"
+                    break
+
+        self._device_var = ctk.StringVar(value=selected)
+
+        ctk.CTkOptionMenu(
+            self,
+            variable=self._device_var,
+            values=dropdown_values,
+            command=self._on_device_change,
+            width=380,
+            height=30,
+            corner_radius=8,
+            fg_color=THEME_COLORS["bg_elevated"],
+            button_color=THEME_COLORS["primary_dark"],
+            button_hover_color=THEME_COLORS["primary"],
+            dropdown_fg_color=THEME_COLORS["bg_elevated"],
+            dropdown_hover_color=THEME_COLORS["primary_dark"],
+            text_color=THEME_COLORS["text_primary"],
+            dropdown_text_color=THEME_COLORS["text_primary"],
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
+            dropdown_font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
+        ).pack(anchor="w", padx=36, pady=(0, 16))
 
         # Separator
         ctk.CTkFrame(self, height=1, fg_color=THEME_COLORS["primary_dark"]).pack(
@@ -156,7 +219,7 @@ class SettingsWindow(ctk.CTkToplevel):
             hover_color=THEME_COLORS["primary_dark"],
             border_color=THEME_COLORS["primary_dark"],
             checkmark_color=THEME_COLORS["text_primary"],
-        ).pack(anchor="w", padx=36, pady=(0, 20))
+        ).pack(anchor="w", padx=36, pady=(0, 16))
 
         # Close button — right-aligned
         btn_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -190,6 +253,19 @@ class SettingsWindow(ctk.CTkToplevel):
 
     def _on_auto_start_toggle(self):
         self._settings.watcher_auto_start = self._auto_start_var.get() == "1"
+
+    def _on_device_change(self, choice: str):
+        if choice == "Por defecto del sistema":
+            self._settings.output_device = ""
+        else:
+            # Strip the " (por defecto)" suffix to get the real device name
+            idx = None
+            for i, val in enumerate(self._device_names):
+                # dropdown_values[i+1] corresponds to device_names[i]
+                if choice.replace("  (por defecto)", "") == val:
+                    idx = i
+                    break
+            self._settings.output_device = self._device_names[idx] if idx is not None else ""
 
     def _on_close(self):
         """Close settings and restore focus to parent."""
