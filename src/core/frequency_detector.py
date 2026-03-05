@@ -87,8 +87,8 @@ def compute_spectrogram(
     # Compute STFT
     stft = librosa.stft(samples, n_fft=n_fft, hop_length=hop_length)
 
-    # Convert to magnitude and then to dB
-    magnitude = np.abs(stft)
+    # Convert to magnitude (float32 for half memory and better cache locality)
+    magnitude = np.abs(stft).astype(np.float32)
     spectrogram_db = librosa.amplitude_to_db(magnitude, ref=np.max)
 
     # Get frequency bins
@@ -1097,6 +1097,7 @@ def find_cutoff_by_transition(
     search_end_hz: float = TRANSITION_SEARCH_END_HZ,
     min_energy_db: float = TRANSITION_MIN_ENERGY_DB,
     confirmation_bands: int = TRANSITION_CONFIRMATION_BANDS,
+    ref_stats: Optional[Tuple] = None,
 ) -> Tuple[float, float]:
     """
     Detect cutoff frequency by finding the FIRST significant energy TRANSITION
@@ -1134,17 +1135,22 @@ def find_cutoff_by_transition(
         search_end_hz: End analyzing at this frequency (Hz)
         min_energy_db: Minimum energy to consider band as having content (dB)
         confirmation_bands: Number of bands after drop that must stay low
+        ref_stats: Pre-computed (ref_energy_per_frame, ref_mean, ref_std, active_frames_mask)
+                   to avoid recomputing reference band statistics
 
     Returns:
         Tuple of (cutoff frequency in Hz, confidence)
     """
     nyquist_hz = sample_rate / 2
 
-    # Calculate reference band stats for variance normalization
-    ref_energy_per_frame, ref_mean, ref_std = compute_reference_band_stats(
-        spectrogram_db, frequencies
-    )
-    active_frames_mask = identify_active_frames(ref_energy_per_frame, ref_mean, ref_std)
+    # Use pre-computed reference band stats if available, otherwise compute
+    if ref_stats is not None:
+        ref_energy_per_frame, ref_mean, ref_std, active_frames_mask = ref_stats
+    else:
+        ref_energy_per_frame, ref_mean, ref_std = compute_reference_band_stats(
+            spectrogram_db, frequencies
+        )
+        active_frames_mask = identify_active_frames(ref_energy_per_frame, ref_mean, ref_std)
 
     # Step 1: Calculate energy AND variance for each band
     band_stats = []  # [(freq, energy, variance), ...]
@@ -1430,17 +1436,30 @@ def analyze_frequency_cutoff(
     # Finds the most significant energy DROP between adjacent frequency bands
     # This directly detects the codec's brick-wall low-pass filter
     cutoff_transition, conf_transition = find_cutoff_by_transition(
-        spectrogram_db, frequencies, sample_rate
+        spectrogram_db, frequencies, sample_rate,
+        ref_stats=(ref_energy_per_frame, ref_mean, ref_std, active_frames_mask),
     )
 
-    # SECONDARY METHOD: Segment-based percentile analysis
-    # This detects the PREDOMINANT cutoff across time segments
-    segment_cutoffs = find_segment_cutoffs(
-        spectrogram_db, frequencies, sample_rate, n_segments=SEGMENT_COUNT
-    )
-    cutoff_segment, conf_segment, has_outliers = calculate_predominant_cutoff(
-        segment_cutoffs, percentile=PREDOMINANT_PERCENTILE
-    )
+    # SECONDARY METHOD: Segment-based percentile analysis (lazy evaluation)
+    # Only computed when the primary method isn't confident enough, or when
+    # the noise-plateau guard needs to verify the transition result.
+    # ~80% of files have conf_transition >= 0.7 and skip this entirely.
+    segment_cutoffs = None
+    cutoff_segment = None
+    conf_segment = 0.0
+    has_outliers = False
+
+    def _ensure_segments():
+        """Compute segment analysis on demand."""
+        nonlocal segment_cutoffs, cutoff_segment, conf_segment, has_outliers
+        if segment_cutoffs is not None:
+            return  # Already computed
+        segment_cutoffs = find_segment_cutoffs(
+            spectrogram_db, frequencies, sample_rate, n_segments=SEGMENT_COUNT
+        )
+        cutoff_segment, conf_segment, has_outliers = calculate_predominant_cutoff(
+            segment_cutoffs, percentile=PREDOMINANT_PERCENTILE
+        )
 
     # Decision logic: choose between methods
     # 1. If transition method found a clear drop (high confidence), trust it
@@ -1459,6 +1478,7 @@ def analyze_frequency_cutoff(
         # variance, the transition correctly detected where content ends
         # and overriding with segments would be wrong (e.g., older recordings
         # with natural high-frequency rolloff that still have real content).
+        _ensure_segments()
         if (has_outliers and cutoff_transition > cutoff_segment + 2000
                 and conf_segment >= 0.6):
             # Verify: check if bands between segment and transition cutoffs
@@ -1502,26 +1522,29 @@ def analyze_frequency_cutoff(
         else:
             cutoff_hz = cutoff_transition
             confidence = conf_transition
-    elif abs(cutoff_transition - cutoff_segment) < 2000:
-        # Methods agree - use average and boost confidence
-        cutoff_hz = (cutoff_transition + cutoff_segment) / 2
-        confidence = min(0.95, (conf_transition + conf_segment) / 2 + 0.1)
-    elif cutoff_transition < cutoff_segment and conf_transition >= 0.5:
-        # Transition found a lower cutoff - prefer it (more conservative)
-        # This catches transcodes where residual noise fooled the segment method
-        cutoff_hz = cutoff_transition
-        # Disagreement where transition < segment is a transcode signature:
-        # real content ends at transition cutoff, noise/artifacts extend higher
-        gap_khz = (cutoff_segment - cutoff_transition) / 1000
-        if gap_khz >= 1.0:
-            boost = min(0.15, gap_khz * 0.05)
-            confidence = min(0.95, conf_transition + boost)
-        else:
-            confidence = conf_transition
     else:
-        # Fall back to segment method
-        cutoff_hz = cutoff_segment
-        confidence = conf_segment
+        # Transition not confident enough — need segment analysis
+        _ensure_segments()
+        if abs(cutoff_transition - cutoff_segment) < 2000:
+            # Methods agree - use average and boost confidence
+            cutoff_hz = (cutoff_transition + cutoff_segment) / 2
+            confidence = min(0.95, (conf_transition + conf_segment) / 2 + 0.1)
+        elif cutoff_transition < cutoff_segment and conf_transition >= 0.5:
+            # Transition found a lower cutoff - prefer it (more conservative)
+            # This catches transcodes where residual noise fooled the segment method
+            cutoff_hz = cutoff_transition
+            # Disagreement where transition < segment is a transcode signature:
+            # real content ends at transition cutoff, noise/artifacts extend higher
+            gap_khz = (cutoff_segment - cutoff_transition) / 1000
+            if gap_khz >= 1.0:
+                boost = min(0.15, gap_khz * 0.05)
+                confidence = min(0.95, conf_transition + boost)
+            else:
+                confidence = conf_transition
+        else:
+            # Fall back to segment method
+            cutoff_hz = cutoff_segment
+            confidence = conf_segment
 
     # Mark as uncertain if segment analysis found outliers
     if has_outliers:

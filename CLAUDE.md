@@ -102,7 +102,7 @@ Icon assets live in `src/assets/` as SVGs (V2/V3 versions) with PNG fallbacks. F
 
 Four threading patterns are used:
 
-1. **Batch analysis** (`analyzer.py`): `ThreadPoolExecutor(max_workers=4)`. Progress callback is rate-limited to 100ms intervals in `main_window.py` to prevent event loop saturation.
+1. **Batch analysis** (`analyzer.py`): `ThreadPoolExecutor(max_workers=2)`. Progress callback is rate-limited to 100ms intervals in `main_window.py` to prevent event loop saturation.
 2. **Spectrogram rendering** (`spectrogram_window.py`): `threading.Thread` + `threading.Event` for cancellation. Incremental `_render_id` ensures only the latest render displays. Resize debounced at 400ms.
 3. **Audio playback** (`audio_player.py`): sounddevice callback-based OutputStream runs in audio thread. File loading in background thread.
 4. **Waveform rendering** (`waveform_display.py`): Background thread computes peaks, delivers via `schedule_callback_from_thread`.
@@ -131,6 +131,7 @@ Platform-aware (Cmd on macOS, Ctrl on Windows/Linux):
 - **tk_utils.py** - `schedule_callback_from_thread()` for thread-safe UI updates
 - **file_utils.py** - Audio file discovery (`get_audio_files_from_path` with recursive dir walk), format validation against `SUPPORTED_FORMATS`, duration formatting
 - **settings.py** - Singleton `AppSettings` with JSON persistence at `~/.audioqual/settings.json`. Auto-saves on property changes.
+- **spectrogram_cache.py** - Disk cache for downsampled uint8 spectrograms in `~/.audioqual/cache/`. Cleared on app close.
 
 ## Key Constants (`src/utils/constants.py`)
 
@@ -150,8 +151,11 @@ Constants are grouped by purpose:
 
 ## Memory Management
 
-- `AnalysisResult.frequency_analysis` is transient (~4MB per file of spectrogram data). It is passed to the UI once via progress callback, then the `BatchAnalysisState` stores a copy with `frequency_analysis=None`.
-- `app.py` maintains an LRU spectrogram cache (max 10 entries) so previously viewed spectrograms don't require re-analysis.
+- `AnalysisResult.frequency_analysis` is transient (~100-200MB per file of spectrogram data). It is passed to the UI once via progress callback, cached to disk as downsampled uint8, then freed (`frequency_analysis=None`) in both `main_window.py` callbacks and the `results` list in `analyze_batch()`.
+- **Disk cache** (`src/utils/spectrogram_cache.py`): During analysis, spectrograms are downsampled (1024×4096) and quantized to uint8 (~4.5MB per file) in `~/.audioqual/cache/`. Load time ~6-10ms vs ~2-3s re-analysis. Cache is cleared on app close (`_on_close`).
+- **Memory LRU** (`app.py`): OrderedDict of max 10 recently *viewed* spectrograms, populated from disk cache hits. Provides instant re-display when switching between files with the spectrogram window open.
+- **Batch analysis workers**: `max_workers=2` (peak ~1.2GB for 2 concurrent analyses). The `results` list in `analyze_batch()` uses lightweight copies (`frequency_analysis=None`).
+- **Spectrogram re-analysis fallback**: If disk cache is missing, `_reanalyze_for_spectrogram_async()` runs `analyze_file()` in a background thread with deduplication guard (`_spectrogram_reanalyze_pending`).
 
 ## Important Constraints
 

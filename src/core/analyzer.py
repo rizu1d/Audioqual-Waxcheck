@@ -1,5 +1,6 @@
 """Batch audio analysis engine with threading support."""
 
+import os
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -67,7 +68,7 @@ class AudioAnalyzer:
         sample_rate: int = SAMPLE_RATE,
         n_fft: int = FFT_SIZE,
         hop_length: int = HOP_LENGTH,
-        max_workers: int = 2,
+        max_workers: int = min(4, os.cpu_count() or 2),
     ):
         self.sample_rate = sample_rate
         self.n_fft = n_fft
@@ -89,10 +90,8 @@ class AudioAnalyzer:
         filename = get_filename(filepath)
 
         try:
-            # Load audio
             audio_data = load_audio(filepath, self.sample_rate)
 
-            # Analyze frequency cutoff
             frequency_analysis = analyze_frequency_cutoff(
                 audio_data.samples,
                 audio_data.sample_rate,
@@ -100,7 +99,6 @@ class AudioAnalyzer:
                 self.hop_length,
             )
 
-            # Assess quality
             quality = assess_quality(frequency_analysis, audio_data.metadata)
 
             return AnalysisResult(

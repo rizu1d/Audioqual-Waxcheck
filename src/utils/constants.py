@@ -30,7 +30,7 @@ CONFIDENCE_LOW = 0.5       # Below this = uncertain result
 
 # FFT parameters for spectral analysis
 FFT_SIZE = 4096
-HOP_LENGTH = 512
+HOP_LENGTH = 1024
 SAMPLE_RATE = 44100
 
 # Noise floor threshold in dB

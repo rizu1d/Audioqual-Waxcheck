@@ -1,6 +1,7 @@
 """Audio file loading and metadata extraction."""
 
 from dataclasses import dataclass
+from math import gcd
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -14,6 +15,16 @@ from mutagen.aiff import AIFF
 
 from ..utils.constants import SAMPLE_RATE
 from ..utils.file_utils import get_file_extension, get_file_size_mb
+
+# Try importing soundfile for fast loading of lossless formats
+try:
+    import soundfile as sf
+    HAS_SOUNDFILE = True
+except ImportError:
+    HAS_SOUNDFILE = False
+
+# Formats that soundfile (libsndfile) can read natively
+_SOUNDFILE_FORMATS = {'wav', 'flac', 'ogg', 'aiff', 'aif'}
 
 
 @dataclass
@@ -98,9 +109,33 @@ def get_audio_metadata(filepath: str) -> AudioMetadata:
     )
 
 
+def _load_with_soundfile(filepath: str, target_sr: int) -> Tuple[np.ndarray, int]:
+    """Load audio using soundfile (libsndfile). Fast, releases GIL during I/O."""
+    samples, file_sr = sf.read(filepath, dtype='float32', always_2d=True)
+
+    # Convert to mono if multichannel
+    if samples.shape[1] > 1:
+        samples = np.mean(samples, axis=1)
+    else:
+        samples = samples[:, 0]
+
+    # Resample only if needed (most files are already 44100Hz)
+    if file_sr != target_sr:
+        from scipy.signal import resample_poly
+        g = gcd(target_sr, file_sr)
+        up = target_sr // g
+        down = file_sr // g
+        samples = resample_poly(samples, up, down).astype(np.float32)
+
+    return samples, target_sr
+
+
 def load_audio(filepath: str, target_sr: int = SAMPLE_RATE) -> AudioData:
     """
     Load an audio file and return audio data with metadata.
+
+    Uses soundfile (libsndfile) for WAV/FLAC/OGG/AIFF (3-5x faster),
+    falls back to librosa for MP3/M4A/AAC/WMA.
 
     Args:
         filepath: Path to the audio file
@@ -112,8 +147,17 @@ def load_audio(filepath: str, target_sr: int = SAMPLE_RATE) -> AudioData:
     # Get metadata first
     metadata = get_audio_metadata(filepath)
 
-    # Load audio with librosa
-    samples, sr = librosa.load(filepath, sr=target_sr, mono=True)
+    ext = get_file_extension(filepath)
+
+    # Fast path: soundfile for lossless/native formats
+    if HAS_SOUNDFILE and ext in _SOUNDFILE_FORMATS:
+        try:
+            samples, sr = _load_with_soundfile(filepath, target_sr)
+        except Exception:
+            samples, sr = librosa.load(filepath, sr=target_sr, mono=True)
+    else:
+        # Slow path: librosa for MP3, M4A, AAC, WMA
+        samples, sr = librosa.load(filepath, sr=target_sr, mono=True)
 
     # Update metadata with actual loaded values if they were missing
     if metadata.duration == 0:
