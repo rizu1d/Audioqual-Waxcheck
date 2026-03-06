@@ -16,6 +16,7 @@ try:
 except ImportError:
     HAS_DND = False
 
+from .analysis_overlay import AnalysisOverlay
 from .results_table import ResultsTable
 from .audio_player import AudioPlayer
 from .player_controls import PlayerControls
@@ -54,6 +55,7 @@ class MainWindow(ctk.CTkFrame):
         on_metadata_saved=None,
         on_toggle_watcher=None,
         on_cache_spectrogram=None,
+        on_analyzing_changed=None,
         **kwargs
     ):
         super().__init__(master, fg_color=THEME_COLORS["bg_primary"], **kwargs)
@@ -66,6 +68,7 @@ class MainWindow(ctk.CTkFrame):
         self.on_metadata_saved = on_metadata_saved
         self.on_toggle_watcher = on_toggle_watcher
         self.on_cache_spectrogram = on_cache_spectrogram
+        self.on_analyzing_changed = on_analyzing_changed
         self._analysis_thread: Optional[threading.Thread] = None
         # Rate limiting for progress updates (100ms minimum between updates)
         self._last_progress_update = 0
@@ -91,6 +94,9 @@ class MainWindow(ctk.CTkFrame):
 
         # Bottom status bar
         self._setup_status_bar()
+
+        # Analysis overlay (covers everything during analysis)
+        self._analysis_overlay = AnalysisOverlay(self, on_cancel=self._on_cancel_analysis)
 
     def _setup_top_bar(self):
         """Set up the top bar with title and controls."""
@@ -531,7 +537,7 @@ class MainWindow(ctk.CTkFrame):
             self._pending_analysis_queue.extend(files)
             return
 
-        self._set_analyzing_state(True)
+        self._set_analyzing_state(True, total_files=len(files))
 
         def run_analysis():
             self.analyzer.analyze_batch(
@@ -550,6 +556,12 @@ class MainWindow(ctk.CTkFrame):
             queued = self._pending_analysis_queue[:]
             self._pending_analysis_queue.clear()
             self._start_analysis(queued)
+
+    def _on_cancel_analysis(self):
+        """Handle cancel button from overlay."""
+        self.analyzer.cancel()
+        self._pending_analysis_queue.clear()
+        self._set_analyzing_state(False)
 
     def _on_analysis_progress(
         self,
@@ -580,6 +592,7 @@ class MainWindow(ctk.CTkFrame):
             self.status_label.configure(
                 text=f"Analizando: {current_file} ({completed}/{total})"
             )
+            self._analysis_overlay.update_progress(completed, total, current_file)
             self._update_count()
             self._last_progress_update = time.time() * 1000
 
@@ -604,19 +617,25 @@ class MainWindow(ctk.CTkFrame):
                     r.frequency_analysis = None
                 schedule_callback_from_thread(self, _add_result_and_free, result)
 
-    def _set_analyzing_state(self, is_analyzing: bool):
+    def _set_analyzing_state(self, is_analyzing: bool, total_files: int = 0):
         """Set UI state for analyzing/ready."""
         if is_analyzing:
+            self._analysis_overlay.show(total_files)
             self.progress_bar.grid()
             self.progress_bar.set(0)
             self.add_files_btn.configure(state="disabled")
             self._status_dot.configure(text_color=THEME_COLORS["accent"])
             self.status_label.configure(text_color=THEME_COLORS["text_primary"])
+            if self.on_analyzing_changed:
+                self.on_analyzing_changed(True)
         else:
+            self._analysis_overlay.hide()
             self.progress_bar.grid_remove()
             self.status_label.configure(text="Listo", text_color="#6BCB77")
             self._status_dot.configure(text_color="#6BCB77")
             self.add_files_btn.configure(state="normal")
+            if self.on_analyzing_changed:
+                self.on_analyzing_changed(False)
 
     def _on_selection_changed(self, result: Optional[AnalysisResult]):
         """Handle result selection change."""

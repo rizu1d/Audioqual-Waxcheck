@@ -265,3 +265,23 @@ FONT_WEIGHTS = {
     "medium": "normal",  # CTkFont no soporta "medium"
     "regular": "normal",
 }
+
+# Analysis overlay
+OVERLAY_COLORS = {
+    "bg": "#0c0b14",
+    "spinner_track": "#1c192a",
+    "spinner_active": "#FCC844",
+    "bar_track": "#1c192a",
+    "bar_start": "#7969A8",
+    "bar_end": "#FCC844",
+    "text_title": "#b8aad4",
+    "text_counter": "#7969A8",
+    "text_filename": "#6b6b8a",
+    "cancel_border": "#524479",
+    "cancel_text": "#b8aad4",
+}
+OVERLAY_SPINNER_SIZE = 64
+OVERLAY_SPINNER_WIDTH = 3
+OVERLAY_SPINNER_SPEED_MS = 33
+OVERLAY_BAR_WIDTH = 240
+OVERLAY_BAR_HEIGHT = 6

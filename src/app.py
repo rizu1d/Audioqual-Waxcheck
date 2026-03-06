@@ -72,6 +72,8 @@ class AudioQualApp:
         else:
             self.root = ctk.CTk()
 
+        self._is_analyzing = False
+
         # LRU cache for frequency analysis data (filepath -> FrequencyAnalysis)
         # This keeps the last N spectrograms in memory for quick re-display
         self._spectrogram_cache: OrderedDict[str, tuple] = OrderedDict()
@@ -170,6 +172,7 @@ class AudioQualApp:
             on_metadata_saved=self._on_metadata_saved,
             on_toggle_watcher=self._on_toggle_watcher,
             on_cache_spectrogram=self._on_cache_spectrogram,
+            on_analyzing_changed=self._on_analyzing_changed,
         )
 
         # Auto-start watcher if configured
@@ -205,6 +208,10 @@ class AudioQualApp:
         self.root.bind(f"<{mod}-F>", self._handle_search)
         self.root.bind("<Escape>", self._handle_stop)
 
+    def _on_analyzing_changed(self, is_analyzing: bool):
+        """Called when analysis starts/stops to block keyboard shortcuts."""
+        self._is_analyzing = is_analyzing
+
     def _is_text_entry(self, event) -> bool:
         """Return True if the event originated from a text entry widget."""
         try:
@@ -214,11 +221,15 @@ class AudioQualApp:
 
     def _handle_search(self, event):
         """Toggle the search bar in the results table."""
+        if self._is_analyzing:
+            return "break"
         self.main_window.results_table.toggle_search()
         return "break"
 
     def _handle_space(self, event):
         """Toggle play/pause for the selected file."""
+        if self._is_analyzing:
+            return "break"
         if self._is_text_entry(event):
             return
         if self.audio_player.get_state() == PlayerState.STOPPED:
@@ -237,6 +248,8 @@ class AudioQualApp:
 
     def _handle_delete(self, event):
         """Remove the selected file from the list."""
+        if self._is_analyzing:
+            return "break"
         if self._is_text_entry(event):
             return
         self.main_window.remove_selected_file()
@@ -244,6 +257,8 @@ class AudioQualApp:
 
     def _handle_up(self, event):
         """Select the previous file in the list."""
+        if self._is_analyzing:
+            return "break"
         if self._is_text_entry(event):
             return
         result = self.main_window.results_table.select_previous()
@@ -256,6 +271,8 @@ class AudioQualApp:
 
     def _handle_down(self, event):
         """Select the next file in the list."""
+        if self._is_analyzing:
+            return "break"
         if self._is_text_entry(event):
             return
         result = self.main_window.results_table.select_next()
@@ -268,6 +285,8 @@ class AudioQualApp:
 
     def _handle_return(self, event):
         """Load and play the selected file."""
+        if self._is_analyzing:
+            return "break"
         if self._is_text_entry(event):
             return
         selected = self.main_window.results_table.get_selected_result()
@@ -288,6 +307,8 @@ class AudioQualApp:
 
     def _handle_seek_back(self, event):
         """Seek backward 5 seconds (only while playing/paused)."""
+        if self._is_analyzing:
+            return "break"
         if self._is_text_entry(event):
             return
         state = self.audio_player.get_state()
@@ -298,6 +319,8 @@ class AudioQualApp:
 
     def _handle_seek_forward(self, event):
         """Seek forward 5 seconds (only while playing/paused)."""
+        if self._is_analyzing:
+            return "break"
         if self._is_text_entry(event):
             return
         state = self.audio_player.get_state()
@@ -308,11 +331,15 @@ class AudioQualApp:
 
     def _handle_open(self, event):
         """Open the file selection dialog."""
+        if self._is_analyzing:
+            return "break"
         self.main_window._on_add_files_click()
         return "break"
 
     def _handle_stop(self, event):
         """Stop playback, or close search bar if active."""
+        if self._is_analyzing:
+            return "break"
         if self.main_window.results_table.is_search_active():
             self.main_window.results_table.close_search()
             return "break"
@@ -321,6 +348,8 @@ class AudioQualApp:
 
     def _handle_edit_metadata(self, event):
         """Open the metadata editor for the selected file."""
+        if self._is_analyzing:
+            return "break"
         self.main_window.open_metadata_editor()
         return "break"
 
