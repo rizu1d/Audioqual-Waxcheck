@@ -156,6 +156,14 @@ class ResultRow(ctk.CTkFrame):
         self._badge: Optional[QualityBadge] = None
         self._hover_state = False  # Track current hover state to avoid redundant configure calls
 
+        # Barra lateral de acento (selección)
+        self._accent_bar = ctk.CTkFrame(
+            self,
+            fg_color=THEME_COLORS["row_accent"],
+            width=3,
+            corner_radius=0,
+        )
+
         # Prevent frame from shrinking
         self.pack_propagate(False)
         self.grid_propagate(False)
@@ -331,8 +339,11 @@ class ResultRow(ctk.CTkFrame):
         self._hover_state = False  # Reset hover state on selection change
         if selected:
             self.configure(fg_color=THEME_COLORS["row_selected"])
+            self._accent_bar.place(x=0, y=0, relheight=1.0)
+            self._accent_bar.lift()
         else:
             self.configure(fg_color="transparent")
+            self._accent_bar.place_forget()
 
     def update_result(self, result: AnalysisResult):
         """Update the row with new result data."""

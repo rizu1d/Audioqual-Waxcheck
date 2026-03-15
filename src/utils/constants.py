@@ -168,8 +168,9 @@ THEME_COLORS = {
     "scrollbar_thumb_hover": "#7969A8",
 
     # Filas (rgba purple sobre #0c0b14, precalculados)
-    "row_selected": "#161422",      # rgba(121,105,168,0.10)
-    "row_hover": "#12101c",         # rgba(121,105,168,0.06)
+    "row_selected": "#1f1a33",      # rgba(121,105,168,0.20)
+    "row_hover": "#161422",         # rgba(121,105,168,0.10)
+    "row_accent": "#7969A8",        # barra lateral selección, sólido
 }
 
 # Reliability label colors (for spectrogram panel confidence display)
@@ -282,6 +283,5 @@ OVERLAY_COLORS = {
 }
 OVERLAY_SPINNER_SIZE = 64
 OVERLAY_SPINNER_WIDTH = 3
-OVERLAY_SPINNER_SPEED_MS = 33
 OVERLAY_BAR_WIDTH = 240
 OVERLAY_BAR_HEIGHT = 6
