@@ -648,6 +648,17 @@ class MainWindow(ctk.CTkFrame):
 
     def _on_clear(self):
         """Handle clear button click."""
+        count = self.results_table.get_results_count()
+        if count == 0:
+            return
+
+        if not messagebox.askyesno(
+            "Confirmar limpieza",
+            f"¿Estás seguro? Se borrarán {count} resultados.",
+            default=messagebox.NO
+        ):
+            return
+
         if self.analyzer.is_running():
             self.analyzer.cancel()
 

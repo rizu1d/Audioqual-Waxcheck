@@ -1,6 +1,6 @@
 """Full-screen overlay shown during batch analysis."""
 
-import math
+import time
 import tkinter as tk
 from typing import Callable, Optional
 
@@ -13,7 +13,6 @@ from ..utils.constants import (
     OVERLAY_COLORS,
     OVERLAY_SPINNER_SIZE,
     OVERLAY_SPINNER_WIDTH,
-    OVERLAY_SPINNER_SPEED_MS,
     OVERLAY_BAR_WIDTH,
     OVERLAY_BAR_HEIGHT,
 )
@@ -25,7 +24,7 @@ class AnalysisOverlay(ctk.CTkFrame):
     def __init__(self, master, on_cancel: Optional[Callable] = None, **kwargs):
         super().__init__(master, fg_color=OVERLAY_COLORS["bg"], **kwargs)
         self._on_cancel = on_cancel
-        self._spinner_angle = 0
+        self._spinner_start_time = 0.0
         self._spinner_after_id: Optional[str] = None
         self._total_files = 0
 
@@ -60,7 +59,7 @@ class AnalysisOverlay(ctk.CTkFrame):
         center = ctk.CTkFrame(self, fg_color="transparent")
         center.place(relx=0.5, rely=0.5, anchor="center")
 
-        # Spinner canvas
+        # Spinner canvas — arcs created once, updated via itemconfigure
         size = OVERLAY_SPINNER_SIZE
         self._spinner_canvas = tk.Canvas(
             center,
@@ -70,6 +69,19 @@ class AnalysisOverlay(ctk.CTkFrame):
             highlightthickness=0,
         )
         self._spinner_canvas.pack(pady=(0, 20))
+        pad = OVERLAY_SPINNER_WIDTH + 2
+        self._spinner_canvas.create_arc(
+            pad, pad, size - pad, size - pad,
+            start=0, extent=359.9, style="arc",
+            outline=OVERLAY_COLORS["spinner_track"],
+            width=OVERLAY_SPINNER_WIDTH,
+        )
+        self._spinner_active_arc = self._spinner_canvas.create_arc(
+            pad, pad, size - pad, size - pad,
+            start=0, extent=90, style="arc",
+            outline=OVERLAY_COLORS["spinner_active"],
+            width=OVERLAY_SPINNER_WIDTH,
+        )
 
         # Title
         self._title_label = ctk.CTkLabel(
@@ -166,7 +178,7 @@ class AnalysisOverlay(ctk.CTkFrame):
     # ─── Spinner ──────────────────────────────────────────────────────
 
     def _start_spinner(self):
-        self._spinner_angle = 0
+        self._spinner_start_time = time.monotonic()
         self._animate_spinner()
 
     def _stop_spinner(self):
@@ -175,33 +187,11 @@ class AnalysisOverlay(ctk.CTkFrame):
             self._spinner_after_id = None
 
     def _animate_spinner(self):
-        self._draw_spinner()
-        self._spinner_angle = (self._spinner_angle - 10) % 360
-        self._spinner_after_id = self.after(
-            OVERLAY_SPINNER_SPEED_MS, self._animate_spinner
-        )
-
-    def _draw_spinner(self):
-        c = self._spinner_canvas
-        c.delete("all")
-        size = OVERLAY_SPINNER_SIZE
-        pad = OVERLAY_SPINNER_WIDTH + 2
-        # Track arc (full circle)
-        c.create_arc(
-            pad, pad, size - pad, size - pad,
-            start=0, extent=359.9,
-            style="arc",
-            outline=OVERLAY_COLORS["spinner_track"],
-            width=OVERLAY_SPINNER_WIDTH,
-        )
-        # Active arc (90° segment)
-        c.create_arc(
-            pad, pad, size - pad, size - pad,
-            start=self._spinner_angle, extent=90,
-            style="arc",
-            outline=OVERLAY_COLORS["spinner_active"],
-            width=OVERLAY_SPINNER_WIDTH,
-        )
+        # Time-based interpolation: 300°/s ≈ 1.2s per revolution
+        elapsed = time.monotonic() - self._spinner_start_time
+        angle = -(elapsed * 300) % 360
+        self._spinner_canvas.itemconfigure(self._spinner_active_arc, start=angle)
+        self._spinner_after_id = self.after(16, self._animate_spinner)
 
     # ─── Progress bar ─────────────────────────────────────────────────
 

@@ -380,7 +380,8 @@ class MetadataEditor(ctk.CTkToplevel):
             except Exception:
                 pass
         # Use custom placeholder asset
-        placeholder_path = Path(__file__).parent.parent / "assets" / "waxcheck-empty-cover-small.png"
+        from ..utils.resource_path import get_resource
+        placeholder_path = Path(get_resource("waxcheck-empty-cover-small.png"))
         try:
             img = Image.open(placeholder_path)
             img = img.resize((pixel_size, pixel_size), Image.LANCZOS)

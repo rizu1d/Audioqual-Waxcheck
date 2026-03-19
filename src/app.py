@@ -123,13 +123,26 @@ class AudioQualApp:
 
         # Set app icon (dock/taskbar)
         try:
-            from .utils.icon_utils import load_svg_icon
-            import cairosvg
             from PIL import Image, ImageTk
-            import io
-            svg_path = os.path.join(os.path.dirname(__file__), "assets", "logo-waxcheckV2.svg")
-            png_bytes = cairosvg.svg2png(url=svg_path, output_width=256, output_height=256)
-            icon_img = Image.open(io.BytesIO(png_bytes))
+            from .utils.resource_path import get_resource
+            icon_img = None
+
+            # Try SVG first (requires cairosvg + libcairo)
+            try:
+                import cairosvg
+                import io
+                svg_path = get_resource("logo-waxcheckV2.svg")
+                png_bytes = cairosvg.svg2png(url=svg_path, output_width=256, output_height=256)
+                icon_img = Image.open(io.BytesIO(png_bytes))
+            except (ImportError, OSError):
+                pass
+
+            # Fallback to PNG
+            if icon_img is None:
+                png_path = get_resource("logo-WaxCheck.png")
+                icon_img = Image.open(png_path).convert("RGBA")
+                icon_img = icon_img.resize((256, 256), Image.LANCZOS)
+
             self._app_icon = ImageTk.PhotoImage(icon_img)
             self.root.iconphoto(True, self._app_icon)
         except Exception:

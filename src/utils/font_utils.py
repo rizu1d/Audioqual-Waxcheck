@@ -9,7 +9,9 @@ import sys
 import ctypes
 from pathlib import Path
 
-FONTS_DIR = Path(__file__).parent.parent / "assets" / "fonts"
+from .resource_path import get_assets_dir
+
+FONTS_DIR = Path(get_assets_dir()) / "fonts"
 
 
 def load_custom_fonts():

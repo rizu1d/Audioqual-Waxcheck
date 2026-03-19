@@ -1,0 +1,273 @@
+ ========================================================================
+  AUDIOQUAL — ANÁLISIS DE DISTRIBUCIÓN
+  Fecha: 2026-03-15
+========================================================================
+
+
+1. SISTEMAS OPERATIVOS COMPATIBLES
+========================================================================
+
+  ┌─────────────────────────────────────────────────────────────────┐
+  │  macOS       10.15 (Catalina) o superior                       │
+  │              Intel (x86_64) y Apple Silicon (ARM64)             │
+  │                                                                 │
+  │  Windows     10 o superior (64-bit)                             │
+  │                                                                 │
+  │  Linux       Distribuciones con X11 o Wayland (Ubuntu 20.04+,  │
+  │              Fedora 34+, Debian 11+, Arch, etc.)               │
+  │              Requiere: Tcl/Tk 8.6+, portaudio, libsndfile      │
+  └─────────────────────────────────────────────────────────────────┘
+
+  Requisito común: Python 3.9 o superior (3.9, 3.10, 3.11, 3.12)
+
+  Código específico por plataforma en:
+    - macOS:   pipe + createfilehandler para event loop, Cmd como
+               modificador, Cocoa focus workaround, argv_emulation
+    - Windows: event_generate para callbacks, Ctrl como modificador,
+               integración con Explorer
+    - Linux:   Igual que Windows (event_generate, Ctrl)
+
+
+2. REQUISITOS MÍNIMOS DE HARDWARE
+========================================================================
+
+  ┌──────────────┬──────────────────────────────────────────────────┐
+  │  Componente  │  Mínimo recomendado                             │
+  ├──────────────┼──────────────────────────────────────────────────┤
+  │  CPU         │  Dual-core x86_64 o ARM64 (2 GHz+)             │
+  │              │  No requiere GPU — todo corre en CPU            │
+  ├──────────────┼──────────────────────────────────────────────────┤
+  │  RAM         │  4 GB (mínimo absoluto)                         │
+  │              │  8 GB recomendado para lotes grandes             │
+  │              │  Pico: ~1.2 GB con 2 análisis simultáneos       │
+  ├──────────────┼──────────────────────────────────────────────────┤
+  │  Disco       │  ~400-500 MB para la aplicación instalada       │
+  │              │  + ~4.5 MB por archivo en caché de espectrogramas│
+  │              │  (la caché se limpia al cerrar la app)           │
+  ├──────────────┼──────────────────────────────────────────────────┤
+  │  Pantalla    │  1280×720 mínimo, soporta HiDPI/Retina         │
+  ├──────────────┼──────────────────────────────────────────────────┤
+  │  Audio       │  Cualquier dispositivo de salida de audio       │
+  │              │  (para la función de reproducción)               │
+  └──────────────┴──────────────────────────────────────────────────┘
+
+
+3. CONTENIDO DEL INSTALADOR (ARCHIVOS INCLUIDOS)
+========================================================================
+
+3.1 Código fuente (31 módulos Python, ~3.8 MB total)
+─────────────────────────────────────────────────────
+
+  src/
+  ├── main.py                     Punto de entrada
+  ├── app.py                      Clase principal AudioQualApp
+  │
+  ├── core/                       Pipeline de análisis
+  │   ├── analyzer.py             Orquestador, análisis por lotes
+  │   ├── audio_loader.py         Carga de audio (librosa/mutagen)
+  │   ├── frequency_detector.py   Detección de cutoff espectral
+  │   ├── bitrate_classifier.py   Clasificación de calidad
+  │   └── folder_watcher.py       Monitor de carpetas (watchdog)
+  │
+  ├── gui/                        Interfaz gráfica
+  │   ├── main_window.py          Ventana principal
+  │   ├── spectrogram_window.py   Ventana de espectrograma
+  │   ├── results_table.py        Tabla de resultados
+  │   ├── audio_player.py         Motor de reproducción
+  │   ├── player_controls.py      Controles de transporte
+  │   ├── waveform_display.py     Visualización de forma de onda
+  │   ├── metadata_editor.py      Editor de metadatos
+  │   ├── settings_window.py      Panel de configuración
+  │   ├── quality_popup.py        Popup explicativo de calidad
+  │   ├── file_drop_zone.py       Zona de drag & drop
+  │   ├── analysis_overlay.py     Overlay de progreso
+  │   └── icons.py                Generación de iconos
+  │
+  └── utils/                      Utilidades
+      ├── constants.py            Parámetros del algoritmo
+      ├── tk_utils.py             Callbacks thread-safe
+      ├── file_utils.py           Búsqueda de archivos de audio
+      ├── settings.py             Configuración persistente
+      ├── spectrogram_cache.py    Caché de espectrogramas
+      ├── font_utils.py           Carga de fuentes
+      ├── icon_utils.py           Conversión SVG→PNG
+      └── resource_path.py        Resolución de rutas en bundle
+
+3.2 Assets (~2.7 MB)
+─────────────────────
+
+  src/assets/
+  ├── fonts/
+  │   ├── Outfit-Regular.ttf        (~47 KB)
+  │   ├── Outfit-Medium.ttf         (~47 KB)
+  │   ├── Outfit-SemiBold.ttf       (~47 KB)
+  │   ├── Outfit-Bold.ttf           (~47 KB)
+  │   ├── SpaceMono-Regular.ttf     (~78 KB)
+  │   └── SpaceMono-Bold.ttf        (~79 KB)
+  │
+  ├── logo-waxcheckV2.svg           Logo principal (SVG)
+  ├── logo-WaxCheck.png             Logo (PNG)
+  ├── waxcheck-empty-cover*.png     Carátulas vacías (3 tamaños)
+  ├── *.svg / *.png                 Iconos de la interfaz
+  └── clean.jpg, spectrum.jpg       Imágenes placeholder
+
+3.3 Archivos de build
+──────────────────────
+
+  build/
+  ├── waxcheck_macos.spec           Spec de PyInstaller para macOS
+  ├── waxcheck_windows.spec         Spec de PyInstaller para Windows
+  ├── build_macos.sh                Script de build para macOS
+  ├── build_windows.bat             Script de build para Windows
+  ├── BUILD.md                      Instrucciones de empaquetado
+  └── icons/
+      ├── waxcheck.icns             Icono macOS
+      └── waxcheck.ico              Icono Windows
+
+3.4 Dependencias empaquetadas por PyInstaller
+──────────────────────────────────────────────
+
+  ┌───────────────────┬───────────┬──────────────────────────────────┐
+  │  Dependencia      │  Tamaño   │  Propósito                       │
+  ├───────────────────┼───────────┼──────────────────────────────────┤
+  │  scipy            │  ~83 MB   │  Cálculo científico (STFT)       │
+  │  numpy            │  ~30 MB   │  Arrays numéricos                │
+  │  matplotlib       │  ~25 MB   │  Visualización de espectrogramas │
+  │  Pillow           │  ~3 MB    │  Procesamiento de imágenes       │
+  │  librosa          │  ~3 MB    │  Análisis de audio               │
+  │  libsndfile       │  ~3 MB    │  Lectura de archivos de audio    │
+  │  customtkinter    │  ~1.5 MB  │  Framework de UI moderno         │
+  │  mutagen          │  ~1.5 MB  │  Metadatos de audio (ID3/Vorbis) │
+  │  tkinterdnd2      │  ~1.4 MB  │  Drag & drop                    │
+  │  cairocffi        │  ~0.7 MB  │  Renderizado SVG                 │
+  │  cairosvg         │  ~0.3 MB  │  Conversión SVG→PNG              │
+  │  watchdog         │  ~0.4 MB  │  Monitor de carpetas             │
+  │  sounddevice      │  ~0.2 MB  │  Reproducción de audio           │
+  │  portaudio        │  ~0.2 MB  │  Backend de audio nativo         │
+  │  Python runtime   │  ~35 MB   │  Intérprete Python embebido      │
+  │  Tcl/Tk           │  ~15 MB   │  Framework de ventanas           │
+  ├───────────────────┼───────────┼──────────────────────────────────┤
+  │  TOTAL LIBS       │  ~203 MB  │                                  │
+  └───────────────────┴───────────┴──────────────────────────────────┘
+
+3.5 EXCLUIDO del instalador
+───────────────────────────
+
+  - tests/           Suite de tests y archivos de audio de prueba
+  - evaluation/      Resultados de evaluación
+  - references/      Mockups, capturas de pantalla de diseño
+  - knowledge/       Documentación interna del algoritmo
+  - scripts/         Scripts de diagnóstico
+  - .claude/         Configuración de Claude Code
+  - .git/            Historial de git
+  - *.log            Archivos de log de debug
+  - pyproject.toml   Solo necesario para desarrollo
+  - requirements.txt Solo necesario para desarrollo
+
+
+4. PESO ESTIMADO DE LA DISTRIBUCIÓN
+========================================================================
+
+  ┌─────────────────────────────────────────────────────────────────┐
+  │                                                                 │
+  │  Carpeta sin comprimir (PyInstaller output):                   │
+  │                                                                 │
+  │    Código fuente + assets         ~  3.8 MB                    │
+  │    Dependencias Python            ~153.0 MB                    │
+  │    Python runtime + Tcl/Tk        ~ 50.0 MB                   │
+  │    Binarios nativos (libsndfile,                               │
+  │      portaudio, cairo, etc.)      ~ 10.0 MB                   │
+  │    ─────────────────────────────────────────                   │
+  │    TOTAL SIN COMPRIMIR            ~220-250 MB                  │
+  │                                                                 │
+  │  macOS (.app bundle):             ~200-250 MB                  │
+  │  macOS (.dmg comprimido):         ~100-130 MB                  │
+  │                                                                 │
+  │  Windows (carpeta):               ~200-250 MB                  │
+  │  Windows (.exe instalador NSIS):  ~100-130 MB                  │
+  │  Windows (.zip portátil):         ~110-140 MB                  │
+  │                                                                 │
+  │  Con UPX activado (ya configurado en los .spec):               │
+  │    Reducción adicional ~10-20% en binarios                     │
+  │                                                                 │
+  └─────────────────────────────────────────────────────────────────┘
+
+  Nota: scipy es con diferencia la dependencia más pesada (~83 MB).
+  Si en el futuro se eliminara scipy como dependencia directa y se
+  usaran solo las funciones de numpy necesarias, el peso del
+  instalador podría reducirse ~40-50 MB.
+
+
+5. NOTAS ADICIONALES PARA LA DISTRIBUCIÓN
+========================================================================
+
+  macOS:
+  - Los .spec actuales NO tienen firma de código (codesign_identity=None)
+  - Para distribución en macOS se necesita: Apple Developer ID,
+    firma del binario, y notarización con Apple
+  - Sin firma, macOS mostrará "app de desarrollador no identificado"
+  - argv_emulation=True permite abrir archivos desde Finder
+
+  Windows:
+  - Antivirus puede dar falso positivo con binarios PyInstaller
+  - Firmar el .exe con un certificado de code signing lo evita
+  - Icono configurado: build/icons/waxcheck.ico
+
+  Linux:
+  - No hay .spec de build para Linux (habría que crear uno)
+  - Alternativa: distribuir como AppImage o Flatpak
+  - Dependencias de sistema: Tcl/Tk 8.6, portaudio, libsndfile
+
+  Común:
+  - Iconos configurados: .icns (macOS) y .ico (Windows) en build/icons/
+  - datas[] incluye src/assets, customtkinter y tkinterdnd2
+  - Los hidden imports están bien configurados para las 3 plataformas
+
+
+6. PROBLEMAS DETECTADOS EN REVIEW (2026-03-19)
+========================================================================
+
+  6.1 PNG fallback incompleto en icon_utils.py (PRIORIDAD MEDIA)
+  ─────────────────────────────────────────────────────────────────
+
+  Cuando cairosvg no está disponible (típico en Windows), icon_utils.py
+  intenta cargar PNGs como fallback. Pero los SVGs usan nombres V2/V3
+  (ej: clean-iconV2.svg, spectrum-iconV2.svg) y no existen PNGs con
+  esos nombres. Resultado: iconos transparentes/invisibles.
+
+  Archivos afectados:
+    - src/utils/icon_utils.py (líneas 54-61, lógica de fallback)
+    - src/assets/ (faltan PNGs para los SVGs V2/V3)
+
+  Fix: Exportar PNGs de cada SVG V2/V3 a src/assets/ con nombres
+  coincidentes (ej: clean-iconV2.png, spectrum-iconV2.png, etc.)
+  O bien incluir cairosvg + libcairo como dependencia obligatoria
+  en el build de Windows.
+
+  6.2 NSMicrophoneUsageDescription innecesario (PRIORIDAD BAJA)
+  ─────────────────────────────────────────────────────────────────
+
+  El .spec de macOS (build/waxcheck_macos.spec) incluye
+  NSMicrophoneUsageDescription en info_plist. AudioQual no usa
+  micrófono — solo reproduce audio. No causa problemas funcionales
+  pero podría mostrar un prompt confuso al usuario.
+
+  Fix: Eliminar la línea NSMicrophoneUsageDescription del info_plist
+  en build/waxcheck_macos.spec.
+
+  6.3 Constante huérfana OVERLAY_SPINNER_SPEED_MS (PRIORIDAD BAJA)
+  ─────────────────────────────────────────────────────────────────
+
+  analysis_overlay.py dejó de importar OVERLAY_SPINNER_SPEED_MS
+  (el spinner ahora usa 16ms fijo para ~60fps). La constante
+  probablemente sigue definida en src/utils/constants.py como
+  código muerto.
+
+  Fix: Eliminar OVERLAY_SPINNER_SPEED_MS de constants.py si no se
+  usa en ningún otro sitio.
+
+
+========================================================================
+  Generado automáticamente — marzo 2026
+  Actualizado con hallazgos del review — 2026-03-19
+========================================================================
