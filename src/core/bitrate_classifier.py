@@ -16,6 +16,8 @@ from ..utils.constants import (
     CONFIDENCE_HIGH,
     CONFIDENCE_LOW,
     MP3_BITRATE_MAX_CUTOFF_KHZ,
+    MIN_LOSSLESS_TRANSCODE_DURATION_S,
+    LOSSLESS_NATURAL_ENERGY_CEILING_DB,
 )
 
 
@@ -232,11 +234,26 @@ def assess_quality(
         detected_quality = "lossless"
         display_cutoff_override = ">20 kHz"
 
-    is_transcode = detect_transcode(
-        metadata.bitrate,
-        detected_quality,
-        metadata.format,
-    )
+    # Guard: lossless format with naturally limited content (drums, percussion, short samples)
+    # Short samples or files with very low energy at cutoff have natural frequency limitations,
+    # not brick-wall codec artifacts. Skip transcode detection for these.
+    skip_transcode_check = False
+    if is_lossless_format and cutoff_khz < 18.0:
+        is_short = metadata.duration < MIN_LOSSLESS_TRANSCODE_DURATION_S
+        has_low_energy = frequency_analysis.energy_at_cutoff_db < LOSSLESS_NATURAL_ENERGY_CEILING_DB
+        if is_short or has_low_energy:
+            detected_quality = "lossless"
+            display_cutoff_override = ">20 kHz"
+            skip_transcode_check = True
+
+    if not skip_transcode_check:
+        is_transcode = detect_transcode(
+            metadata.bitrate,
+            detected_quality,
+            metadata.format,
+        )
+    else:
+        is_transcode = False
 
     # Determine status
     if detected_quality == "lossless":

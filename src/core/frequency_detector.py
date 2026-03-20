@@ -64,6 +64,7 @@ class FrequencyAnalysis:
     is_uncertain: bool = False  # True if detection has low confidence
     uncertainty_reason: str = ""  # Explanation for uncertainty
     cutoff_range_khz: Optional[Tuple[float, float]] = None  # (min, max) for variable quality
+    energy_at_cutoff_db: float = -80.0  # Average energy in band just before cutoff (dB)
 
 
 def compute_spectrogram(
@@ -1558,6 +1559,12 @@ def analyze_frequency_cutoff(
             ref_energy_per_frame, active_frames_mask, ref_std
         )
 
+    # Compute energy in the band just before the cutoff (for transcode guard)
+    energy_at_cutoff_db = compute_band_energy_simple(
+        spectrogram_db, frequencies,
+        max(500, cutoff_hz - 1000), cutoff_hz
+    )
+
     return FrequencyAnalysis(
         cutoff_frequency_hz=cutoff_hz,
         cutoff_frequency_khz=cutoff_hz / 1000,
@@ -1568,4 +1575,5 @@ def analyze_frequency_cutoff(
         confidence=confidence,
         is_uncertain=is_uncertain,
         uncertainty_reason=uncertainty_reason,
+        energy_at_cutoff_db=energy_at_cutoff_db,
     )

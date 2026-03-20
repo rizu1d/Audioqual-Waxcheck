@@ -285,3 +285,9 @@ OVERLAY_SPINNER_SIZE = 64
 OVERLAY_SPINNER_WIDTH = 3
 OVERLAY_BAR_WIDTH = 240
 OVERLAY_BAR_HEIGHT = 6
+
+# Lossless format transcode detection guards
+# Short samples or files with very low energy at cutoff are likely naturally
+# limited content (drums, percussion), not transcodes from lossy codecs.
+MIN_LOSSLESS_TRANSCODE_DURATION_S = 30.0
+LOSSLESS_NATURAL_ENERGY_CEILING_DB = -75.0
