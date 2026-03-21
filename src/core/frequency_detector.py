@@ -1311,13 +1311,12 @@ def find_cutoff_by_transition(
                         all_declining = False
                         break
                 if all_declining:
-                    # At high frequencies (>=18kHz), natural rolloff can mimic
-                    # decay patterns. Guard: the detection point (band i+1) must
-                    # not still contain musical content.
-                    if freq_high >= 18000:
+                    # At higher frequencies (>=17kHz), natural rolloff can
+                    # mimic decay patterns. Guard: the detection point
+                    # (band i+1) must not still contain musical content.
+                    if freq_high >= 17000:
                         post_thresh = get_min_pre_variance(freq_high)
                         if variance_high >= post_thresh:
-                            # Band i+1 is still musical — skip this trigger
                             all_declining = False
                     if all_declining:
                         has_sliding_variance_decay = True

@@ -80,7 +80,7 @@ TRANSITION_CONFIRMATION_BANDS = 2     # Number of bands after drop that must sta
 # Instead of absolute thresholds, we check if variance DROPS significantly between bands
 TRANSITION_VARIANCE_DROP_RATIO = 0.30 # Variance must drop by at least 30% between bands
 TRANSITION_RECOVERY_THRESHOLD_DB = 3.0  # If energy rises >3dB after drop, it's not a real cutoff
-TRANSITION_MIN_PRE_VARIANCE = 0.30    # Pre-transition band must have at least 30% of reference variance (musical content)
+TRANSITION_MIN_PRE_VARIANCE = 0.28    # Pre-transition band must have at least 28% of reference variance (musical content)
 
 # Frequency-dependent variance threshold interpolation range (Layer 2)
 # At lower frequencies, musical content has higher variance; at higher frequencies
@@ -221,7 +221,8 @@ def get_quality_level(cutoff_freq_khz: float, status: str = "") -> str:
     """Map cutoff frequency to quality level for badge display.
 
     Classification rules (based on real/detected bitrate):
-      - bajo:      ≤192 kbps  (cutoff < 18.5 kHz)
+      - bajo:      ≤160 kbps  (cutoff < 17.5 kHz)
+      - medio:     192 kbps   (cutoff 17.5-18.5 kHz)
       - bueno:     ≥256 kbps  (cutoff ≥ 18.5 kHz)
       - excelente: only genuine lossless (FLAC/WAV/AIFF with STATUS_LOSSLESS)
 
@@ -229,8 +230,10 @@ def get_quality_level(cutoff_freq_khz: float, status: str = "") -> str:
     """
     if status == STATUS_LOSSLESS:
         return "excelente"
-    if cutoff_freq_khz < 18.5:
+    if cutoff_freq_khz < 17.5:
         return "bajo"
+    if cutoff_freq_khz < 18.5:
+        return "medio"
     return "bueno"
 
 
@@ -290,4 +293,4 @@ OVERLAY_BAR_HEIGHT = 6
 # Short samples or files with very low energy at cutoff are likely naturally
 # limited content (drums, percussion), not transcodes from lossy codecs.
 MIN_LOSSLESS_TRANSCODE_DURATION_S = 30.0
-LOSSLESS_NATURAL_ENERGY_CEILING_DB = -75.0
+LOSSLESS_NATURAL_ENERGY_CEILING_DB = -77.0
