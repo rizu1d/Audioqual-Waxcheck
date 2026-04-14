@@ -1,5 +1,6 @@
 """Main application window."""
 
+import math
 import os
 import subprocess
 import sys
@@ -75,6 +76,8 @@ class MainWindow(ctk.CTkFrame):
         self._pending_progress_update = None  # Store pending update for final flush
         self._pending_analysis_queue: List[str] = []
         self._pulse_active = False
+        self._watcher_active = False
+        self._glow_active = False
 
         self._setup_ui()
 
@@ -517,7 +520,10 @@ class MainWindow(ctk.CTkFrame):
 
     def _on_files_scanned(self, files: List[str]):
         """Handle completion of file scanning (main thread)."""
-        self.status_label.configure(text="Listo")
+        if self._watcher_active:
+            self._restore_watcher_status()
+        else:
+            self.status_label.configure(text="Listo")
         if files:
             self._on_files_added(files)
 
@@ -631,9 +637,12 @@ class MainWindow(ctk.CTkFrame):
         else:
             self._analysis_overlay.hide()
             self.progress_bar.grid_remove()
-            self.status_label.configure(text="Listo", text_color="#6BCB77")
-            self._status_dot.configure(text_color="#6BCB77")
             self.add_files_btn.configure(state="normal")
+            if self._watcher_active:
+                self._restore_watcher_status()
+            else:
+                self.status_label.configure(text="Listo", text_color="#6BCB77")
+                self._status_dot.configure(text_color="#6BCB77")
             if self.on_analyzing_changed:
                 self.on_analyzing_changed(False)
 
@@ -909,14 +918,26 @@ class MainWindow(ctk.CTkFrame):
 
     def set_watcher_active(self, active: bool, folder_name: str = ""):
         """Update UI to reflect watcher state."""
+        self._watcher_active = active
+        self._watcher_folder_name = folder_name
         if active:
             self.watcher_btn.configure(image=self._watcher_icon_on)
             self._watcher_indicator.grid()
             self._start_indicator_pulse()
+            self._start_glow()
+            self._restore_watcher_status()
         else:
             self.watcher_btn.configure(image=self._watcher_icon_off)
             self._watcher_indicator.grid_remove()
             self._stop_indicator_pulse()
+            self._stop_glow()
+
+    def _restore_watcher_status(self):
+        """Restore status bar to show watcher-active state."""
+        name = getattr(self, "_watcher_folder_name", "")
+        text = f"Monitorizando: {name}" if name else "Monitorizando carpeta"
+        self.status_label.configure(text=text, text_color="#5DB88C")
+        self._status_dot.configure(text_color="#5DB88C")
 
     def _start_indicator_pulse(self):
         """Start pulsing the watcher indicator."""
@@ -934,6 +955,36 @@ class MainWindow(ctk.CTkFrame):
         color = "#5DB88C" if bright else "#2D6B4A"
         self._watcher_indicator.configure(text_color=color)
         self.after(800, self._pulse_step, not bright)
+
+    def _start_glow(self):
+        """Start glow animation on the watcher button."""
+        self._glow_active = True
+        self._glow_step(0)
+
+    def _stop_glow(self):
+        """Stop glow animation and reset button color."""
+        self._glow_active = False
+        self.watcher_btn.configure(fg_color=THEME_COLORS["toolbar_btn"])
+
+    def _glow_step(self, step: int):
+        """Animate watcher button with a breathing glow effect."""
+        if not self._glow_active:
+            return
+        # Sinusoidal pulse: 0.0 → 1.0 → 0.0 over ~60 steps (~3s cycle)
+        t = (math.sin(step * 0.105) + 1) / 2
+        color = self._interpolate_color(THEME_COLORS["toolbar_btn"], THEME_COLORS["primary"], t)
+        self.watcher_btn.configure(fg_color=color)
+        self.after(50, self._glow_step, step + 1)
+
+    @staticmethod
+    def _interpolate_color(c1: str, c2: str, t: float) -> str:
+        """Linearly interpolate between two hex colors."""
+        r1, g1, b1 = int(c1[1:3], 16), int(c1[3:5], 16), int(c1[5:7], 16)
+        r2, g2, b2 = int(c2[1:3], 16), int(c2[3:5], 16), int(c2[5:7], 16)
+        r = int(r1 + (r2 - r1) * t)
+        g = int(g1 + (g2 - g1) * t)
+        b = int(b1 + (b2 - b1) * t)
+        return f"#{r:02x}{g:02x}{b:02x}"
 
     def add_files_from_watcher(self, files: List[str]):
         """Add files detected by the folder watcher (deduplicates first)."""
