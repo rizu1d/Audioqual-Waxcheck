@@ -20,6 +20,7 @@ from ..utils.constants import (
     THEME_COLORS, FONT_FAMILY, FONT_FAMILY_MONO, FONT_SIZES,
     RELIABILITY_COLORS, HOP_LENGTH, SAMPLE_RATE,
 )
+from ..utils.i18n import t
 
 # ── Spek-matching colormap ──────────────────────────────────────────────
 # Palette extracted from Spek's source (spek-palette.cc):
@@ -111,7 +112,7 @@ class SpectrogramWindow(ctk.CTkToplevel):
 
     def _setup_window(self):
         """Configure the window."""
-        self.title(f"Espectrograma - {self._current_filename}")
+        self.title(t("spectrogram.window_title", filename=self._current_filename))
         self.geometry("800x500")
         self.minsize(400, 300)
         self.configure(fg_color=THEME_COLORS["bg_primary"])
@@ -145,7 +146,7 @@ class SpectrogramWindow(ctk.CTkToplevel):
         # Loading indicator
         self._loading_label = ctk.CTkLabel(
             self.figure_frame,
-            text="Cargando espectrograma...",
+            text=t("spectrogram.loading"),
             font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["body"]),
             text_color=THEME_COLORS["text_secondary"],
         )
@@ -176,7 +177,7 @@ class SpectrogramWindow(ctk.CTkToplevel):
         # Cutoff frequency info
         self.cutoff_label = ctk.CTkLabel(
             self.info_frame,
-            text=f"Frec. de corte: {self._current_cutoff_khz:.1f} kHz",
+            text=t("spectrogram.cutoff_label", cutoff=f"{self._current_cutoff_khz:.1f}"),
             font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["body"]),
             text_color=THEME_COLORS["text_primary"],
         )
@@ -196,11 +197,11 @@ class SpectrogramWindow(ctk.CTkToplevel):
     def _get_reliability_label(confidence: float) -> tuple[str, str]:
         """Return (text, color) for a confidence value."""
         if confidence >= 0.7:
-            return "Fiabilidad: Alta", RELIABILITY_COLORS["high"]
+            return t("reliability.high"), RELIABILITY_COLORS["high"]
         elif confidence >= 0.5:
-            return "Fiabilidad: Media", RELIABILITY_COLORS["medium"]
+            return t("reliability.medium"), RELIABILITY_COLORS["medium"]
         else:
-            return "Fiabilidad: Baja", RELIABILITY_COLORS["low"]
+            return t("reliability.low"), RELIABILITY_COLORS["low"]
 
     # ── Public API ──────────────────────────────────────────────────────
 
@@ -216,8 +217,8 @@ class SpectrogramWindow(ctk.CTkToplevel):
         self._current_cutoff_khz = cutoff_khz
 
         # Update window title and info labels
-        self.title(f"Espectrograma - {filename}")
-        self.cutoff_label.configure(text=f"Frec. de corte: {cutoff_khz:.1f} kHz")
+        self.title(t("spectrogram.window_title", filename=filename))
+        self.cutoff_label.configure(text=t("spectrogram.cutoff_label", cutoff=f"{cutoff_khz:.1f}"))
         rel_text, rel_color = self._get_reliability_label(analysis.confidence)
         self.confidence_label.configure(text=rel_text, text_color=rel_color)
 

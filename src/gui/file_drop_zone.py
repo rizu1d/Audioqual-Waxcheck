@@ -13,6 +13,7 @@ except ImportError:
     HAS_DND = False
 
 from ..utils.file_utils import get_audio_files_from_path
+from ..utils.i18n import t
 from ..utils.icon_utils import load_svg_icon
 from ..utils.constants import SUPPORTED_FORMATS, THEME_COLORS, FONT_FAMILY, FONT_SIZES
 
@@ -78,7 +79,7 @@ class FileDropZone(ctk.CTkFrame):
         # Main instruction label - larger and bolder
         self.main_label = ctk.CTkLabel(
             self.content_frame,
-            text="Arrastra archivos de audio aquí",
+            text=t("drop_zone.instruction"),
             font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["heading"], weight="bold"),
             text_color=THEME_COLORS["text_primary"],
         )
@@ -98,7 +99,7 @@ class FileDropZone(ctk.CTkFrame):
         # Select button - single button with dropdown menu
         self.select_btn = ctk.CTkButton(
             self.content_frame,
-            text="Seleccionar",
+            text=t("drop_zone.select"),
             command=self._on_select_click,
             width=180,
             height=44,
@@ -175,8 +176,8 @@ class FileDropZone(ctk.CTkFrame):
     def _on_select_click(self, event=None):
         """Show context menu with selection options."""
         menu = tk.Menu(self, tearoff=0)
-        menu.add_command(label="Archivos", command=self._on_select_files)
-        menu.add_command(label="Carpeta", command=self._on_select_folder)
+        menu.add_command(label=t("menu.files"), command=self._on_select_files)
+        menu.add_command(label=t("menu.folder"), command=self._on_select_folder)
 
         # Position menu below the button
         btn = self.select_btn
@@ -187,8 +188,8 @@ class FileDropZone(ctk.CTkFrame):
     def show_select_menu(self, button):
         """Show the select menu positioned below the given button."""
         menu = tk.Menu(self, tearoff=0)
-        menu.add_command(label="Archivos", command=self._on_select_files)
-        menu.add_command(label="Carpeta", command=self._on_select_folder)
+        menu.add_command(label=t("menu.files"), command=self._on_select_files)
+        menu.add_command(label=t("menu.folder"), command=self._on_select_folder)
 
         x = button.winfo_rootx()
         y = button.winfo_rooty() + button.winfo_height()
@@ -210,7 +211,7 @@ class FileDropZone(ctk.CTkFrame):
         ]
 
         files = filedialog.askopenfilenames(
-            title="Seleccionar archivos de audio",
+            title=t("dialog.select_audio_files"),
             filetypes=filetypes,
         )
 
@@ -220,7 +221,7 @@ class FileDropZone(ctk.CTkFrame):
     def _on_select_folder(self):
         """Handle select folder button click."""
         folder = filedialog.askdirectory(
-            title="Seleccionar carpeta con archivos de audio",
+            title=t("dialog.select_audio_folder"),
         )
 
         if folder:

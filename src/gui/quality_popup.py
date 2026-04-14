@@ -13,6 +13,7 @@ from ..utils.constants import (
     get_quality_level,
 )
 from .icons import icon_quality_dot
+from ..utils.i18n import t, t_quality_level
 
 
 # ---------- singleton click-outside watcher ----------
@@ -120,107 +121,26 @@ def _has_bitrate_discrepancy(result: AnalysisResult) -> bool:
 def _build_explanation(result: AnalysisResult, case: int) -> str:
     """Build explanation text for the given case."""
     fmt = result.format
-    declared = f"{result.declared_bitrate} kbps" if result.declared_bitrate else "desconocido"
+    declared = f"{result.declared_bitrate} kbps" if result.declared_bitrate else t("popup.unknown_bitrate")
     cutoff = _format_cutoff(result.cutoff_frequency_khz)
     real_kbps = _detected_bitrate_int(result.detected_quality)
     real = f"{real_kbps} kbps" if real_kbps and real_kbps < 1411 else "Lossless"
 
-    if case == 1:
-        return (
-            f"Este archivo dice ser un {fmt} a {declared}, pero el análisis "
-            f"espectral muestra que el contenido real corta a {cutoff}, lo que "
-            f"corresponde a un audio de {real}. Esto indica que el archivo fue "
-            f"convertido (transcodeado) desde una fuente de muy baja calidad, "
-            f"probablemente un rip de YouTube o streaming."
-        )
-    if case == 2:
-        return (
-            f"Este archivo es un {fmt} a {declared}. El análisis confirma "
-            f"que la calidad corresponde con lo declarado, con un corte de "
-            f"frecuencia en {cutoff}. Aunque no es un transcode, la calidad "
-            f"es baja: se pierde detalle en frecuencias altas, lo que puede "
-            f"notarse en mezclas y en sistemas de sonido de calidad."
-        )
-    if case == 3:
-        return (
-            f"Este archivo se presenta como {fmt} a {declared}, pero el "
-            f"análisis muestra un corte en {cutoff}, lo que indica una "
-            f"calidad real de aproximadamente {real}. El archivo fue "
-            f"convertido desde una fuente de calidad media. Es funcional "
-            f"para escucha casual, pero perderás detalle en agudos y brillo "
-            f"en mezclas profesionales."
-        )
-    if case == 4:
-        return (
-            f"Este archivo es un {fmt} a {declared}. El análisis confirma "
-            f"un corte de frecuencia en {cutoff}, lo que corresponde con "
-            f"el bitrate declarado. La calidad es aceptable para escucha "
-            f"general, pero limitada para uso profesional en DJ sets o "
-            f"producción."
-        )
-    if case == 5:
-        return (
-            f"Archivo {fmt} a {declared} verificado. El contenido espectral "
-            f"se extiende hasta {cutoff}, lo que confirma que se trata de "
-            f"un archivo de alta calidad real. El bitrate declarado coincide "
-            f"con la calidad detectada. Apto para uso profesional en DJ sets "
-            f"y producción."
-        )
-    if case == 6:
-        return (
-            f"Este archivo es un {fmt} a {declared}, un formato sin pérdida "
-            f"que debería contener frecuencias hasta 22 kHz. Sin embargo, el "
-            f"contenido corta a {cutoff}, lo que sugiere que el archivo "
-            f"original pudo haber sido un MP3 de ~{real} que fue convertido "
-            f"a {fmt}. La calidad es buena pero no lossless real."
-        )
-    if case == 7:
-        return (
-            f"Archivo {fmt} a {declared} con contenido espectral completo "
-            f"que supera los {cutoff}. Se trata de audio lossless (sin "
-            f"pérdida), la máxima calidad disponible. No se ha detectado "
-            f"ninguna compresión ni transcode. Calidad perfecta para "
-            f"cualquier uso profesional."
-        )
-    if case == 9:
-        return (
-            f"Archivo {fmt} con bitrate declarado de {declared}. Sin embargo, "
-            f"el contenido espectral se extiende hasta {cutoff}, lo que sitúa "
-            f"su calidad real en torno a {real}. Aunque no alcanza la máxima "
-            f"calidad de un {declared} nativo, el archivo conserva un rango "
-            f"frecuencial amplio y es apto para uso profesional en DJ sets "
-            f"y producción."
-        )
-    if case == 10:
-        return (
-            f"Archivo {fmt} con bitrate declarado de {declared}. El contenido "
-            f"espectral se extiende hasta {cutoff}, muy cercano al límite de "
-            f"20 kHz de un {declared} nativo. La diferencia es mínima y "
-            f"prácticamente imperceptible en un sistema de sonido profesional. "
-            f"El archivo es de buena calidad."
-        )
-    # case 8
-    return (
-        f"Archivo {fmt} a {declared} con contenido espectral que se "
-        f"extiende hasta {cutoff}. Esta es la máxima calidad posible "
-        f"para el formato MP3. El análisis confirma que es un archivo "
-        f"de alta calidad real, sin transcode."
-    )
+    key = f"popup.explanation.{case}"
+    return t(key, fmt=fmt, declared=declared, cutoff=cutoff, real=real)
 
 
 # ---------- verified / comparison info ----------
 
 _CASE_SHOWS_COMPARISON = {1, 3, 6}
 
-_VERIFIED_MESSAGES = {
-    2: ("Bitrate coherente", "La calidad es baja pero no hay engaño"),
-    4: ("Bitrate coincide", "No hay transcode"),
-    5: ("Calidad verificada", "Archivo legítimo"),
-    7: ("Lossless verificado", "Máxima calidad"),
-    8: ("Calidad verificada", "Máxima calidad MP3"),
-    9: ("Calidad aceptable", "Apto para uso profesional"),
-    10: ("Buena calidad", "Diferencia imperceptible"),
-}
+def _get_verified_message(case: int) -> tuple:
+    """Return (title, subtitle) for verified cases, translated."""
+    msg = t(f"popup.verified.{case}")
+    if isinstance(msg, list) and len(msg) == 2:
+        return tuple(msg)
+    default = t("popup.verified_default")
+    return (default, "")
 
 
 # ---------- popup widget ----------
@@ -330,7 +250,7 @@ class QualityPopup(ctk.CTkToplevel):
         # 6. Footer hint
         footer = ctk.CTkLabel(
             content,
-            text="Clic fuera para cerrar",
+            text=t("popup.close_hint"),
             font=ctk.CTkFont(family=FONT_FAMILY, size=10),
             text_color="#45454f",
         )
@@ -354,7 +274,7 @@ class QualityPopup(ctk.CTkToplevel):
         badge.pack(side="left", padx=(0, 10))
         badge.pack_propagate(False)
 
-        badge_text = level.capitalize()
+        badge_text = t_quality_level(level)
         badge.configure(width=len(badge_text) * 6 + 35)
 
         badge_label = ctk.CTkLabel(
@@ -398,11 +318,11 @@ class QualityPopup(ctk.CTkToplevel):
         has_discrepancy = self._case in _CASE_SHOWS_COMPARISON
 
         cells = [
-            ("BITRATE DECLARADO", f"{result.declared_bitrate} kbps" if result.declared_bitrate else "-", None),
-            ("BITRATE REAL", "Lossless" if is_lossless else f"{real_kbps} kbps",
+            (t("popup.grid.declared_bitrate"), f"{result.declared_bitrate} kbps" if result.declared_bitrate else "-", None),
+            (t("popup.grid.actual_bitrate"), "Lossless" if is_lossless else f"{real_kbps} kbps",
              colors["text"] if is_lossless else ("#E85555" if has_discrepancy else "#6BCB77")),
-            ("FREC. CORTE", _format_cutoff(result.cutoff_frequency_khz), None),
-            ("FORMATO", result.format, None),
+            (t("popup.grid.cutoff_frequency"), _format_cutoff(result.cutoff_frequency_khz), None),
+            (t("popup.grid.format"), result.format, None),
         ]
 
         for i, (label, value, value_color) in enumerate(cells):
@@ -442,7 +362,7 @@ class QualityPopup(ctk.CTkToplevel):
         is_lossless_fmt = result.format.upper() in _LOSSLESS_FORMATS
 
         # Label
-        title_text = "Esperado vs Real" if is_lossless_fmt else "Declarado vs Real"
+        title_text = t("popup.comparison.expected_vs_actual") if is_lossless_fmt else t("popup.comparison.declared_vs_actual")
         title = ctk.CTkLabel(
             frame,
             text=title_text,
@@ -455,10 +375,10 @@ class QualityPopup(ctk.CTkToplevel):
         # Determine values
         if is_lossless_fmt:
             declared_val = result.declared_bitrate or 1411
-            declared_label = "Esperado"
+            declared_label = t("popup.comparison.expected")
         else:
             declared_val = result.declared_bitrate or 320
-            declared_label = "Declarado"
+            declared_label = t("popup.comparison.declared")
 
         real_kbps = _detected_bitrate_int(result.detected_quality)
         if real_kbps == 0:
@@ -480,7 +400,7 @@ class QualityPopup(ctk.CTkToplevel):
 
         # Real row
         self._build_bar_row(
-            frame, "Real",
+            frame, t("popup.comparison.actual"),
             f"{real_kbps} kbps",
             real_pct, bar_width,
             colors["text"],
@@ -537,7 +457,7 @@ class QualityPopup(ctk.CTkToplevel):
 
     def _build_verified(self, parent, level, colors):
         """Build verification check indicator."""
-        msg = _VERIFIED_MESSAGES.get(self._case, ("Verificado", ""))
+        msg = _get_verified_message(self._case)
 
         frame = ctk.CTkFrame(
             parent,

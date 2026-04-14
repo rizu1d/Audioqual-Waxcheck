@@ -97,9 +97,12 @@ def check_bitrate_plausibility(
         return cutoff_khz, False, ""
 
     if cutoff_khz > max_cutoff_khz:
-        reason = (
-            f"MP3 {declared_bitrate}kbps: corte {cutoff_khz:.1f}kHz imposible "
-            f"(máx {max_cutoff_khz:.1f}kHz), ajustado"
+        from ..utils.i18n import t
+        reason = t(
+            "classifier.plausibility_reason",
+            bitrate=declared_bitrate,
+            cutoff=f"{cutoff_khz:.1f}",
+            max=f"{max_cutoff_khz:.1f}",
         )
         return max_cutoff_khz, True, reason
 

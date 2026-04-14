@@ -27,6 +27,7 @@ from .gui.main_window import MainWindow
 from .gui.spectrogram_window import SpectrogramWindow
 from .gui.audio_player import AudioPlayer, PlayerState
 from .utils.settings import AppSettings
+from .utils.i18n import init as init_i18n, t
 from .utils.tk_utils import (
     init_thread_scheduler,
     cleanup_thread_scheduler,
@@ -62,6 +63,9 @@ class AudioQualApp:
     """
 
     def __init__(self):
+        # Initialize i18n before any UI is created
+        init_i18n()
+
         # Load custom fonts before creating any UI
         from .utils.font_utils import load_custom_fonts
         load_custom_fonts()
@@ -502,7 +506,7 @@ class AudioQualApp:
 
         self._spectrogram_reanalyze_pending = filepath
         self.main_window.status_label.configure(
-            text=f"Cargando espectrograma..."
+            text=t("status.loading_spectrogram")
         )
 
         def _do_reanalyze():
@@ -511,7 +515,7 @@ class AudioQualApp:
                 if fresh.frequency_analysis:
                     def _on_done():
                         self._spectrogram_reanalyze_pending = None
-                        self.main_window.status_label.configure(text="Listo")
+                        self.main_window.status_label.configure(text=t("status.ready"))
 
                         self._cache_spectrogram(
                             filepath,
@@ -540,12 +544,12 @@ class AudioQualApp:
                 else:
                     def _on_fail():
                         self._spectrogram_reanalyze_pending = None
-                        self.main_window.status_label.configure(text="Listo")
+                        self.main_window.status_label.configure(text=t("status.ready"))
                     schedule_callback_from_thread(self.root, _on_fail)
             except Exception:
                 def _on_error():
                     self._spectrogram_reanalyze_pending = None
-                    self.main_window.status_label.configure(text="Listo")
+                    self.main_window.status_label.configure(text=t("status.ready"))
                 schedule_callback_from_thread(self.root, _on_error)
 
         threading.Thread(target=_do_reanalyze, daemon=True).start()
@@ -578,28 +582,28 @@ class AudioQualApp:
         if self._folder_watcher.is_running:
             current = os.path.basename(self._folder_watcher.watch_path or "")
             menu.add_command(
-                label=f"Monitorizando: {current}",
+                label=t("watcher_menu.monitoring", name=current),
                 state="disabled",
             )
             menu.add_separator()
             menu.add_command(
-                label="Cambiar carpeta...",
+                label=t("watcher_menu.change_folder"),
                 command=self._change_watcher_folder,
             )
             menu.add_command(
-                label="Detener monitorización",
+                label=t("watcher_menu.stop"),
                 command=self._stop_watcher,
             )
         else:
             saved = self._settings.watcher_folder
             if saved and os.path.isdir(saved):
                 menu.add_command(
-                    label=f"Monitorizar: {os.path.basename(saved)}",
+                    label=t("watcher_menu.start", name=os.path.basename(saved)),
                     command=lambda: self._start_watcher(saved),
                 )
                 menu.add_separator()
             menu.add_command(
-                label="Seleccionar carpeta...",
+                label=t("watcher_menu.select_folder"),
                 command=self._change_watcher_folder,
             )
 
@@ -611,7 +615,7 @@ class AudioQualApp:
     def _change_watcher_folder(self):
         """Ask for a new folder and start watching it."""
         folder = filedialog.askdirectory(
-            title="Seleccionar carpeta a monitorizar",
+            title=t("dialog.select_watcher_folder"),
             parent=self.root,
         )
         if folder:
@@ -625,9 +629,6 @@ class AudioQualApp:
             self._settings.watcher_folder = folder
             basename = os.path.basename(folder)
             self.main_window.set_watcher_active(True, basename)
-            self.main_window.status_label.configure(
-                text=f"Monitorizando: {basename}"
-            )
 
     def _stop_watcher(self):
         """Stop folder monitoring."""
@@ -635,7 +636,7 @@ class AudioQualApp:
             return
         self._folder_watcher.stop()
         self.main_window.set_watcher_active(False)
-        self.main_window.status_label.configure(text="Listo")
+        self.main_window.status_label.configure(text=t("status.ready"))
 
     def _on_watcher_files_ready(self, files):
         """Called from watcher thread when files are stable and ready."""

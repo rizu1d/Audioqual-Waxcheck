@@ -13,6 +13,7 @@ except ImportError:
 
 from ..utils.constants import THEME_COLORS, FONT_FAMILY, FONT_SIZES
 from ..utils.settings import AppSettings
+from ..utils.i18n import t
 
 
 class SettingsWindow(ctk.CTkToplevel):
@@ -37,10 +38,10 @@ class SettingsWindow(ctk.CTkToplevel):
         self.bind("<Escape>", lambda e: self._on_close())
 
     def _setup_window(self):
-        w, h = 460, 500
+        w, h = 460, 620
         self.geometry(f"{w}x{h}")
         self.resizable(False, False)
-        self.title("Configuración")
+        self.title(t("settings.window_title"))
         self.configure(fg_color=THEME_COLORS["bg_primary"])
 
         # Center over parent
@@ -54,7 +55,7 @@ class SettingsWindow(ctk.CTkToplevel):
         # Title
         ctk.CTkLabel(
             self,
-            text="Configuración",
+            text=t("settings.title"),
             font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["heading"], weight="bold"),
             text_color=THEME_COLORS["text_primary"],
             anchor="w",
@@ -63,7 +64,7 @@ class SettingsWindow(ctk.CTkToplevel):
         # Section: Salida de audio
         ctk.CTkLabel(
             self,
-            text="Salida de audio",
+            text=t("settings.section_audio"),
             font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["body"], weight="bold"),
             text_color=THEME_COLORS["text_primary"],
             anchor="w",
@@ -71,7 +72,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
         # Build device list
         self._device_names = []  # actual device names (parallel to dropdown values)
-        dropdown_values = ["Por defecto del sistema"]
+        dropdown_values = [t("settings.default_device")]
 
         if HAS_SOUNDDEVICE:
             try:
@@ -81,7 +82,7 @@ class SettingsWindow(ctk.CTkToplevel):
                         name = dev["name"]
                         label = name
                         if dev["index"] == default_out_idx:
-                            label += "  (por defecto)"
+                            label += t("settings.default_indicator")
                         self._device_names.append(name)
                         dropdown_values.append(label)
             except Exception:
@@ -125,7 +126,7 @@ class SettingsWindow(ctk.CTkToplevel):
         # Section: Metadatos
         ctk.CTkLabel(
             self,
-            text="Metadatos",
+            text=t("settings.section_metadata"),
             font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["body"], weight="bold"),
             text_color=THEME_COLORS["text_primary"],
             anchor="w",
@@ -138,7 +139,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
         cb = ctk.CTkCheckBox(
             self,
-            text="Renombrar archivo en disco al guardar metadatos",
+            text=t("settings.rename_on_save"),
             variable=self._rename_var,
             onvalue="1",
             offvalue="0",
@@ -155,7 +156,7 @@ class SettingsWindow(ctk.CTkToplevel):
         # Format hint
         ctk.CTkLabel(
             self,
-            text='Formato: "Artista - Título.extensión"',
+            text=t("settings.rename_format"),
             font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["small"]),
             text_color=THEME_COLORS["text_secondary"],
             anchor="w",
@@ -169,7 +170,7 @@ class SettingsWindow(ctk.CTkToplevel):
         # Section: Monitorización
         ctk.CTkLabel(
             self,
-            text="Monitorización de carpeta",
+            text=t("settings.section_watcher"),
             font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["body"], weight="bold"),
             text_color=THEME_COLORS["text_primary"],
             anchor="w",
@@ -177,10 +178,10 @@ class SettingsWindow(ctk.CTkToplevel):
 
         # Current folder display
         folder = self._settings.watcher_folder
-        folder_text = os.path.basename(folder) if folder else "No configurada"
+        folder_text = os.path.basename(folder) if folder else t("settings.watcher_not_configured")
         self._folder_label = ctk.CTkLabel(
             self,
-            text=f"Carpeta: {folder_text}",
+            text=t("settings.folder_label", folder=folder_text),
             font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
             text_color=THEME_COLORS["text_secondary"],
             anchor="w",
@@ -190,7 +191,7 @@ class SettingsWindow(ctk.CTkToplevel):
         # Change folder button
         ctk.CTkButton(
             self,
-            text="Cambiar carpeta...",
+            text=t("settings.change_folder"),
             command=self._on_change_watcher_folder,
             width=140,
             height=30,
@@ -208,7 +209,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
         ctk.CTkCheckBox(
             self,
-            text="Iniciar monitorización automáticamente al abrir",
+            text=t("settings.auto_start_watcher"),
             variable=self._auto_start_var,
             onvalue="1",
             offvalue="0",
@@ -221,6 +222,51 @@ class SettingsWindow(ctk.CTkToplevel):
             checkmark_color=THEME_COLORS["text_primary"],
         ).pack(anchor="w", padx=36, pady=(0, 16))
 
+        # Separator
+        ctk.CTkFrame(self, height=1, fg_color=THEME_COLORS["primary_dark"]).pack(
+            fill="x", padx=24, pady=(0, 16)
+        )
+
+        # Section: Language
+        ctk.CTkLabel(
+            self,
+            text=t("settings.section_language"),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["body"], weight="bold"),
+            text_color=THEME_COLORS["text_primary"],
+            anchor="w",
+        ).pack(fill="x", padx=28, pady=(0, 8))
+
+        lang_map = {"es": "Español", "en": "English"}
+        current_lang = self._settings.language
+        self._lang_var = ctk.StringVar(value=lang_map.get(current_lang, "Español"))
+
+        ctk.CTkOptionMenu(
+            self,
+            variable=self._lang_var,
+            values=["Español", "English"],
+            command=self._on_language_change,
+            width=200,
+            height=30,
+            corner_radius=8,
+            fg_color=THEME_COLORS["bg_elevated"],
+            button_color=THEME_COLORS["primary_dark"],
+            button_hover_color=THEME_COLORS["primary"],
+            dropdown_fg_color=THEME_COLORS["bg_elevated"],
+            dropdown_hover_color=THEME_COLORS["primary_dark"],
+            text_color=THEME_COLORS["text_primary"],
+            dropdown_text_color=THEME_COLORS["text_primary"],
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
+            dropdown_font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
+        ).pack(anchor="w", padx=36, pady=(0, 4))
+
+        ctk.CTkLabel(
+            self,
+            text=t("settings.language_restart"),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["small"]),
+            text_color=THEME_COLORS["text_secondary"],
+            anchor="w",
+        ).pack(fill="x", padx=56, pady=(0, 16))
+
         # Close button — right-aligned
         btn_frame = ctk.CTkFrame(self, fg_color="transparent")
         btn_frame.pack(fill="x", padx=24, pady=(0, 20))
@@ -228,7 +274,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
         ctk.CTkButton(
             btn_frame,
-            text="Cerrar",
+            text=t("button.close"),
             command=self._on_close,
             width=90,
             height=34,
@@ -244,28 +290,32 @@ class SettingsWindow(ctk.CTkToplevel):
 
     def _on_change_watcher_folder(self):
         folder = filedialog.askdirectory(
-            title="Seleccionar carpeta a monitorizar",
+            title=t("dialog.select_watcher_folder"),
             parent=self,
         )
         if folder:
             self._settings.watcher_folder = folder
-            self._folder_label.configure(text=f"Carpeta: {os.path.basename(folder)}")
+            self._folder_label.configure(text=t("settings.folder_label", folder=os.path.basename(folder)))
 
     def _on_auto_start_toggle(self):
         self._settings.watcher_auto_start = self._auto_start_var.get() == "1"
 
     def _on_device_change(self, choice: str):
-        if choice == "Por defecto del sistema":
+        if choice == t("settings.default_device"):
             self._settings.output_device = ""
         else:
             # Strip the " (por defecto)" suffix to get the real device name
             idx = None
             for i, val in enumerate(self._device_names):
                 # dropdown_values[i+1] corresponds to device_names[i]
-                if choice.replace("  (por defecto)", "") == val:
+                if choice.replace(t("settings.default_indicator"), "") == val:
                     idx = i
                     break
             self._settings.output_device = self._device_names[idx] if idx is not None else ""
+
+    def _on_language_change(self, choice: str):
+        lang_map = {"Español": "es", "English": "en"}
+        self._settings.language = lang_map.get(choice, "es")
 
     def _on_close(self):
         """Close settings and restore focus to parent."""

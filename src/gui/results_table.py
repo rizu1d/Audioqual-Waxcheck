@@ -15,6 +15,7 @@ from ..utils.constants import (
 from ..utils.file_utils import format_duration
 from .icons import icon_search, icon_close, icon_quality_dot
 from .quality_popup import QualityPopup
+from ..utils.i18n import t, t_status, t_quality_level
 
 
 SelectionCallback = Callable[[Optional[AnalysisResult]], None]
@@ -47,7 +48,7 @@ class QualityBadge(ctk.CTkFrame):
         self._colors = colors
         self._on_badge_click = on_badge_click
 
-        display_text = level.capitalize()
+        display_text = t_quality_level(level)
         self.configure(width=self._calculate_width(display_text))
 
         # Compound label anchored left so dots align vertically across all rows
@@ -104,7 +105,7 @@ class QualityBadge(ctk.CTkFrame):
         colors = QUALITY_LEVELS[level]
         self._level = level
         self._colors = colors
-        display_text = level.capitalize()
+        display_text = t_quality_level(level)
 
         self.configure(
             fg_color=colors["bg"],
@@ -188,7 +189,7 @@ class ResultRow(ctk.CTkFrame):
                 if result.status in (STATUS_PENDING, STATUS_ANALYZING, STATUS_ERROR):
                     cell = ctk.CTkLabel(
                         cell_frame,
-                        text=result.status,
+                        text=t_status(result.status),
                         anchor="w",
                         font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["small"]),
                         text_color=STATUS_COLORS.get(result.status, THEME_COLORS["text_muted"]),
@@ -385,13 +386,13 @@ class ResultRow(ctk.CTkFrame):
                 self._badge = None
             if "status" in self._cells:
                 self._cells["status"].configure(
-                    text=result.status,
+                    text=t_status(result.status),
                     text_color=STATUS_COLORS.get(result.status, THEME_COLORS["text_muted"]),
                 )
             elif status_frame:
                 cell = ctk.CTkLabel(
                     status_frame,
-                    text=result.status,
+                    text=t_status(result.status),
                     anchor="w",
                     font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["small"]),
                     text_color=STATUS_COLORS.get(result.status, THEME_COLORS["text_muted"]),
@@ -417,15 +418,19 @@ class ResultsTable(ctk.CTkFrame):
     Columns are resizable by dragging the border between header cells.
     """
 
-    COLUMNS = [
-        ("filename", "Archivo", 250),
-        ("format", "Formato", 70),
-        ("duration", "Duración", 80),
-        ("declared_bitrate", "Bitrate", 80),
-        ("cutoff_frequency", "Frec. Corte", 100),
-        ("detected_quality", "Bitrate Real", 100),
-        ("status", "Calidad", 130),
-    ]
+    @staticmethod
+    def _get_columns():
+        return [
+            ("filename", t("column.filename"), 250),
+            ("format", t("column.format"), 70),
+            ("duration", t("column.duration"), 80),
+            ("declared_bitrate", t("column.declared_bitrate"), 80),
+            ("cutoff_frequency", t("column.cutoff_frequency"), 100),
+            ("detected_quality", t("column.detected_quality"), 100),
+            ("status", t("column.status"), 130),
+        ]
+
+    COLUMNS = None  # Initialized in __init__
 
     MIN_WIDTHS = [100, 50, 60, 60, 70, 70, 90]
 
@@ -437,6 +442,10 @@ class ResultsTable(ctk.CTkFrame):
         **kwargs
     ):
         super().__init__(master, fg_color="transparent", **kwargs)
+
+        # Initialize translated columns
+        if ResultsTable.COLUMNS is None:
+            ResultsTable.COLUMNS = self._get_columns()
 
         self.on_selection_changed = on_selection_changed
         self.on_context_menu = on_context_menu
@@ -637,7 +646,7 @@ class ResultsTable(ctk.CTkFrame):
         # Search entry
         self._search_entry = ctk.CTkEntry(
             self._search_bar,
-            placeholder_text="Buscar archivo...",
+            placeholder_text=t("search.placeholder"),
             font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
             fg_color="transparent",
             border_width=0,

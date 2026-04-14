@@ -25,6 +25,7 @@ from ..utils.constants import (
 )
 from ..utils.file_utils import format_duration
 from ..utils.settings import AppSettings
+from ..utils.i18n import t
 
 if TYPE_CHECKING:
     from ..core.analyzer import AnalysisResult
@@ -277,7 +278,7 @@ class MetadataEditor(ctk.CTkToplevel):
         self.geometry(f"{w}x{h}")
         self.minsize(500, 500)
         self.resizable(False, True)
-        self.title("Editar metadatos")
+        self.title(t("editor.window_title"))
         self.configure(fg_color=THEME_COLORS["bg_primary"])
 
         # Center over parent
@@ -301,7 +302,7 @@ class MetadataEditor(ctk.CTkToplevel):
             form.pack(fill="both", expand=True, padx=28, pady=(0, 8))
             ctk.CTkLabel(
                 form,
-                text="Este formato no soporta edición de metadatos.",
+                text=t("editor.unsupported_format"),
                 font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["body"]),
                 text_color=THEME_COLORS["text_secondary"],
             ).pack(pady=40)
@@ -418,25 +419,25 @@ class MetadataEditor(ctk.CTkToplevel):
         )
 
         # 1. Título
-        row = make_row("título", 0)
+        row = make_row(t("editor.field_title"), 0)
         e = ctk.CTkEntry(row, **entry_kwargs)
         e.grid(row=0, column=1, sticky="ew")
         self._fields["title"] = e
 
         # 2. Artista
-        row = make_row("artista", 1)
+        row = make_row(t("editor.field_artist"), 1)
         e = ctk.CTkEntry(row, **entry_kwargs)
         e.grid(row=0, column=1, sticky="ew")
         self._fields["artist"] = e
 
         # 3. Álbum
-        row = make_row("álbum", 2)
+        row = make_row(t("editor.field_album"), 2)
         e = ctk.CTkEntry(row, **entry_kwargs)
         e.grid(row=0, column=1, sticky="ew")
         self._fields["album"] = e
 
         # 4. Género (ComboBox)
-        row = make_row("género", 3)
+        row = make_row(t("editor.field_genre"), 3)
         self._genre_combo = ctk.CTkComboBox(
             row,
             values=GENRES,
@@ -457,13 +458,13 @@ class MetadataEditor(ctk.CTkToplevel):
         self._setup_genre_autocomplete()
 
         # 5. Año
-        row = make_row("año", 4)
+        row = make_row(t("editor.field_year"), 4)
         e = ctk.CTkEntry(row, width=80, **entry_kwargs)
         e.grid(row=0, column=1, sticky="w")
         self._fields["year"] = e
 
         # 6. Pista (__) de (____)
-        row = make_row("pista", 5)
+        row = make_row(t("editor.field_track"), 5)
         track_frame = ctk.CTkFrame(row, fg_color="transparent")
         track_frame.grid(row=0, column=1, sticky="w")
 
@@ -473,7 +474,7 @@ class MetadataEditor(ctk.CTkToplevel):
 
         ctk.CTkLabel(
             track_frame,
-            text="de",
+            text=t("editor.field_of"),
             font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
             text_color=THEME_COLORS["text_secondary"],
         ).pack(side="left", padx=6)
@@ -483,7 +484,7 @@ class MetadataEditor(ctk.CTkToplevel):
         self._fields["track_total"] = e_total
 
         # 7. Nº de disco (__) de (____)
-        row = make_row("nº de disco", 6)
+        row = make_row(t("editor.field_disc_number"), 6)
         disc_frame = ctk.CTkFrame(row, fg_color="transparent")
         disc_frame.grid(row=0, column=1, sticky="w")
 
@@ -493,7 +494,7 @@ class MetadataEditor(ctk.CTkToplevel):
 
         ctk.CTkLabel(
             disc_frame,
-            text="de",
+            text=t("editor.field_of"),
             font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
             text_color=THEME_COLORS["text_secondary"],
         ).pack(side="left", padx=6)
@@ -503,10 +504,10 @@ class MetadataEditor(ctk.CTkToplevel):
         self._fields["disc_total"] = e_total
 
         # 8. Recopilación (checkbox)
-        row = make_row("recopilación", 7)
+        row = make_row(t("editor.field_compilation"), 7)
         cb = ctk.CTkCheckBox(
             row,
-            text="Es una recopilación de varios artistas",
+            text=t("editor.field_compilation_text"),
             variable=self._compilation_var,
             onvalue="1",
             offvalue="0",
@@ -521,13 +522,13 @@ class MetadataEditor(ctk.CTkToplevel):
         self._fields["compilation"] = cb
 
         # 9. BPM
-        row = make_row("bpm", 8)
+        row = make_row(t("editor.field_bpm"), 8)
         e = ctk.CTkEntry(row, width=80, **entry_kwargs)
         e.grid(row=0, column=1, sticky="w")
         self._fields["bpm"] = e
 
         # 10. Comentarios (multiline textbox)
-        row = make_row("comentarios", 9)
+        row = make_row(t("editor.field_comments"), 9)
         self._comments_textbox = ctk.CTkTextbox(
             row,
             fg_color=THEME_COLORS["bg_elevated"],
@@ -588,7 +589,7 @@ class MetadataEditor(ctk.CTkToplevel):
 
         self._detalles_tab_btn = ctk.CTkButton(
             tab_bar,
-            text="Detalles",
+            text=t("editor.tab_details"),
             command=lambda: self._switch_tab("detalles"),
             fg_color=THEME_COLORS["primary"],
             text_color=THEME_COLORS["text_primary"],
@@ -599,7 +600,7 @@ class MetadataEditor(ctk.CTkToplevel):
 
         self._ilustracion_tab_btn = ctk.CTkButton(
             tab_bar,
-            text="Ilustración",
+            text=t("editor.tab_artwork"),
             command=lambda: self._switch_tab("ilustracion"),
             fg_color="transparent",
             text_color=THEME_COLORS["text_secondary"],
@@ -610,7 +611,7 @@ class MetadataEditor(ctk.CTkToplevel):
 
         self._archivo_tab_btn = ctk.CTkButton(
             tab_bar,
-            text="Archivo",
+            text=t("editor.tab_file"),
             command=lambda: self._switch_tab("archivo"),
             fg_color="transparent",
             text_color=THEME_COLORS["text_secondary"],
@@ -662,7 +663,7 @@ class MetadataEditor(ctk.CTkToplevel):
         # Subtitle
         ctk.CTkLabel(
             parent,
-            text="Ilustración del álbum",
+            text=t("editor.artwork_label"),
             font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["caption"]),
             text_color=THEME_COLORS["text_secondary"],
             anchor="w",
@@ -683,7 +684,7 @@ class MetadataEditor(ctk.CTkToplevel):
         # Empty state label (centered in frame)
         self._empty_state_label = ctk.CTkLabel(
             self._artwork_frame,
-            text="No hay ilustración cargada",
+            text=t("editor.no_artwork"),
             font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["body"]),
             text_color=THEME_COLORS["text_secondary"],
         )
@@ -701,7 +702,7 @@ class MetadataEditor(ctk.CTkToplevel):
 
         self._add_artwork_btn = ctk.CTkButton(
             btn_frame,
-            text="Añadir ilustración",
+            text=t("editor.add_artwork"),
             command=self._on_add_artwork,
             width=140,
             height=32,
@@ -715,7 +716,7 @@ class MetadataEditor(ctk.CTkToplevel):
 
         self._remove_artwork_btn = ctk.CTkButton(
             btn_frame,
-            text="Eliminar",
+            text=t("editor.remove_artwork"),
             command=self._on_remove_artwork,
             width=80,
             height=32,
@@ -1216,7 +1217,7 @@ class MetadataEditor(ctk.CTkToplevel):
 
         cancel_btn = ctk.CTkButton(
             btn_frame,
-            text="Cancelar",
+            text=t("button.cancel"),
             command=self._cancel,
             width=100,
             height=36,
@@ -1232,7 +1233,7 @@ class MetadataEditor(ctk.CTkToplevel):
 
         save_btn = ctk.CTkButton(
             btn_frame,
-            text="Guardar",
+            text=t("button.save"),
             command=self._save_metadata,
             width=100,
             height=36,
@@ -1585,7 +1586,7 @@ class MetadataEditor(ctk.CTkToplevel):
         """Show an error message in a simple dialog."""
         error_win = ctk.CTkToplevel(self)
         error_win.withdraw()  # Hide until positioned
-        error_win.title("Error")
+        error_win.title(t("editor.error_title"))
         w, h = 350, 120
         error_win.geometry(f"{w}x{h}")
         error_win.resizable(False, False)
@@ -1600,7 +1601,7 @@ class MetadataEditor(ctk.CTkToplevel):
 
         ctk.CTkLabel(
             error_win,
-            text=f"Error al guardar:\n{message}",
+            text=t("editor.save_error", message=message),
             font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["body"]),
             text_color=THEME_COLORS["text_primary"],
             wraplength=300,
@@ -1608,7 +1609,7 @@ class MetadataEditor(ctk.CTkToplevel):
 
         ctk.CTkButton(
             error_win,
-            text="Aceptar",
+            text=t("button.ok"),
             command=error_win.destroy,
             width=80,
             height=32,
@@ -1620,7 +1621,7 @@ class MetadataEditor(ctk.CTkToplevel):
         """Show a warning message (non-blocking, auto-closes parent won't wait)."""
         warn_win = ctk.CTkToplevel(self.master)
         warn_win.withdraw()  # Hide until positioned
-        warn_win.title("Aviso")
+        warn_win.title(t("editor.warning_title"))
         w, h = 380, 120
         warn_win.geometry(f"{w}x{h}")
         warn_win.resizable(False, False)
@@ -1644,7 +1645,7 @@ class MetadataEditor(ctk.CTkToplevel):
 
         ctk.CTkButton(
             warn_win,
-            text="Aceptar",
+            text=t("button.ok"),
             command=warn_win.destroy,
             width=80,
             height=32,

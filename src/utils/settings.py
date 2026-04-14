@@ -15,6 +15,7 @@ _DEFAULTS: Dict[str, Any] = {
     "watcher_folder": "",
     "watcher_auto_start": False,
     "output_device": "",
+    "language": "es",
 }
 
 
@@ -66,6 +67,15 @@ class AppSettings:
     @output_device.setter
     def output_device(self, value: str):
         self._data["output_device"] = value
+        self._save()
+
+    @property
+    def language(self) -> str:
+        return self._data.get("language", "es")
+
+    @language.setter
+    def language(self, value: str):
+        self._data["language"] = value
         self._save()
 
     # ─── Persistence ─────────────────────────────────────────────────

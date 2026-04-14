@@ -38,6 +38,7 @@ from ..utils.constants import (
 from ..utils.file_utils import get_audio_files_from_path
 from ..utils.icon_utils import load_svg_icon
 from ..utils.tk_utils import schedule_callback_from_thread
+from ..utils.i18n import t
 
 
 class MainWindow(ctk.CTkFrame):
@@ -328,7 +329,7 @@ class MainWindow(ctk.CTkFrame):
         # Status label — green for "Listo"
         self.status_label = ctk.CTkLabel(
             self.status_bar,
-            text="Listo",
+            text=t("status.ready"),
             font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["small"]),
             text_color="#6BCB77",
         )
@@ -349,7 +350,7 @@ class MainWindow(ctk.CTkFrame):
         # File count label — Space Mono, muted color
         self.count_label = ctk.CTkLabel(
             self.status_bar,
-            text="0 archivos",
+            text=t("file_count_plural", count=0),
             font=ctk.CTkFont(family=FONT_FAMILY_MONO, size=11),
             text_color=THEME_COLORS["text_muted"],
         )
@@ -386,7 +387,7 @@ class MainWindow(ctk.CTkFrame):
         # Main text
         main_label = ctk.CTkLabel(
             center_frame,
-            text="Arrastra archivos de audio aquí",
+            text=t("drop_zone.instruction"),
             font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZES["heading"], weight="bold"),
             text_color=THEME_COLORS["text_primary"],
         )
@@ -457,8 +458,8 @@ class MainWindow(ctk.CTkFrame):
     def _on_add_files_click(self):
         """Handle add files button click - show menu."""
         menu = tk.Menu(self, tearoff=0)
-        menu.add_command(label="Archivos", command=self._on_select_files)
-        menu.add_command(label="Carpeta", command=self._on_select_folder)
+        menu.add_command(label=t("menu.files"), command=self._on_select_files)
+        menu.add_command(label=t("menu.folder"), command=self._on_select_folder)
 
         x = self.add_files_btn.winfo_rootx()
         y = self.add_files_btn.winfo_rooty() + self.add_files_btn.winfo_height()
@@ -472,7 +473,7 @@ class MainWindow(ctk.CTkFrame):
         ]
 
         files = filedialog.askopenfilenames(
-            title="Seleccionar archivos de audio",
+            title=t("dialog.select_audio_files"),
             filetypes=filetypes,
         )
 
@@ -482,7 +483,7 @@ class MainWindow(ctk.CTkFrame):
     def _on_select_folder(self):
         """Open folder selection dialog."""
         folder = filedialog.askdirectory(
-            title="Seleccionar carpeta con archivos de audio",
+            title=t("dialog.select_audio_folder"),
         )
 
         if folder:
@@ -497,7 +498,7 @@ class MainWindow(ctk.CTkFrame):
         # Get existing filepaths to avoid duplicates
         existing_filepaths = set(self.results_table.get_ordered_filepaths())
 
-        self.status_label.configure(text="Escaneando archivos...")
+        self.status_label.configure(text=t("status.scanning_files"))
 
         def scan_files():
             all_files = []
@@ -523,7 +524,7 @@ class MainWindow(ctk.CTkFrame):
         if self._watcher_active:
             self._restore_watcher_status()
         else:
-            self.status_label.configure(text="Listo")
+            self.status_label.configure(text=t("status.ready"))
         if files:
             self._on_files_added(files)
 
@@ -596,7 +597,7 @@ class MainWindow(ctk.CTkFrame):
             progress = completed / total if total > 0 else 0
             self.progress_bar.set(progress)
             self.status_label.configure(
-                text=f"Analizando: {current_file} ({completed}/{total})"
+                text=t("status.analyzing_detail", current_file=current_file, completed=completed, total=total)
             )
             self._analysis_overlay.update_progress(completed, total, current_file)
             self._update_count()
@@ -641,7 +642,7 @@ class MainWindow(ctk.CTkFrame):
             if self._watcher_active:
                 self._restore_watcher_status()
             else:
-                self.status_label.configure(text="Listo", text_color="#6BCB77")
+                self.status_label.configure(text=t("status.ready"), text_color="#6BCB77")
                 self._status_dot.configure(text_color="#6BCB77")
             if self.on_analyzing_changed:
                 self.on_analyzing_changed(False)
@@ -662,8 +663,8 @@ class MainWindow(ctk.CTkFrame):
             return
 
         if not messagebox.askyesno(
-            "Confirmar limpieza",
-            f"¿Estás seguro? Se borrarán {count} resultados.",
+            t("dialog.confirm_clear_title"),
+            t("dialog.confirm_clear_message", count=count),
             default=messagebox.NO
         ):
             return
@@ -702,7 +703,8 @@ class MainWindow(ctk.CTkFrame):
     def _update_count(self):
         """Update the file count label."""
         count = self.results_table.get_results_count()
-        text = f"{count} archivo{'s' if count != 1 else ''}"
+        key = "file_count_plural" if count != 1 else "file_count"
+        text = t(key, count=count)
         self.count_label.configure(text=text)
 
     def remove_selected_file(self):
@@ -725,48 +727,48 @@ class MainWindow(ctk.CTkFrame):
         if len(selected) == 1:
             result = selected[0]
             menu.add_command(
-                label="Abrir espectrograma",
+                label=t("context_menu.open_spectrogram"),
                 command=self._on_show_spectrogram,
             )
             menu.add_command(
-                label="Ver información",
+                label=t("context_menu.view_info"),
                 command=self._on_edit_metadata,
             )
             menu.add_command(
-                label="Volver a analizar",
+                label=t("context_menu.reanalyze"),
                 command=lambda fp=result.filepath: self._reanalyze_files([fp]),
             )
             menu.add_command(
-                label="Copiar ruta",
+                label=t("context_menu.copy_path"),
                 command=lambda fp=result.filepath: self._copy_path_to_clipboard(fp),
             )
-            finder_label = "Mostrar en Finder" if sys.platform == "darwin" else "Mostrar en Explorador"
+            finder_key = "context_menu.show_in_finder" if sys.platform == "darwin" else "context_menu.show_in_explorer"
             menu.add_command(
-                label=finder_label,
+                label=t(finder_key),
                 command=lambda fp=result.filepath: self._show_in_file_manager(fp),
             )
             menu.add_separator()
             menu.add_command(
-                label="Quitar de la lista",
+                label=t("context_menu.remove_from_list"),
                 command=lambda fp=result.filepath: self._remove_files_from_list([fp]),
             )
             menu.add_command(
-                label="Mover a la papelera",
+                label=t("context_menu.move_to_trash"),
                 command=lambda fp=result.filepath: self._move_to_trash([fp]),
             )
         else:
             filepaths = [r.filepath for r in selected]
             menu.add_command(
-                label="Volver a analizar",
+                label=t("context_menu.reanalyze"),
                 command=lambda fps=filepaths: self._reanalyze_files(fps),
             )
             menu.add_separator()
             menu.add_command(
-                label="Quitar de la lista",
+                label=t("context_menu.remove_from_list"),
                 command=lambda fps=filepaths: self._remove_files_from_list(fps),
             )
             menu.add_command(
-                label="Mover a la papelera",
+                label=t("context_menu.move_to_trash"),
                 command=lambda fps=filepaths: self._move_to_trash(fps),
             )
 
@@ -818,12 +820,12 @@ class MainWindow(ctk.CTkFrame):
         """Move files to system trash with confirmation."""
         if len(filepaths) == 1:
             filename = os.path.basename(filepaths[0])
-            msg = f"¿Mover «{filename}» a la papelera?"
+            msg = t("dialog.move_to_trash_single", filename=filename)
         else:
-            msg = f"¿Mover {len(filepaths)} archivos a la papelera?"
+            msg = t("dialog.move_to_trash_multiple", count=len(filepaths))
 
         confirmed = messagebox.askokcancel(
-            title="Mover a la papelera",
+            title=t("dialog.move_to_trash_title"),
             message=msg,
             parent=self.winfo_toplevel(),
         )
@@ -935,7 +937,7 @@ class MainWindow(ctk.CTkFrame):
     def _restore_watcher_status(self):
         """Restore status bar to show watcher-active state."""
         name = getattr(self, "_watcher_folder_name", "")
-        text = f"Monitorizando: {name}" if name else "Monitorizando carpeta"
+        text = t("status.monitoring_folder", name=name) if name else t("status.monitoring_default")
         self.status_label.configure(text=text, text_color="#5DB88C")
         self._status_dot.configure(text_color="#5DB88C")
 

@@ -7,6 +7,7 @@ from typing import Callable, Optional
 import customtkinter as ctk
 from PIL import Image, ImageTk
 
+from ..utils.i18n import t
 from ..utils.constants import (
     FONT_FAMILY,
     FONT_FAMILY_MONO,
@@ -86,7 +87,7 @@ class AnalysisOverlay(ctk.CTkFrame):
         # Title
         self._title_label = ctk.CTkLabel(
             center,
-            text="Analizando archivos...",
+            text=t("overlay.title"),
             font=ctk.CTkFont(family=FONT_FAMILY, size=16),
             text_color=OVERLAY_COLORS["text_title"],
         )
@@ -111,7 +112,7 @@ class AnalysisOverlay(ctk.CTkFrame):
         # Counter label
         self._counter_label = ctk.CTkLabel(
             center,
-            text="0 / 0 archivos",
+            text=t("overlay.counter", completed=0, total=0),
             font=ctk.CTkFont(family=FONT_FAMILY_MONO, size=12),
             text_color=OVERLAY_COLORS["text_counter"],
         )
@@ -130,7 +131,7 @@ class AnalysisOverlay(ctk.CTkFrame):
         # Cancel button
         self._cancel_btn = ctk.CTkButton(
             center,
-            text="Cancelar",
+            text=t("button.cancel"),
             font=ctk.CTkFont(family=FONT_FAMILY, size=13),
             width=100,
             height=32,
@@ -153,7 +154,7 @@ class AnalysisOverlay(ctk.CTkFrame):
     def show(self, total_files: int):
         """Show the overlay and start the spinner."""
         self._total_files = total_files
-        self._counter_label.configure(text=f"0 / {total_files} archivos")
+        self._counter_label.configure(text=t("overlay.counter", completed=0, total=total_files))
         self._filename_label.configure(text="")
         self._draw_progress(0)
         self.place(relx=0, rely=0, relwidth=1, relheight=1)
@@ -170,7 +171,7 @@ class AnalysisOverlay(ctk.CTkFrame):
         self._total_files = total
         fraction = completed / total if total > 0 else 0
         self._draw_progress(fraction)
-        self._counter_label.configure(text=f"{completed} / {total} archivos")
+        self._counter_label.configure(text=t("overlay.counter", completed=completed, total=total))
         # Show just filename, not full path
         import os
         self._filename_label.configure(text=os.path.basename(current_file))
