@@ -477,6 +477,7 @@ class ResultsTable(ctk.CTkFrame):
         # Auto-resize state (distribute extra width to filename column)
         self._resize_table_timer = None
         self._last_table_width = 0
+        self._resize_active = False
 
         # Search/filter state
         self._filter_text: str = ""
@@ -560,6 +561,22 @@ class ResultsTable(ctk.CTkFrame):
         )
         self.scroll_frame.grid(row=1, column=0, sticky="nsew")
 
+        # Throttle canvas→inner-frame width propagation so that during
+        # continuous window resize, the 90+ packed rows don't re-layout
+        # on every single frame.  Only the final width is applied.
+        self._canvas_fit_timer = None
+        canvas = self.scroll_frame._parent_canvas
+        window_id = self.scroll_frame._create_window_id
+
+        def _throttled_canvas_fit(event):
+            if self._canvas_fit_timer is not None:
+                self.after_cancel(self._canvas_fit_timer)
+            self._canvas_fit_timer = self.after(
+                100, lambda: self._apply_canvas_width(canvas, window_id)
+            )
+
+        canvas.bind("<Configure>", _throttled_canvas_fit)
+
         # Configure scroll frame columns to match header
         for i in range(len(self.COLUMNS)):
             self.scroll_frame.grid_columnconfigure(i, weight=0)
@@ -571,19 +588,57 @@ class ResultsTable(ctk.CTkFrame):
 
     # ─── Auto-resize ─────────────────────────────────────────────────
 
+    def _apply_canvas_width(self, canvas, window_id):
+        """Deferred: propagate canvas width to the inner frame."""
+        self._canvas_fit_timer = None
+        try:
+            canvas.itemconfigure(window_id, width=canvas.winfo_width())
+        except Exception:
+            pass
+
     def _on_table_configure(self, event):
-        """Expand filename column to fill available width on resize."""
+        """Expand filename column to fill available width on resize.
+
+        During continuous window resize with many rows, temporarily detach
+        the scroll frame from the grid so tkinter skips geometry/rendering
+        for ~1400 child widgets.  The frame snaps back 150 ms after the
+        last Configure event.
+        """
         # Don't interfere with manual column drag
         if self._resize_col >= 0:
             return
-        # Debounce all Configure events into a single check
+        # Detach scroll frame on the first resize event (only when rows exist)
+        if not self._resize_active and self._rows:
+            self._resize_active = True
+            self.scroll_frame.grid_remove()
+        # Debounce: schedule restoration after resize ends
         if self._resize_table_timer is not None:
             self.after_cancel(self._resize_table_timer)
-        self._resize_table_timer = self.after(50, self._check_and_distribute_width)
+        self._resize_table_timer = self.after(150, self._finish_resize)
+
+    def _finish_resize(self):
+        """Restore scroll frame and sync widths after resize ends."""
+        self._resize_table_timer = None
+        if self._resize_active:
+            self._resize_active = False
+            self.scroll_frame.grid()
+            # Let grid settle before syncing widths
+            self.after(20, self._sync_after_resize)
+        else:
+            self._check_and_distribute_width()
+
+    def _sync_after_resize(self):
+        """Sync inner frame and column widths after grid restore."""
+        try:
+            canvas = self.scroll_frame._parent_canvas
+            wid = self.scroll_frame._create_window_id
+            canvas.itemconfigure(wid, width=canvas.winfo_width())
+        except Exception:
+            pass
+        self._check_and_distribute_width()
 
     def _check_and_distribute_width(self):
         """Check actual width and redistribute space to filename column."""
-        self._resize_table_timer = None
         try:
             new_width = self.winfo_width()
         except Exception:
@@ -599,8 +654,8 @@ class ResultsTable(ctk.CTkFrame):
         if abs(new_filename_width - self._column_widths[0]) < 3:
             return
         self._column_widths[0] = new_filename_width
-        self._apply_column_widths()
-        self._refresh_all_text()
+        self._apply_filename_width()
+        self._refresh_filename_text()
 
     # ─── Search / Filter ────────────────────────────────────────────
 
@@ -906,6 +961,27 @@ class ResultsTable(ctk.CTkFrame):
         """Re-truncate text in all rows based on current column widths."""
         for row in self._rows.values():
             row.refresh_text()
+
+    def _apply_filename_width(self):
+        """Update only the filename column width (column 0) in header and rows."""
+        width = self._column_widths[0]
+        col_id = self.COLUMNS[0][0]
+        self._header_cells[0].configure(width=width)
+        self.header_frame.grid_columnconfigure(0, weight=1, minsize=width)
+        for row in self._rows.values():
+            cell_frame = row._cell_frames.get(col_id)
+            if cell_frame:
+                cell_frame.configure(width=width)
+            row.grid_columnconfigure(0, weight=1, minsize=width)
+            row._columns[0][2] = width
+
+    def _refresh_filename_text(self):
+        """Re-truncate only filename text in all rows."""
+        width = self._column_widths[0]
+        for row in self._rows.values():
+            cell = row._cells.get("filename")
+            if cell:
+                cell.configure(text=row._get_value("filename", width))
 
     def _on_row_click(self, row: ResultRow, event=None):
         """Handle row click for selection with modifier key support."""
