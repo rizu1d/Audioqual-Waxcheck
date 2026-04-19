@@ -100,7 +100,7 @@ class FolderWatcher:
 
             self._observer = PollingObserver(timeout=_POLLING_INTERVAL)
             self._observer.daemon = True
-            self._observer.schedule(handler, folder_path, recursive=False)
+            self._observer.schedule(handler, folder_path, recursive=True)
 
             try:
                 self._observer.start()
