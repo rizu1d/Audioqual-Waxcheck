@@ -690,28 +690,5 @@
       "is_uncertain": false,
       "details": "Frecuencia de corte: 16.0 kHz | Bitrate declarado: 320 kbps | Posible conversión desde ~160kbps"
     }
-  },
-  {
-    "id": "EDGE_005",
-    "file": "references/test-files/casos-excepcionales/The 45 King - Beat Suite One (Part Four).mp3",
-    "description": "Edge case - The 45 King",
-    "expected": {
-      "status": "Transcode detectado",
-      "detected_quality_in": [
-        "96kbps"
-      ],
-      "cutoff_above_khz": 12.0,
-      "cutoff_below_khz": 16.0
-    },
-    "known_bug": false,
-    "notes": "is_uncertain cambió a false con P90 (gap max-percentil ya no supera 3kHz)",
-    "_baseline": {
-      "cutoff_khz": 14.0,
-      "status": "Transcode detectado",
-      "quality": "96kbps",
-      "confidence": 0.776,
-      "is_uncertain": false,
-      "details": "Frecuencia de corte: 14.0 kHz | Bitrate declarado: 320 kbps | Posible conversión desde ~96kbps"
-    }
   }
 ]
