@@ -48,6 +48,7 @@ from ..utils.constants import (
     TRANSITION_CUMULATIVE_DROP_DB,
     TRANSITION_RECOVERY_CONSECUTIVE_BANDS,
     TRANSITION_RECOVERY_MIN_VARIANCE,
+    GRADUAL_ROLLOFF_GRADIENT_DB_PER_KHZ,
 )
 
 
@@ -1260,9 +1261,9 @@ def find_cutoff_by_transition(
             # If current band is musical and two bands ahead is clearly noise,
             # we're at the start of a gradual transition
             has_two_band_transition = variance_two_ahead < 0.2 and variance_high < 0.5
-            # At high frequencies (>=18kHz), natural rolloff can look like a
+            # At high frequencies (>=17kHz), natural rolloff can look like a
             # two-band transition. Guard: the detection point must not be musical.
-            if has_two_band_transition and freq_high >= 18000:
+            if has_two_band_transition and freq_high >= 17000:
                 if variance_high >= get_min_pre_variance(freq_high):
                     has_two_band_transition = False
 
@@ -1301,7 +1302,9 @@ def find_cutoff_by_transition(
         if is_musical_content and i + VARIANCE_DECAY_WINDOW < len(band_stats):
             _, _, variance_end = band_stats[i + VARIANCE_DECAY_WINDOW]
             total_drop_ratio = (variance_low - variance_end) / variance_low if variance_low > 0.1 else 0.0
-            if total_drop_ratio >= VARIANCE_DECAY_MIN_DROP and variance_end < VARIANCE_DECAY_END_MAX:
+            end_freq = band_stats[i + VARIANCE_DECAY_WINDOW][0]
+            decay_end_max = min(VARIANCE_DECAY_END_MAX, get_min_pre_variance(end_freq))
+            if total_drop_ratio >= VARIANCE_DECAY_MIN_DROP and variance_end < decay_end_max:
                 # Verify monotonically decreasing (small tolerance for noise)
                 all_declining = True
                 for k in range(1, VARIANCE_DECAY_WINDOW + 1):
@@ -1519,6 +1522,50 @@ def analyze_frequency_cutoff(
                 # Confirmed noise-plateau: bands between cutoffs lack musical content
                 cutoff_hz = cutoff_segment
                 confidence = conf_segment
+        elif (cutoff_segment > cutoff_transition + 2000 and conf_segment >= 0.6):
+            # Gradual-rolloff guard: transition detected much lower than segments.
+            # Real codec cutoffs show energy dropping to noise floor within 1-2 kHz.
+            # Natural spectral rolloff keeps energy elevated for many kHz.
+            # Check two signals:
+            # A. Musical variance persists for 3+ bands after cutoff
+            # B. Energy stays above noise floor for 4+ kHz after cutoff
+            musical_band_count = 0
+            elevated_band_count = 0
+            check_freq = cutoff_transition
+            noise_floor_threshold = -79.0
+            while check_freq + TRANSITION_BAND_WIDTH_HZ <= cutoff_segment:
+                band_energy = compute_band_energy_simple(
+                    spectrogram_db, frequencies,
+                    check_freq, check_freq + TRANSITION_BAND_WIDTH_HZ
+                )
+                band_var = compute_band_temporal_variance(
+                    spectrogram_db, frequencies,
+                    check_freq, check_freq + TRANSITION_BAND_WIDTH_HZ,
+                    active_frames_mask, ref_std
+                )
+                freq_range = TRANSITION_VARIANCE_FREQ_HIGH_HZ - TRANSITION_VARIANCE_FREQ_LOW_HZ
+                if check_freq <= TRANSITION_VARIANCE_FREQ_LOW_HZ:
+                    min_var = TRANSITION_MIN_PRE_VARIANCE
+                elif check_freq >= TRANSITION_VARIANCE_FREQ_HIGH_HZ:
+                    min_var = TRANSITION_MIN_PRE_VARIANCE_HIGH_FREQ
+                else:
+                    t = (check_freq - TRANSITION_VARIANCE_FREQ_LOW_HZ) / freq_range
+                    min_var = TRANSITION_MIN_PRE_VARIANCE + t * (
+                        TRANSITION_MIN_PRE_VARIANCE_HIGH_FREQ - TRANSITION_MIN_PRE_VARIANCE
+                    )
+                if band_var >= min_var:
+                    musical_band_count += 1
+                if band_energy > noise_floor_threshold:
+                    elevated_band_count += 1
+                check_freq += TRANSITION_BAND_WIDTH_HZ
+
+            elevated_khz = elevated_band_count * TRANSITION_BAND_WIDTH_HZ / 1000.0
+            if musical_band_count >= 3 or elevated_khz >= 4.0:
+                cutoff_hz = cutoff_segment
+                confidence = conf_segment * 0.95
+            else:
+                cutoff_hz = cutoff_transition
+                confidence = conf_transition
         else:
             cutoff_hz = cutoff_transition
             confidence = conf_transition

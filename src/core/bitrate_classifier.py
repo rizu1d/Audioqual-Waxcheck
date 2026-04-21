@@ -233,18 +233,26 @@ def assess_quality(
     # Lossless format special handling: genuine lossless files with high cutoff
     is_lossless_format = metadata.format.upper() in ["FLAC", "WAV", "AIFF"]
     display_cutoff_override = None
-    if is_lossless_format and cutoff_khz >= 18.0:
+    if is_lossless_format and cutoff_khz >= 20.5:
         detected_quality = "lossless"
         display_cutoff_override = ">20 kHz"
+    elif is_lossless_format and cutoff_khz >= 18.0:
+        if cutoff_khz >= 19.5 or confidence < CONFIDENCE_HIGH:
+            detected_quality = "lossless"
+            display_cutoff_override = ">20 kHz"
 
     # Guard: lossless format with naturally limited content (drums, percussion, short samples)
     # Short samples or files with very low energy at cutoff have natural frequency limitations,
     # not brick-wall codec artifacts. Skip transcode detection for these.
     skip_transcode_check = False
-    if is_lossless_format and cutoff_khz < 18.0:
+    if is_lossless_format:
         is_short = metadata.duration < MIN_LOSSLESS_TRANSCODE_DURATION_S
         has_low_energy = frequency_analysis.energy_at_cutoff_db < LOSSLESS_NATURAL_ENERGY_CEILING_DB
-        if is_short or has_low_energy:
+        if cutoff_khz < 18.0 and (is_short or has_low_energy):
+            detected_quality = "lossless"
+            display_cutoff_override = ">20 kHz"
+            skip_transcode_check = True
+        elif is_short and detected_quality != "lossless":
             detected_quality = "lossless"
             display_cutoff_override = ">20 kHz"
             skip_transcode_check = True

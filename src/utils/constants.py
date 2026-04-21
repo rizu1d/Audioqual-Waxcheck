@@ -100,6 +100,10 @@ TRANSITION_CUMULATIVE_DROP_DB = 12.0      # Total dB drop across those bands
 TRANSITION_RECOVERY_CONSECUTIVE_BANDS = 2  # Must have 2 consecutive bands with real content
 TRANSITION_RECOVERY_MIN_VARIANCE = 0.3     # Each recovery band must have variance >= this
 
+# Gradual-rolloff guard: when transition << segments, check energy gradient
+# after the transition cutoff. If gradient < this threshold, it's natural rolloff.
+GRADUAL_ROLLOFF_GRADIENT_DB_PER_KHZ = 3.0  # dB/kHz — below this = gradual (not codec)
+
 # MP3 bitrate → maximum physically possible cutoff frequency (kHz)
 # Based on LAME and other MP3 encoder low-pass filter behavior.
 # Used as a safety net: if detected cutoff exceeds this, it's physically impossible.
