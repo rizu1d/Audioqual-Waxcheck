@@ -122,12 +122,12 @@ CHECKS (VUI_001 a VUI_015):
 MODOS DE EJECUCION:
 
   Standalone:
-    python tests/verify_ui.py
+    python3 tests/verify_ui.py
     -> Output legible con colores: [OK] / [FAIL] por check
     -> Exit code 0 si todo pasa, 1 si hay fallos
 
   JSON (para integracion con run_tests.py):
-    python tests/verify_ui.py --json
+    python3 tests/verify_ui.py --json
     -> Output JSON con lista de resultados
     -> Usado por run_tests.py via subprocess
 
@@ -259,9 +259,9 @@ contiene la tabla de decision que Claude lee en cada sesion:
   |-----------------------------|--------------------------------------------|
   | UI changes                  | bash tests/quick_check.sh                  |
   | Algorithm/constants         | bash tests/full_check.sh                   |
-  | Simple bugfix (1-2 files)   | python tests/verify_implementation.py --quick |
+  | Simple bugfix (1-2 files)   | python3 tests/verify_implementation.py --quick |
   | Large refactor (3+ files)   | bash tests/full_check.sh                   |
-  | Docs/configs only           | python tests/verify_implementation.py --quick |
+  | Docs/configs only           | python3 tests/verify_implementation.py --quick |
 
 Regla: Claude nunca reporta una tarea como completada sin ejecutar la
 verificacion correspondiente.

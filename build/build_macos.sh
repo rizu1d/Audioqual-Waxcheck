@@ -33,7 +33,7 @@ rm -rf dist/WaxCheck dist/WaxCheck.app build/WaxCheck 2>/dev/null || true
 
 # ── 2. Run PyInstaller ──
 echo "→ Running PyInstaller..."
-python -m PyInstaller build/waxcheck_macos.spec --noconfirm --clean
+python3 -m PyInstaller build/waxcheck_macos.spec --noconfirm --clean
 
 echo ""
 if [ -d "dist/WaxCheck.app" ]; then

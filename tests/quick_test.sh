@@ -1,3 +1,3 @@
 #!/bin/bash
 cd "$(dirname "$0")/.."
-python tests/run_tests.py --summary
+python3 tests/run_tests.py --summary

@@ -14,23 +14,23 @@ Genera variantes de audio desde archivos lossless, las analiza con AudioAnalyzer
 cp ~/Music/track.wav evaluation/originals/
 
 # 2. Generar variantes (11 por archivo fuente)
-python evaluation/generate_dataset.py
+python3 evaluation/generate_dataset.py
 
 # 3. Analizar variantes y producir CSV
-python evaluation/evaluate.py
+python3 evaluation/evaluate.py
 
 # 4. Generar informe HTML (se abre en navegador)
-python evaluation/report.py
+python3 evaluation/report.py
 ```
 
 ## Opciones
 
 ```bash
 # Regenerar variantes existentes
-python evaluation/generate_dataset.py --force
+python3 evaluation/generate_dataset.py --force
 
 # Solo mostrar resumen (sin detalle por archivo)
-python evaluation/evaluate.py --summary
+python3 evaluation/evaluate.py --summary
 ```
 
 ## Variantes generadas

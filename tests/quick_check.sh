@@ -6,12 +6,12 @@ cd "$(dirname "$0")/.."
 echo "=== WaxCheck Quick Check ==="
 echo ""
 
-python tests/verify_implementation.py --quick
+python3 tests/verify_implementation.py --quick
 QUICK=$?
 
 echo ""
 echo "--- Algorithm Tests ---"
-python tests/run_tests.py --summary
+python3 tests/run_tests.py --summary
 ALGO=$?
 
 echo ""

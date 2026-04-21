@@ -6,5 +6,5 @@ cd "$(dirname "$0")/.."
 echo "=== WaxCheck Full Verification ==="
 echo ""
 
-python tests/verify_implementation.py --full
+python3 tests/verify_implementation.py --full
 exit $?

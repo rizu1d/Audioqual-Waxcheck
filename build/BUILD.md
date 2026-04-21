@@ -4,11 +4,11 @@
 
 ```bash
 # Python 3.9+ con pip
-python --version   # >= 3.9
+python3 --version   # >= 3.9
 
 # Instalar dependencias del proyecto + PyInstaller
-pip install -r requirements.txt
-pip install pyinstaller
+python3 -m pip install -r requirements.txt
+python3 -m pip install pyinstaller
 ```
 
 ## Build macOS
