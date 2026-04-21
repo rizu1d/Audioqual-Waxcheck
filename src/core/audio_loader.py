@@ -1,5 +1,6 @@
 """Audio file loading and metadata extraction."""
 
+import struct
 from dataclasses import dataclass
 from math import gcd
 from pathlib import Path
@@ -8,7 +9,7 @@ from typing import Optional, Tuple
 import librosa
 import numpy as np
 from mutagen import File as MutagenFile
-from mutagen.mp3 import MP3
+from mutagen.mp3 import MP3, HeaderNotFoundError
 from mutagen.flac import FLAC
 from mutagen.wave import WAVE
 from mutagen.aiff import AIFF
@@ -25,6 +26,59 @@ except ImportError:
 
 # Formats that soundfile (libsndfile) can read natively
 _SOUNDFILE_FORMATS = {'wav', 'flac', 'ogg', 'aiff', 'aif'}
+
+# Valid MPEG audio version/layer combinations for sync word validation
+_MPEG_SYNC_MASK = 0xFFE00000  # 11 sync bits
+
+
+def _validate_mp3_file(filepath: str) -> None:
+    """Pre-validate MP3 file to avoid C-level crashes (SIGBUS) in libmpg123.
+
+    Checks:
+    1. Mutagen can parse the MP3 headers (catches HeaderNotFoundError)
+    2. File has valid MPEG sync words (not just null bytes)
+
+    Raises:
+        ValueError: If the file is corrupted or invalid.
+    """
+    # Check 1: mutagen strict parse
+    try:
+        mp3 = MP3(filepath)
+        if mp3.info.length <= 0:
+            raise ValueError(f"Archivo MP3 corrupto: duración inválida")
+    except HeaderNotFoundError:
+        raise ValueError(f"Archivo MP3 corrupto: no se encontró header MPEG válido")
+    except Exception as e:
+        raise ValueError(f"Archivo MP3 corrupto: {e}")
+
+    # Check 2: scan for null-header pattern that causes SIGBUS
+    # Read chunks and look for large runs of null bytes in audio data
+    try:
+        file_size = Path(filepath).stat().st_size
+        # Sample 3 positions: start (after ID3), middle, near end
+        with open(filepath, 'rb') as f:
+            # Skip ID3v2 tag if present
+            header = f.read(10)
+            offset = 0
+            if header[:3] == b'ID3':
+                tag_size = (header[6] << 21 | header[7] << 14 |
+                            header[8] << 7 | header[9])
+                offset = tag_size + 10
+
+            # Check a few positions for null-filled regions
+            check_size = 4096
+            positions = [offset, file_size // 2, max(0, file_size - check_size)]
+            for pos in positions:
+                f.seek(pos)
+                chunk = f.read(check_size)
+                if len(chunk) >= 2048 and chunk.count(b'\x00') > len(chunk) * 0.95:
+                    raise ValueError(
+                        f"Archivo MP3 corrupto: región de bytes nulos detectada"
+                    )
+    except ValueError:
+        raise
+    except Exception:
+        pass  # File read issues will be caught by librosa anyway
 
 
 @dataclass
@@ -148,6 +202,10 @@ def load_audio(filepath: str, target_sr: int = SAMPLE_RATE) -> AudioData:
     metadata = get_audio_metadata(filepath)
 
     ext = get_file_extension(filepath)
+
+    # Pre-validate MP3 files to prevent C-level crashes (SIGBUS)
+    if ext == 'mp3':
+        _validate_mp3_file(filepath)
 
     # Fast path: soundfile for lossless/native formats
     if HAS_SOUNDFILE and ext in _SOUNDFILE_FORMATS:
