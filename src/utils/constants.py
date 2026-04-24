@@ -104,6 +104,15 @@ TRANSITION_RECOVERY_MIN_VARIANCE = 0.3     # Each recovery band must have varian
 # after the transition cutoff. If gradient < this threshold, it's natural rolloff.
 GRADUAL_ROLLOFF_GRADIENT_DB_PER_KHZ = 3.0  # dB/kHz — below this = gradual (not codec)
 
+# Brickwall verification: after detecting a cutoff, verify it has codec characteristics.
+# Real transcodes: steep gradient (>12 dB/kHz) AND low post-cutoff variance (<3).
+# Natural rolloff: gentle gradient (<10 dB/kHz) AND sustained variance (>5).
+BRICKWALL_MIN_GRADIENT_DB_PER_KHZ = 9.0
+BRICKWALL_MAX_POST_VARIANCE = 0.5
+BRICKWALL_ELEVATED_ENERGY_DB = -76.0
+BRICKWALL_OVERRIDE_ENERGY_DB = -65.0
+BRICKWALL_ELEVATED_RATIO = 0.5
+
 # MP3 bitrate → maximum physically possible cutoff frequency (kHz)
 # Based on LAME and other MP3 encoder low-pass filter behavior.
 # Used as a safety net: if detected cutoff exceeds this, it's physically impossible.
@@ -297,4 +306,4 @@ OVERLAY_BAR_HEIGHT = 6
 # Short samples or files with very low energy at cutoff are likely naturally
 # limited content (drums, percussion), not transcodes from lossy codecs.
 MIN_LOSSLESS_TRANSCODE_DURATION_S = 30.0
-LOSSLESS_NATURAL_ENERGY_CEILING_DB = -77.0
+LOSSLESS_NATURAL_ENERGY_CEILING_DB = -75.0

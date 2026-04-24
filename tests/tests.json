@@ -78,8 +78,8 @@
       ],
       "cutoff_below_khz": 18.5
     },
-    "known_bug": false,
-    "notes": "",
+    "known_bug": true,
+    "notes": "MusicScope verificó que no es transcode — expectativa original basada en Spek era incorrecta",
     "_baseline": {
       "cutoff_khz": 17.0,
       "status": "Transcode detectado",
@@ -100,8 +100,8 @@
       ],
       "cutoff_below_khz": 17.5
     },
-    "known_bug": false,
-    "notes": "Anteriormente no detectado, ahora funciona correctamente",
+    "known_bug": true,
+    "notes": "MusicScope verificó que no es transcode — expectativa original basada en Spek era incorrecta",
     "_baseline": {
       "cutoff_khz": 16.0,
       "status": "Transcode detectado",
@@ -364,8 +364,8 @@
       ],
       "cutoff_below_khz": 16.5
     },
-    "known_bug": false,
-    "notes": "",
+    "known_bug": true,
+    "notes": "MusicScope verificó que no es transcode — expectativa original basada en Spek era incorrecta",
     "_baseline": {
       "cutoff_khz": 15.0,
       "status": "Transcode detectado",
@@ -452,8 +452,8 @@
       ],
       "cutoff_below_khz": 15.5
     },
-    "known_bug": false,
-    "notes": "",
+    "known_bug": true,
+    "notes": "Rolloff gradual sin brickwall, peak energy persistente - indistinguible de rolloff natural sin metadata",
     "_baseline": {
       "cutoff_khz": 14.0,
       "status": "Transcode detectado",
@@ -680,8 +680,8 @@
       "cutoff_above_khz": 14.0,
       "cutoff_below_khz": 18.0
     },
-    "known_bug": false,
-    "notes": "",
+    "known_bug": true,
+    "notes": "MusicScope verificó que no es transcode — expectativa original basada en Spek era incorrecta",
     "_baseline": {
       "cutoff_khz": 16.0,
       "status": "Transcode detectado",
@@ -690,5 +690,131 @@
       "is_uncertain": false,
       "details": "Frecuencia de corte: 16.0 kHz | Bitrate declarado: 320 kbps | Posible conversión desde ~160kbps"
     }
+  },
+  {
+    "id": "BASE_004b",
+    "file": "references/test-files/base/notaiff-detected.aiff",
+    "description": "AIFF legítimo con rolloff natural (verificado MusicScope)",
+    "expected": {
+      "status": "Lossless",
+      "detected_quality_in": [
+        "lossless"
+      ],
+      "cutoff_above_khz": 17.0
+    },
+    "known_bug": false,
+    "notes": "Reemplaza BASE_004. MusicScope confirma contenido hasta 22kHz sin brickwall",
+    "_baseline": {
+      "cutoff_khz": 17.5,
+      "status": "Transcode detectado",
+      "quality": "192kbps",
+      "confidence": 0.835,
+      "is_uncertain": false,
+      "details": "Pre-fix baseline"
+    }
+  },
+  {
+    "id": "BASE_005b",
+    "file": "references/test-files/base/notaiff-undetected.aiff",
+    "description": "AIFF legítimo con rolloff natural (verificado MusicScope)",
+    "expected": {
+      "status": "Lossless",
+      "detected_quality_in": [
+        "lossless"
+      ],
+      "cutoff_above_khz": 17.0
+    },
+    "known_bug": false,
+    "notes": "Reemplaza BASE_005. MusicScope confirma contenido hasta 22kHz sin brickwall",
+    "_baseline": {
+      "cutoff_khz": 16.0,
+      "status": "Transcode detectado",
+      "quality": "160kbps",
+      "confidence": 0.83,
+      "is_uncertain": false,
+      "details": "Pre-fix baseline"
+    }
+  },
+  {
+    "id": "YT_008b",
+    "file": "references/test-files/youtuberips/poppa large acapella ultramagnetic mcs.mp3",
+    "description": "YouTube rip con rolloff natural persistente - resultado incierto",
+    "expected": {
+      "status": "Incierto",
+      "detected_quality_in": [
+        "256kbps",
+        "320kbps"
+      ],
+      "is_uncertain": true
+    },
+    "known_bug": false,
+    "notes": "Reemplaza YT_008. Contenido persistente >-65dB hasta 19kHz sugiere rolloff natural",
+    "_baseline": {
+      "cutoff_khz": 15.0,
+      "status": "Transcode detectado",
+      "quality": "128kbps",
+      "confidence": 0.839,
+      "is_uncertain": false,
+      "details": "Pre-fix baseline"
+    }
+  },
+  {
+    "id": "EDGE_004b",
+    "file": "references/test-files/casos-excepcionales/Plaisir de France - Américaine (2002 Mix).mp3",
+    "description": "MP3 legítimo con rolloff natural (verificado MusicScope)",
+    "expected": {
+      "status": "OK",
+      "detected_quality_in": [
+        "256kbps",
+        "320kbps"
+      ],
+      "cutoff_above_khz": 18.0
+    },
+    "known_bug": false,
+    "notes": "Reemplaza EDGE_004. MusicScope confirma rolloff natural sin brickwall",
+    "_baseline": {
+      "cutoff_khz": 16.0,
+      "status": "Transcode detectado",
+      "quality": "160kbps",
+      "confidence": 0.809,
+      "is_uncertain": false,
+      "details": "Pre-fix baseline"
+    }
+  },
+  {
+    "id": "CLU4_001",
+    "file": "references/test-files/errores/cluster-4/19 - Tyson Bruun - Future.mp3",
+    "description": "MP3 320 con rolloff natural a 18kHz - no es transcode",
+    "expected": {
+      "status": "OK",
+      "detected_quality_in": ["320kbps", "256kbps"],
+      "cutoff_above_khz": 18.0
+    },
+    "known_bug": false,
+    "notes": "Rolloff natural de mezcla, MusicScope confirma contenido hasta 17.5kHz"
+  },
+  {
+    "id": "CLU4_002",
+    "file": "references/test-files/miron/Nicolás Mirón - Hi-Tech Thoughts - 01 Pirate Material.mp3",
+    "description": "MP3 320 con pocos frames activos - rolloff natural, no transcode",
+    "expected": {
+      "status": "OK",
+      "detected_quality_in": ["320kbps", "256kbps"],
+      "cutoff_above_khz": 18.0
+    },
+    "known_bug": false,
+    "notes": "Solo 10.5% frames activos, peak energy muestra contenido real hasta 20kHz"
+  },
+  {
+    "id": "CLU4_003",
+    "file": "references/test-files/errores/cluster-4/09 - Sluts'n'Strings & 909 - Summerbreeze.mp3",
+    "description": "MP3 320 con rolloff natural a 18kHz - no es transcode",
+    "expected": {
+      "status": "OK",
+      "detected_quality_in": ["320kbps", "256kbps"],
+      "cutoff_above_khz": 18.0
+    },
+    "known_bug": false,
+    "notes": "Rolloff natural de mezcla electro"
   }
 ]

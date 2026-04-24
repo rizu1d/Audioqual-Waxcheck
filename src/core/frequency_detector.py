@@ -49,6 +49,11 @@ from ..utils.constants import (
     TRANSITION_RECOVERY_CONSECUTIVE_BANDS,
     TRANSITION_RECOVERY_MIN_VARIANCE,
     GRADUAL_ROLLOFF_GRADIENT_DB_PER_KHZ,
+    BRICKWALL_MIN_GRADIENT_DB_PER_KHZ,
+    BRICKWALL_MAX_POST_VARIANCE,
+    BRICKWALL_ELEVATED_ENERGY_DB,
+    BRICKWALL_OVERRIDE_ENERGY_DB,
+    BRICKWALL_ELEVATED_RATIO,
 )
 
 
@@ -1089,6 +1094,115 @@ def compute_band_energy_simple(
     return np.mean(band_data)
 
 
+def compute_band_peak_energy(
+    spectrogram_db: np.ndarray,
+    frequencies: np.ndarray,
+    band_low_hz: float,
+    band_high_hz: float,
+) -> float:
+    """
+    Compute peak energy for a frequency band: the maximum mean-energy across
+    all time frames. Captures real content even in files with few active frames,
+    where mean-energy would be dragged down by silence.
+    """
+    low_idx = np.searchsorted(frequencies, band_low_hz)
+    high_idx = np.searchsorted(frequencies, band_high_hz)
+    if high_idx > len(frequencies):
+        high_idx = len(frequencies)
+    if low_idx >= high_idx:
+        return -120.0
+    band_data = spectrogram_db[low_idx:high_idx, :]
+    energy_per_frame = np.mean(band_data, axis=0)
+    return float(np.max(energy_per_frame))
+
+
+def is_natural_rolloff(
+    spectrogram_db: np.ndarray,
+    frequencies: np.ndarray,
+    cutoff_hz: float,
+    active_frames_mask: np.ndarray,
+    ref_std: float,
+) -> bool:
+    """
+    Determine if a detected cutoff is natural rolloff rather than a codec cut.
+
+    Logic:
+    1. Scan from cutoff upward for a brickwall signature (steep gradient +
+       low variance). If found, it's a codec cut → NOT natural.
+    2. If no brickwall found, check whether peak energy persists above the
+       cutoff. If content stays elevated → natural rolloff (mixing/mastering).
+       If content dies quickly → gradual codec rolloff (e.g., YouTube double-encode).
+
+    Uses peak energy (max frame per band) which matches MusicScope measurements
+    and captures real content even in files with few active frames.
+    """
+    scan_bw = 1000
+    scan_start = max(int(cutoff_hz) - 1000, 8000)
+
+    # Two-scan approach: mean energy catches real transcodes definitively,
+    # peak energy catches subtler brickwalls (YouTube rips, acapellas).
+    mean_brickwall = None
+    peak_brickwall = None
+    for f in range(scan_start, 19000, scan_bw):
+        post_var = compute_band_temporal_variance(
+            spectrogram_db, frequencies,
+            f + scan_bw, f + 2 * scan_bw,
+            active_frames_mask, ref_std,
+        )
+        if post_var > BRICKWALL_MAX_POST_VARIANCE:
+            continue
+
+        mean_grad = (
+            compute_band_energy_simple(spectrogram_db, frequencies, f, f + scan_bw)
+            - compute_band_energy_simple(spectrogram_db, frequencies, f + scan_bw, f + 2 * scan_bw)
+        )
+        if mean_grad >= BRICKWALL_MIN_GRADIENT_DB_PER_KHZ and mean_brickwall is None:
+            mean_brickwall = f + scan_bw
+
+        if peak_brickwall is None and f + scan_bw < 17000:
+            peak_grad = (
+                compute_band_peak_energy(spectrogram_db, frequencies, f, f + scan_bw)
+                - compute_band_peak_energy(spectrogram_db, frequencies, f + scan_bw, f + 2 * scan_bw)
+            )
+            if peak_grad >= BRICKWALL_MIN_GRADIENT_DB_PER_KHZ:
+                peak_brickwall = f + scan_bw
+
+    # Mean-energy brickwall = definitive codec cut (manuchao, portishead)
+    if mean_brickwall is not None:
+        return False
+
+    # Peak-energy brickwall = possible codec OR natural spectral transition.
+    # Override only if strong content persists above it (PirateMat-style).
+    if peak_brickwall is not None:
+        strong_count = 0
+        for f in range(int(peak_brickwall), 20000, scan_bw):
+            e = compute_band_peak_energy(
+                spectrogram_db, frequencies, f, f + scan_bw
+            )
+            if e > BRICKWALL_OVERRIDE_ENERGY_DB:
+                strong_count += 1
+        return strong_count >= 4
+
+    # No brickwall found — check if peak energy stays elevated above cutoff.
+    # High cutoffs (≥17kHz) use relaxed threshold since near-Nyquist rolloff
+    # is common in mixing. Low cutoffs use standard threshold.
+    energy_threshold = BRICKWALL_ELEVATED_ENERGY_DB if cutoff_hz >= 17000 else BRICKWALL_ELEVATED_ENERGY_DB + 6.0
+    elevated_count = 0
+    total_count = 0
+    for f in range(int(cutoff_hz), 20000, scan_bw):
+        e = compute_band_peak_energy(
+            spectrogram_db, frequencies, f, f + scan_bw
+        )
+        total_count += 1
+        if e > energy_threshold:
+            elevated_count += 1
+
+    if total_count == 0:
+        return False
+
+    return elevated_count / total_count >= BRICKWALL_ELEVATED_RATIO
+
+
 def find_cutoff_by_transition(
     spectrogram_db: np.ndarray,
     frequencies: np.ndarray,
@@ -1597,6 +1711,18 @@ def analyze_frequency_cutoff(
     if has_outliers:
         is_uncertain = True
         uncertainty_reason = "Calidad variable detectada"
+
+    # Natural rolloff check: if cutoff < 20kHz, verify it's not natural rolloff.
+    # Natural rolloff (no brickwall + persistent content) should not trigger transcode.
+    if cutoff_hz < 20000:
+        if is_natural_rolloff(
+            spectrogram_db, frequencies, cutoff_hz,
+            active_frames_mask, ref_std,
+        ):
+            cutoff_hz = max_frequency_hz
+            confidence = 0.6
+            is_uncertain = False
+            uncertainty_reason = ""
 
     # Verify high-frequency cutoffs (>21kHz) to detect noise vs real content
     if cutoff_hz > 21000:
