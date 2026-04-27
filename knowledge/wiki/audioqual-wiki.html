@@ -1,0 +1,1757 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AudioQual Wiki</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --surface: #13121C;
+  --surface-container-lowest: #0D0C14;
+  --surface-container-low: #1C1A24;
+  --surface-container: #211F2A;
+  --surface-container-high: #2A2933;
+  --surface-container-highest: #35333E;
+  --surface-bright: #3A3842;
+  --primary: #CEBDFF;
+  --primary-container: #7969A8;
+  --primary-dim: #A899D4;
+  --on-surface: #E5E0EE;
+  --on-surface-variant: #C9C5D0;
+  --on-surface-muted: #8E8A97;
+  --tertiary: #F2BF3C;
+  --tertiary-dim: #D4A730;
+  --on-tertiary-container: #FFF8F1;
+  --outline-variant: #49454F;
+  --error: #F2B8B5;
+  --success: #A8DAB5;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Outfit', sans-serif;
+  background: var(--surface);
+  color: var(--on-surface);
+  min-height: 100vh;
+  display: flex;
+  overflow: hidden;
+}
+
+/* Sidebar */
+.sidebar {
+  width: 260px;
+  min-width: 260px;
+  height: 100vh;
+  background: var(--surface-container-low);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  z-index: 10;
+}
+
+.sidebar-header {
+  padding: 28px 20px 16px;
+  flex-shrink: 0;
+}
+
+.logo {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 24px;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.logo:hover .logo-text {
+  color: var(--primary);
+}
+
+.logo-text {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
+  font-size: 1.35rem;
+  color: var(--on-surface);
+  letter-spacing: -0.02em;
+  transition: color 0.15s;
+}
+
+.logo-badge {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 2px 8px;
+  background: rgba(242, 191, 60, 0.1);
+  border-radius: 4px;
+}
+
+/* Search */
+.search-container {
+  position: relative;
+  margin-bottom: 4px;
+}
+
+.search-input {
+  width: 100%;
+  padding: 10px 14px 10px 38px;
+  background: var(--surface-container-high);
+  border: none;
+  border-radius: 8px;
+  color: var(--on-surface);
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.875rem;
+  outline: none;
+  transition: background 0.2s;
+}
+
+.search-input::placeholder {
+  color: var(--on-surface-muted);
+}
+
+.search-input:focus {
+  background: var(--surface-container-highest);
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--on-surface-muted);
+  font-size: 0.875rem;
+  pointer-events: none;
+}
+
+.search-results-count {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.7rem;
+  color: var(--on-surface-muted);
+  padding: 6px 4px 2px;
+  min-height: 22px;
+}
+
+/* Navigation */
+.nav-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 16px 32px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-container-highest) transparent;
+}
+
+.nav-scroll::-webkit-scrollbar { width: 4px; }
+.nav-scroll::-webkit-scrollbar-track { background: transparent; }
+.nav-scroll::-webkit-scrollbar-thumb {
+  background: var(--surface-container-highest);
+  border-radius: 4px;
+}
+
+.nav-section {
+  margin-bottom: 20px;
+}
+
+.nav-section-title {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--on-surface-muted);
+  padding: 8px 12px 6px;
+}
+
+.nav-item {
+  display: block;
+  padding: 8px 12px;
+  border-radius: 6px;
+  color: var(--on-surface-variant);
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 400;
+  cursor: pointer;
+  transition: all 0.15s;
+  line-height: 1.4;
+}
+
+.nav-item:hover {
+  background: var(--surface-container-high);
+  color: var(--on-surface);
+}
+
+.nav-item.active {
+  background: var(--surface-container-high);
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.nav-item.search-hidden { display: none; }
+
+.nav-item .nav-tag {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.6rem;
+  color: var(--tertiary);
+  margin-left: 6px;
+  opacity: 0.7;
+}
+
+/* Main content */
+.main {
+  flex: 1;
+  height: 100vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-container-highest) transparent;
+}
+
+.main::-webkit-scrollbar { width: 6px; }
+.main::-webkit-scrollbar-track { background: transparent; }
+.main::-webkit-scrollbar-thumb {
+  background: var(--surface-container-highest);
+  border-radius: 4px;
+}
+
+.content-wrap {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 48px 48px 80px;
+}
+
+/* Page sections */
+.page { display: none; }
+.page.active { display: block; }
+
+/* Typography */
+.page h1 {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
+  font-size: 2rem;
+  color: var(--on-surface);
+  letter-spacing: -0.03em;
+  margin-bottom: 8px;
+  line-height: 1.2;
+}
+
+.page-meta {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.7rem;
+  color: var(--on-surface-muted);
+  margin-bottom: 32px;
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.page-meta .tag {
+  color: var(--tertiary);
+  opacity: 0.8;
+}
+
+.page h2 {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 600;
+  font-size: 1.25rem;
+  color: var(--on-surface);
+  margin: 36px 0 14px;
+  letter-spacing: -0.01em;
+}
+
+.page h3 {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 600;
+  font-size: 1.05rem;
+  color: var(--on-surface-variant);
+  margin: 24px 0 10px;
+}
+
+.page h4 {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--primary-dim);
+  margin: 20px 0 8px;
+}
+
+.page p {
+  font-size: 0.925rem;
+  line-height: 1.7;
+  color: var(--on-surface-variant);
+  margin-bottom: 14px;
+}
+
+.page strong {
+  color: var(--on-surface);
+  font-weight: 600;
+}
+
+.page em {
+  color: var(--primary-dim);
+  font-style: italic;
+}
+
+.page a:not(.welcome-link) {
+  color: var(--primary);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(206, 189, 255, 0.2);
+  transition: border-color 0.15s;
+}
+
+.page a:not(.welcome-link):hover {
+  border-color: var(--primary);
+}
+
+.page ul, .page ol {
+  padding-left: 20px;
+  margin-bottom: 14px;
+}
+
+.page li {
+  font-size: 0.925rem;
+  line-height: 1.7;
+  color: var(--on-surface-variant);
+  margin-bottom: 4px;
+}
+
+.page li strong {
+  color: var(--on-surface);
+}
+
+/* Tables */
+.page table {
+  width: 100%;
+  margin: 16px 0 20px;
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.page thead th {
+  background: var(--surface-container-high);
+  font-family: 'Space Mono', monospace;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--on-surface-muted);
+  padding: 10px 14px;
+  text-align: left;
+}
+
+.page tbody td {
+  background: var(--surface-container-low);
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  color: var(--on-surface-variant);
+  line-height: 1.5;
+}
+
+.page tbody tr:nth-child(even) td {
+  background: var(--surface-container);
+}
+
+/* Code */
+.page code {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.8rem;
+  color: var(--tertiary);
+  background: var(--surface-container-high);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.page pre {
+  background: var(--surface-container-low);
+  border-radius: 8px;
+  padding: 18px 20px;
+  margin: 14px 0 18px;
+  overflow-x: auto;
+}
+
+.page pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  color: var(--on-surface-variant);
+}
+
+/* Blockquote */
+.page blockquote {
+  padding: 16px 20px;
+  margin: 16px 0 20px;
+  background: rgba(206, 189, 255, 0.05);
+  border-left: 3px solid var(--primary-container);
+  border-radius: 0 8px 8px 0;
+}
+
+.page blockquote p {
+  color: var(--primary-dim);
+  font-style: italic;
+  margin-bottom: 0;
+}
+
+/* Horizontal rule */
+.page hr {
+  border: none;
+  height: 1px;
+  background: var(--surface-container-highest);
+  margin: 32px 0;
+}
+
+/* Welcome page */
+.welcome-hero {
+  background: var(--surface-container-low);
+  border-radius: 12px;
+  padding: 40px 36px;
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.welcome-hero h1 {
+  font-size: 2.2rem;
+  margin-bottom: 4px;
+}
+
+.welcome-hero-sub {
+  font-size: 1rem;
+  color: var(--on-surface-variant);
+  font-weight: 300;
+  margin-bottom: 20px;
+}
+
+.welcome-hero-stats {
+  display: flex;
+  justify-content: center;
+  gap: 28px;
+}
+
+.welcome-stat {
+  text-align: center;
+}
+
+.welcome-stat-value {
+  font-family: 'Space Mono', monospace;
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.welcome-stat-label {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.65rem;
+  color: var(--on-surface-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.welcome-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.welcome-section {
+  background: var(--surface-container-low);
+  border-radius: 10px;
+  padding: 24px;
+}
+
+.welcome-section-title {
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--on-surface);
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.welcome-section-icon {
+  font-size: 1.1rem;
+}
+
+.welcome-link {
+  display: block;
+  padding: 6px 0;
+  color: var(--primary);
+  text-decoration: none;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: color 0.15s;
+  border-bottom: none;
+}
+
+.welcome-link:hover {
+  color: var(--on-surface);
+}
+
+.welcome-link-desc {
+  font-size: 0.78rem;
+  color: var(--on-surface-muted);
+  font-weight: 300;
+  margin-left: 0;
+}
+
+.welcome-banner {
+  background: var(--surface-container-low);
+  border-radius: 10px;
+  padding: 20px 24px;
+  margin-bottom: 16px;
+}
+
+.welcome-banner-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--on-surface);
+  margin-bottom: 8px;
+}
+
+.welcome-banner p {
+  font-size: 0.875rem;
+  color: var(--on-surface-variant);
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* Log page */
+.log-entry {
+  padding: 14px 0;
+}
+
+.log-entry + .log-entry {
+  padding-top: 14px;
+}
+
+.log-date {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.7rem;
+  color: var(--on-surface-muted);
+}
+
+.log-category {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.7rem;
+  color: var(--tertiary);
+  text-transform: uppercase;
+}
+
+.log-title {
+  font-weight: 600;
+  font-size: 0.925rem;
+  color: var(--on-surface);
+  margin: 4px 0;
+}
+
+.log-body {
+  font-size: 0.85rem;
+  color: var(--on-surface-variant);
+  line-height: 1.6;
+}
+
+/* Search highlight */
+mark {
+  background: rgba(242, 191, 60, 0.25);
+  color: var(--on-surface);
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+/* Mobile */
+@media (max-width: 900px) {
+  .sidebar {
+    position: fixed;
+    left: -260px;
+    transition: left 0.25s ease;
+    z-index: 100;
+  }
+  .sidebar.open { left: 0; }
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 99;
+  }
+  .sidebar.open ~ .sidebar-overlay { display: block; }
+  .mobile-header {
+    display: flex !important;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: var(--surface-container-low);
+    padding: 14px 20px;
+    align-items: center;
+    gap: 14px;
+  }
+  .content-wrap {
+    padding: 20px 24px 60px;
+  }
+}
+
+@media (min-width: 901px) {
+  .mobile-header { display: none !important; }
+  .sidebar-overlay { display: none !important; }
+}
+</style>
+</head>
+<body>
+
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <a class="logo" onclick="navigateTo('welcome')">
+      <span class="logo-text">AudioQual</span>
+      <span class="logo-badge">Wiki</span>
+    </a>
+    <div class="search-container">
+      <span class="search-icon">&#x2315;</span>
+      <input type="text" class="search-input" id="searchInput" placeholder="Buscar en el wiki...">
+    </div>
+    <div class="search-results-count" id="searchCount"></div>
+  </div>
+  <div class="nav-scroll" id="navScroll">
+
+    <div class="nav-section">
+      <div class="nav-section-title">Algoritmo</div>
+      <a class="nav-item" data-page="principio-fundamental">Principio fundamental</a>
+      <a class="nav-item" data-page="pipeline-analisis">Pipeline de analisis</a>
+      <a class="nav-item" data-page="deteccion-transicion">Deteccion por transicion</a>
+      <a class="nav-item" data-page="analisis-segmentos">Analisis por segmentos</a>
+      <a class="nav-item" data-page="logica-decision">Logica de decision</a>
+      <a class="nav-item" data-page="brickwall-vs-rolloff">Brickwall vs rolloff</a>
+      <a class="nav-item" data-page="falsos-positivos">Falsos positivos</a>
+      <a class="nav-item" data-page="energia-referencia">Referencia de energia</a>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-section-title">Arquitectura</div>
+      <a class="nav-item" data-page="stack-tecnologico">Stack tecnologico</a>
+      <a class="nav-item" data-page="threading-macos">Threading y macOS</a>
+      <a class="nav-item" data-page="cache-espectrogramas">Cache de espectrogramas</a>
+      <a class="nav-item" data-page="sistema-verificacion">Sistema de verificacion</a>
+      <a class="nav-item" data-page="distribucion">Distribucion</a>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-section-title">Fuentes</div>
+      <a class="nav-item" data-page="tutorial-mpeg">Tutorial MPEG (Pan, 1995)</a>
+      <a class="nav-item" data-page="enlaces-recopilados">Enlaces recopilados</a>
+      <a class="nav-item" data-page="herramientas-referencia">Herramientas de referencia</a>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-section-title">Decisiones</div>
+      <a class="nav-item" data-page="spek-vs-musicscope">Spek vs MusicScope</a>
+      <a class="nav-item" data-page="no-virtual-scroll">No virtual scroll</a>
+      <a class="nav-item" data-page="investigacion-cluster4">Investigacion cluster-4</a>
+      <a class="nav-item" data-page="polling-observer">PollingObserver</a>
+      <a class="nav-item" data-page="desarrollo-con-llm">Desarrollo con LLM</a>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-section-title">Cronologia</div>
+      <a class="nav-item" data-page="log">Log del proyecto</a>
+    </div>
+
+  </div>
+</nav>
+
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+<main class="main" id="mainContent">
+
+<div class="mobile-header" id="mobileHeader">
+  <span style="cursor:pointer;font-size:1.4rem;color:var(--on-surface)" onclick="document.getElementById('sidebar').classList.toggle('open');document.getElementById('sidebarOverlay').style.display='block'">&#9776;</span>
+  <span style="font-weight:600">AudioQual Wiki</span>
+</div>
+
+<div class="content-wrap">
+
+<!-- ==================== WELCOME ==================== -->
+<div class="page active" id="page-welcome">
+
+  <div class="welcome-hero">
+    <h1>AudioQual Wiki</h1>
+    <div class="welcome-hero-sub">Base de conocimiento del proyecto</div>
+    <div class="welcome-hero-stats">
+      <div class="welcome-stat">
+        <div class="welcome-stat-value">21</div>
+        <div class="welcome-stat-label">Paginas</div>
+      </div>
+      <div class="welcome-stat">
+        <div class="welcome-stat-value">7</div>
+        <div class="welcome-stat-label">Fuentes</div>
+      </div>
+      <div class="welcome-stat">
+        <div class="welcome-stat-value">89</div>
+        <div class="welcome-stat-label">Dias de desarrollo</div>
+      </div>
+      <div class="welcome-stat">
+        <div class="welcome-stat-value">93</div>
+        <div class="welcome-stat-label">Tests</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="welcome-columns">
+    <div class="welcome-section">
+      <div class="welcome-section-title">Algoritmo de deteccion</div>
+      <a class="welcome-link" onclick="navigateTo('principio-fundamental')">Principio fundamental <span class="welcome-link-desc">&mdash; base fisica de la deteccion</span></a>
+      <a class="welcome-link" onclick="navigateTo('pipeline-analisis')">Pipeline de analisis <span class="welcome-link-desc">&mdash; las 3 etapas</span></a>
+      <a class="welcome-link" onclick="navigateTo('deteccion-transicion')">Deteccion por transicion <span class="welcome-link-desc">&mdash; metodo primario</span></a>
+      <a class="welcome-link" onclick="navigateTo('brickwall-vs-rolloff')">Brickwall vs rolloff <span class="welcome-link-desc">&mdash; la distincion clave</span></a>
+      <a class="welcome-link" onclick="navigateTo('falsos-positivos')">Falsos positivos <span class="welcome-link-desc">&mdash; casos y soluciones</span></a>
+    </div>
+    <div class="welcome-section">
+      <div class="welcome-section-title">Arquitectura y decisiones</div>
+      <a class="welcome-link" onclick="navigateTo('stack-tecnologico')">Stack tecnologico <span class="welcome-link-desc">&mdash; Python, customtkinter, librosa</span></a>
+      <a class="welcome-link" onclick="navigateTo('threading-macos')">Threading y macOS <span class="welcome-link-desc">&mdash; pipe+kqueue, 3 capas</span></a>
+      <a class="welcome-link" onclick="navigateTo('spek-vs-musicscope')">Spek vs MusicScope <span class="welcome-link-desc">&mdash; el descubrimiento clave</span></a>
+      <a class="welcome-link" onclick="navigateTo('desarrollo-con-llm')">Desarrollo con LLM <span class="welcome-link-desc">&mdash; modelo de trabajo</span></a>
+      <a class="welcome-link" onclick="navigateTo('investigacion-cluster4')">Investigacion cluster-4 <span class="welcome-link-desc">&mdash; 5 iteraciones</span></a>
+    </div>
+  </div>
+
+  <div class="welcome-columns">
+    <div class="welcome-banner">
+      <div class="welcome-banner-title">Inicio rapido</div>
+      <p>Empieza por <a href="#" onclick="navigateTo('principio-fundamental');return false">Principio fundamental</a> para entender la base fisica, luego sigue a <a href="#" onclick="navigateTo('pipeline-analisis');return false">Pipeline de analisis</a> para ver la implementacion.</p>
+    </div>
+    <div class="welcome-banner">
+      <div class="welcome-banner-title">Cronologia</div>
+      <p>El proyecto arranco el 28 de enero de 2026. Consulta el <a href="#" onclick="navigateTo('log');return false">Log del proyecto</a> para la historia completa desde el primer commit.</p>
+    </div>
+  </div>
+
+</div>
+
+<!-- ==================== ALGORITMO ==================== -->
+<div class="page" id="page-principio-fundamental">
+  <h1>Principio fundamental de deteccion</h1>
+  <div class="page-meta">
+    <span>Fuente: ALGORITMO.txt</span>
+    <span class="tag">#algoritmo</span>
+    <span class="tag">#codec</span>
+    <span class="tag">#tfg</span>
+  </div>
+
+  <p>AudioQual detecta si un archivo de audio tiene la calidad real que declara. Un MP3 etiquetado como "320kbps" que fue convertido desde un archivo de menor calidad (128kbps, YouTube rip, etc.) es un <strong>transcode</strong> &mdash; la etiqueta miente sobre la calidad real.</p>
+
+  <h2>Base fisica: filtros pasa-bajos de los codecs</h2>
+  <p>Los codecs de audio con perdida (MP3, AAC, OGG) aplican un filtro pasa-bajos que elimina frecuencias altas. Esto es una consecuencia directa del modelo psicoacustico: el codec descarta informacion que considera menos perceptible para ahorrar bits, y las frecuencias mas altas son las primeras en caer.</p>
+  <p>Cuanto menor es el bitrate, mas bajo es el corte:</p>
+  <table>
+    <thead><tr><th>Bitrate</th><th>Corte real aproximado</th></tr></thead>
+    <tbody>
+      <tr><td><code>320 kbps</code></td><td>~20 kHz</td></tr>
+      <tr><td><code>256 kbps</code></td><td>~19 kHz</td></tr>
+      <tr><td><code>192 kbps</code></td><td>~17-18 kHz</td></tr>
+      <tr><td><code>128 kbps</code></td><td>~15-16 kHz</td></tr>
+      <tr><td><code>96 kbps</code></td><td>~13-15 kHz</td></tr>
+    </tbody>
+  </table>
+  <p>Estos valores son aproximados porque dependen del encoder especifico (LAME, Fraunhofer, iTunes AAC) y del contenido del audio. Pero son consistentes: un MP3 de 128kbps <strong>nunca</strong> tendra contenido real por encima de ~17 kHz, por limitacion fisica del codec.</p>
+
+  <h2>El principio de deteccion</h2>
+  <p>Si alguien toma un MP3 de 128kbps (corte a ~16 kHz) y lo re-codifica a 320kbps, el archivo resultante dira "320kbps" pero <strong>no tendra contenido real por encima de 16 kHz</strong>. Solo habra ruido de cuantizacion o silencio en esas frecuencias.</p>
+  <p>AudioQual detecta exactamente donde termina el contenido musical real (la <strong>frecuencia de corte</strong>) y la compara con lo que el bitrate declarado deberia tener. Si hay discrepancia significativa, es un transcode.</p>
+
+  <h2>Distincion clave: corte artificial vs. rolloff natural</h2>
+  <p>No toda caida de energia en altas frecuencias es un transcode. Muchas producciones musicales tienen un <strong>rolloff natural</strong> &mdash; la energia simplemente decae gradualmente en los agudos por decisiones de mezcla y mastering.</p>
+  <p>La diferencia esta en la <strong>firma del corte</strong>:</p>
+  <ul>
+    <li><strong>Brickwall de codec</strong>: caida abrupta (&gt;9 dB/kHz), varianza temporal post-corte practicamente cero. Es un muro artificial.</li>
+    <li><strong>Rolloff natural</strong>: caida gradual (&lt;6 dB/kHz), varianza temporal sostenida. El contenido sigue existiendo, solo baja de nivel.</li>
+  </ul>
+  <p>Ver <a href="#" onclick="navigateTo('brickwall-vs-rolloff');return false">Brickwall vs rolloff natural</a> para la implementacion de esta distincion.</p>
+
+  <h2>Relevancia para el TFG</h2>
+  <p>Este principio conecta directamente con:</p>
+  <ul>
+    <li><strong>Modelo psicoacustico MPEG</strong>: ISO/IEC 11172-3 define como los encoders deciden que frecuencias descartar</li>
+    <li><strong>Teorema de Nyquist-Shannon</strong>: el sample rate limita la frecuencia maxima representable</li>
+    <li><strong>Analisis espectral</strong>: la STFT como herramienta para visualizar el contenido frecuencial en el tiempo</li>
+  </ul>
+  <p>Ver <a href="#" onclick="navigateTo('tutorial-mpeg');return false">Tutorial MPEG audio compression</a> para la referencia academica.</p>
+</div>
+
+<div class="page" id="page-pipeline-analisis">
+  <h1>Pipeline de analisis</h1>
+  <div class="page-meta">
+    <span>Fuente: ALGORITMO.txt</span>
+    <span class="tag">#algoritmo</span>
+    <span class="tag">#arquitectura</span>
+  </div>
+
+  <p>El analisis se ejecuta en tres etapas secuenciales, implementadas en <code>src/core/</code>:</p>
+
+  <h2>Etapa 1: Carga del audio</h2>
+  <p><code>audio_loader.py</code> &mdash; <strong>librosa</strong> carga el audio como array numpy (mono, sample rate nativo). <strong>mutagen</strong> extrae metadatos: bitrate declarado, formato, duracion, tags ID3/Vorbis. Pre-validacion de MP3 para prevenir crashes SIGBUS con archivos corruptos.</p>
+
+  <h2>Etapa 2: Deteccion de corte</h2>
+  <p><code>frequency_detector.py</code> &mdash; El corazon del algoritmo. Usa <strong>dos metodos independientes</strong> y una logica de decision que combina sus resultados:</p>
+  <ol>
+    <li><strong>Metodo primario</strong>: <a href="#" onclick="navigateTo('deteccion-transicion');return false">Deteccion por transicion</a> &mdash; busca la primera transicion de contenido musical a ruido/silencio</li>
+    <li><strong>Metodo secundario</strong>: <a href="#" onclick="navigateTo('analisis-segmentos');return false">Analisis por segmentos</a> &mdash; divide el audio en 50 segmentos temporales y calcula el corte predominante</li>
+    <li><strong>Logica de decision</strong>: <a href="#" onclick="navigateTo('logica-decision');return false">Combinacion de metodos</a> &mdash; decide cual usar segun confianza, concordancia y patrones</li>
+  </ol>
+  <p>Despues de determinar el corte, se aplica la <a href="#" onclick="navigateTo('brickwall-vs-rolloff');return false">verificacion de brickwall</a> como ultimo filtro.</p>
+
+  <h2>Etapa 3: Clasificacion</h2>
+  <p><code>bitrate_classifier.py</code> &mdash; Con la frecuencia de corte detectada, clasifica la calidad real:</p>
+  <table>
+    <thead><tr><th>Corte detectado</th><th>Calidad real estimada</th></tr></thead>
+    <tbody>
+      <tr><td><code>&gt; 20.5 kHz</code></td><td>Lossless</td></tr>
+      <tr><td><code>19.5 - 20.5 kHz</code></td><td>320 kbps</td></tr>
+      <tr><td><code>18.5 - 19.5 kHz</code></td><td>256 kbps</td></tr>
+      <tr><td><code>17.0 - 18.5 kHz</code></td><td>192 kbps</td></tr>
+      <tr><td><code>16.0 - 17.0 kHz</code></td><td>160 kbps</td></tr>
+      <tr><td><code>15.0 - 16.0 kHz</code></td><td>128 kbps</td></tr>
+      <tr><td><code>13.0 - 15.0 kHz</code></td><td>96 kbps</td></tr>
+      <tr><td><code>&lt; 13.0 kHz</code></td><td>Baja calidad</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Red de seguridad MP3</h3>
+  <p>Un MP3 de 128 kbps <strong>fisicamente no puede</strong> tener contenido real por encima de ~17 kHz. Si el algoritmo detecta un corte superior, se limita al maximo fisico del bitrate declarado.</p>
+
+  <h2>Flujo de datos</h2>
+  <pre><code>audio_file → audio_loader → (samples, metadata)
+                                ↓
+                        frequency_detector → (cutoff_hz, confidence)
+                                ↓
+                        bitrate_classifier → (quality, status, detected_bitrate)
+                                ↓
+                          AnalysisResult</code></pre>
+</div>
+
+<div class="page" id="page-deteccion-transicion">
+  <h1>Metodo primario: Deteccion por transicion</h1>
+  <div class="page-meta">
+    <span>Fuente: ALGORITMO.txt</span>
+    <span class="tag">#algoritmo</span>
+    <span class="tag">#tfg</span>
+  </div>
+
+  <p>Implementado en <code>frequency_detector.py → find_cutoff_by_transition()</code>. Detecta directamente la firma de un codec: el punto donde el contenido musical termina y empieza el ruido.</p>
+
+  <h2>Concepto clave: varianza temporal</h2>
+  <p>El contenido musical tiene <strong>alta varianza temporal</strong> &mdash; la energia sube y baja siguiendo la dinamica de la musica. El ruido de codificacion tiene <strong>baja varianza</strong> &mdash; energia constante y monotona.</p>
+
+  <h2>Procedimiento</h2>
+  <ol>
+    <li>Calcular espectrograma (STFT) del audio completo</li>
+    <li>Dividir el rango 10-21 kHz en bandas de 500 Hz</li>
+    <li>Para cada banda: energia media (dB) y varianza temporal</li>
+    <li>Recorrer bandas buscando la primera transicion musical → ruido</li>
+  </ol>
+
+  <h2>Umbral de varianza dependiente de frecuencia</h2>
+  <table>
+    <thead><tr><th>Frecuencia</th><th>Varianza minima</th><th>Razon</th></tr></thead>
+    <tbody>
+      <tr><td><code>14 kHz</code></td><td>≥ 0.30</td><td>Frecuencias bajas: mas varianza natural</td></tr>
+      <tr><td><code>20 kHz</code></td><td>≥ 0.15</td><td>Altas frecuencias: menos varianza (acapellas)</td></tr>
+      <tr><td>Intermedio</td><td>Interpolacion lineal</td><td></td></tr>
+    </tbody>
+  </table>
+
+  <h2>Cuatro mecanismos de deteccion</h2>
+
+  <h3>(a) Caida de energia ≥ 8 dB</h3>
+  <p>Entre bandas adyacentes. El caso clasico de brick-wall de codec MP3. Confianza base: <code>0.60</code>.</p>
+
+  <h3>(b) Transicion de varianza</h3>
+  <p>Varianza post-banda cae por debajo del umbral musical, o cae ≥ 35% entre bandas, o lookahead de 2 bandas &lt; 0.20. <strong>Guarda HF</strong>: a partir de 18 kHz, el lookahead se desactiva si la banda siguiente aun tiene varianza musical. Confianza base: <code>0.65</code>.</p>
+
+  <h3>(c) Caida acumulada ≥ 12 dB en 3 bandas</h3>
+  <p>Detecta rolloffs graduales donde cada paso individual es &lt; 8 dB. Confianza base: <code>0.60</code>.</p>
+
+  <h3>(d) Decaimiento de varianza en ventana deslizante</h3>
+  <p>Varianza cae ≥ 50% en 3 bandas consecutivas, terminando &lt; 0.25, con descenso monotono. Para YouTube rips de acapellas. Confianza base: <code>0.60</code>, max <code>0.85</code>.</p>
+
+  <h2>Proteccion anti-sibilancia</h2>
+  <p>Antes de confirmar, se verifica que la energia no se recupere despues. Los sonidos sibilantes (S, T, CH) crean picos aislados. Se exigen <strong>2+ bandas consecutivas</strong> con energia Y varianza ≥ 0.30 para "recuperacion real".</p>
+</div>
+
+<div class="page" id="page-analisis-segmentos">
+  <h1>Metodo secundario: Analisis por segmentos</h1>
+  <div class="page-meta">
+    <span>Fuente: ALGORITMO.txt</span>
+    <span class="tag">#algoritmo</span>
+  </div>
+
+  <p>Implementado en <code>find_segment_cutoffs()</code> + <code>calculate_predominant_cutoff()</code>. Divide el audio en <strong>50 segmentos temporales</strong> y obtiene un cutoff por segmento.</p>
+
+  <h2>Procedimiento</h2>
+  <ol>
+    <li>Dividir el audio en 50 segmentos temporales</li>
+    <li>Cada segmento se analiza independientemente (energia relativa)</li>
+    <li>50 valores de corte</li>
+    <li><strong>Percentil 90</strong> como corte predominante (ignora el 10% superior: picos, anomalias)</li>
+    <li>Si diferencia max-percentil &gt; 3 kHz → marca <strong>"tiene outliers"</strong> (distribucion bimodal)</li>
+  </ol>
+
+  <h2>Cuando es util</h2>
+  <ul>
+    <li>Archivos con secciones de silencio prolongado</li>
+    <li>Archivos con calidad variable (sampleo de radio, compilaciones)</li>
+    <li>Como contraste del metodo primario para aumentar confianza</li>
+  </ul>
+
+  <h2>Relacion con el metodo primario</h2>
+  <p>Este metodo tiende a dar cortes <strong>mas altos</strong> en archivos transcodeados, porque el ruido residual post-corte engana a los segmentos individuales. Cuando la transicion da un corte mas bajo que los segmentos, es firma de transcode. Ver <a href="#" onclick="navigateTo('logica-decision');return false">Logica de decision</a>.</p>
+</div>
+
+<div class="page" id="page-logica-decision">
+  <h1>Logica de decision: Combinacion de metodos</h1>
+  <div class="page-meta">
+    <span>Fuente: ALGORITMO.txt</span>
+    <span class="tag">#algoritmo</span>
+  </div>
+
+  <p>Implementada en <code>analyze_frequency_cutoff()</code>. Recibe resultados de ambos metodos y decide cual usar.</p>
+
+  <h2>Reglas de decision (en orden de prioridad)</h2>
+
+  <h3>1. Transicion con alta confianza (≥ 70%)</h3>
+  <p>Se usa la transicion. <strong>Excepcion (meseta de ruido)</strong>: si los segmentos dan un corte mucho mas bajo (gap &gt; 2 kHz) Y detectaron outliers Y confianza ≥ 60%, se <strong>verifica</strong> que las bandas intermedias realmente carezcan de contenido musical. Caso LaTour.</p>
+
+  <h3>2. Ambos metodos coinciden (&lt; 2 kHz)</h3>
+  <p>Se promedian y se aumenta la confianza.</p>
+
+  <h3>3. Transicion mas baja que segmentos (confianza ≥ 50%)</h3>
+  <p>Se prefiere la transicion (conservador). Boost de confianza hasta +0.15 si gap ≥ 1 kHz &mdash; este patron es <strong>firma de transcode</strong>.</p>
+
+  <h3>4. Cualquier otro caso</h3>
+  <p>Segmentos como fallback.</p>
+
+  <h2>Post-procesamiento</h2>
+  <p>Despues se aplica la <a href="#" onclick="navigateTo('brickwall-vs-rolloff');return false">verificacion de brickwall</a> como ultimo filtro antes del clasificador.</p>
+</div>
+
+<div class="page" id="page-brickwall-vs-rolloff">
+  <h1>Brickwall vs rolloff natural</h1>
+  <div class="page-meta">
+    <span>Fuente: MEJORAS_EN_ALGORITMO.txt</span>
+    <span class="tag">#algoritmo</span>
+    <span class="tag">#brickwall</span>
+    <span class="tag">#tfg</span>
+  </div>
+
+  <p>Implementado en <code>is_natural_rolloff()</code> y <code>compute_band_peak_energy()</code>. Anadido en abril 2026 para resolver falsos positivos en archivos legitimos.</p>
+
+  <blockquote><p>"Solo penalizar los cortes de codec. Si un artista decide tener menos contenido frecuencial en sus agudos, no deberia ser penalizado."</p></blockquote>
+
+  <h2>Dos metricas discriminantes</h2>
+
+  <h3>Gradiente (dB/kHz en energia media)</h3>
+  <table>
+    <thead><tr><th>Tipo</th><th>Gradiente</th><th>Ejemplos</th></tr></thead>
+    <tbody>
+      <tr><td>Transcodes</td><td><code>&gt; 9 dB/kHz</code></td><td>Manu Chao: 11.9, Portishead: 9.8</td></tr>
+      <tr><td>Naturales</td><td><code>&lt; 6.1 dB/kHz</code></td><td>Summerbreeze: 6.1 (max legitimo)</td></tr>
+      <tr><td><strong>Umbral</strong></td><td><code>9.0 dB/kHz</code></td><td>Margen: 2.9 dB/kHz</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Varianza temporal post-corte</h3>
+  <table>
+    <thead><tr><th>Tipo</th><th>Varianza</th></tr></thead>
+    <tbody>
+      <tr><td>Transcodes</td><td><code>&lt; 0.5</code> (Manu Chao: 0.02, Portishead: 0.15)</td></tr>
+      <tr><td>Naturales</td><td>&gt; 0.3 en al menos algunas bandas</td></tr>
+      <tr><td><strong>Umbral</strong></td><td><code>0.5</code></td></tr>
+    </tbody>
+  </table>
+
+  <h2>Arquitectura de is_natural_rolloff()</h2>
+  <p>Opera en 3 capas, de mas definitivo a mas permisivo:</p>
+
+  <h3>Capa 1: Brickwall en energia media</h3>
+  <p>Gradiente ≥ 9 dB/kHz con varianza post-corte ≤ 0.5 → corte de codec <strong>definitivo</strong>.</p>
+
+  <h3>Capa 2: Brickwall en energia pico (solo &lt; 17 kHz)</h3>
+  <p>Mismo patron en peak energy. Override solo si ≥ 4 bandas con peak &gt; <code>-65 dB</code> por encima del corte.</p>
+
+  <h3>Capa 3: Verificacion de contenido persistente</h3>
+  <p>Sin brickwall. Verifica si peak energy se mantiene elevada. Umbral adaptativo: <code>-76 dB</code> para cutoffs ≥ 17 kHz, <code>-70 dB</code> para &lt; 17 kHz. Ratio minimo: 50%.</p>
+
+  <h2>Constantes</h2>
+  <pre><code>BRICKWALL_MIN_GRADIENT_DB_PER_KHZ = 9.0
+BRICKWALL_MAX_POST_VARIANCE = 0.5
+BRICKWALL_ELEVATED_ENERGY_DB = -76.0
+BRICKWALL_OVERRIDE_ENERGY_DB = -65.0
+BRICKWALL_ELEVATED_RATIO = 0.5</code></pre>
+</div>
+
+<div class="page" id="page-falsos-positivos">
+  <h1>Falsos positivos: casos y soluciones</h1>
+  <div class="page-meta">
+    <span>Fuente: MEJORAS_EN_ALGORITMO.txt</span>
+    <span class="tag">#algoritmo</span>
+    <span class="tag">#falsos-positivos</span>
+    <span class="tag">#tfg</span>
+  </div>
+
+  <h2>Taxonomia de falsos positivos</h2>
+
+  <h3>1. Rolloff natural de mezcla</h3>
+  <p><strong>Archivos</strong>: Future, Summerbreeze, Plaisir de France. El contenido decae gradualmente &mdash; no es codec.<br>
+  <strong>Solucion</strong>: <a href="#" onclick="navigateTo('brickwall-vs-rolloff');return false">verificacion de brickwall</a>.</p>
+
+  <h3>2. Produccion con poco contenido HF</h3>
+  <p><strong>Archivos</strong>: Space Rodeo. Electro oldschool con armonicos escasos en altas frecuencias.<br>
+  <strong>Solucion</strong>: verificacion de contenido persistente con peak energy.</p>
+
+  <h3>3. Archivos con pocas secciones activas</h3>
+  <p><strong>Archivos</strong>: Pirate Material (10.5% frames activos). La media temporal enterraba el contenido.<br>
+  <strong>Solucion</strong>: <code>compute_band_peak_energy()</code> &mdash; max del mean por frame.</p>
+
+  <h3>4. Archivos lossless con rolloff</h3>
+  <p><strong>Archivos</strong>: notaiff-detected, notaiff-undetected. AIFF lossless con rolloff de mastering.<br>
+  <strong>Solucion</strong>: verificacion brickwall + umbral adaptativo por frecuencia.</p>
+
+  <h2>Transcodes reales verificados</h2>
+  <table>
+    <thead><tr><th>Archivo</th><th>Brickwall</th><th>Gradiente</th><th>Varianza post</th></tr></thead>
+    <tbody>
+      <tr><td>Manu Chao</td><td><code>13-14 kHz</code></td><td><code>11.9 dB/kHz</code></td><td><code>0.02</code></td></tr>
+      <tr><td>Portishead</td><td><code>13-14 kHz</code></td><td><code>9.8 dB/kHz</code></td><td><code>0.15</code></td></tr>
+      <tr><td>Sicko Mode</td><td><code>16-17 kHz</code></td><td>&mdash;</td><td>Artefactos post-brickwall</td></tr>
+      <tr><td>The Box</td><td><code>15-16 kHz</code></td><td><code>2.9</code> (media)</td><td>&mdash;</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Capas de proteccion</h2>
+  <ol>
+    <li>Umbral de varianza dependiente de frecuencia</li>
+    <li>Guarda HF (18+ kHz)</li>
+    <li>Proteccion anti-sibilancia</li>
+    <li>Red de seguridad MP3 (caps fisicos)</li>
+    <li>Verificacion brickwall (<code>is_natural_rolloff</code>)</li>
+    <li><code>detect_transcode()</code> bidireccional</li>
+  </ol>
+</div>
+
+<div class="page" id="page-energia-referencia">
+  <h1>Referencia de niveles de energia</h1>
+  <div class="page-meta">
+    <span>Fuente: ALGORITMO.txt, MEJORAS_EN_ALGORITMO.txt</span>
+    <span class="tag">#algoritmo</span>
+  </div>
+
+  <h2>Escala general</h2>
+  <table>
+    <thead><tr><th>Nivel (dB)</th><th>Significado</th></tr></thead>
+    <tbody>
+      <tr><td><code>-40</code> y arriba</td><td>Contenido con buena presencia</td></tr>
+      <tr><td><code>-50 a -60</code></td><td>Contenido audible, frecuencias altas tipicas</td></tr>
+      <tr><td><code>-60 a -70</code></td><td>Contenido muy tenue, armonicos debiles</td></tr>
+      <tr><td><code>-70 a -75</code></td><td>Zona gris, probablemente artefactos HF</td></tr>
+      <tr><td><code>-75</code> y abajo</td><td>Ruido / piso de ruido</td></tr>
+      <tr><td><code>-80</code></td><td>Silencio efectivo (piso MP3)</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Energia media vs peak</h2>
+  <ul>
+    <li><strong>Energia media</strong>: refleja nivel sostenido. Archivos con 10% de frames activos pierden ~10 dB vs MusicScope.</li>
+    <li><strong>Peak energy</strong>: max del mean por frame. Coincide con MusicScope. Se usa para verificacion de <a href="#" onclick="navigateTo('brickwall-vs-rolloff');return false">brickwall</a>.</li>
+  </ul>
+
+  <h2>Umbrales del algoritmo</h2>
+  <table>
+    <thead><tr><th>Umbral</th><th>Valor</th><th>Uso</th></tr></thead>
+    <tbody>
+      <tr><td>Caida brickwall</td><td><code>≥ 8 dB</code></td><td>Deteccion de corte de codec</td></tr>
+      <tr><td>Caida acumulada</td><td><code>≥ 12 dB / 3 bandas</code></td><td>Rolloff gradual</td></tr>
+      <tr><td>Gradiente brickwall</td><td><code>≥ 9.0 dB/kHz</code></td><td>Verificacion brickwall</td></tr>
+      <tr><td>Contenido elevado (HF)</td><td><code>&gt; -76 dB</code></td><td>Rolloff natural (≥17kHz)</td></tr>
+      <tr><td>Contenido elevado (std)</td><td><code>&gt; -70 dB</code></td><td>Rolloff natural (&lt;17kHz)</td></tr>
+      <tr><td>Override brickwall</td><td><code>&gt; -65 dB, ≥4 bandas</code></td><td>Peak brickwall override</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ==================== ARQUITECTURA ==================== -->
+<div class="page" id="page-stack-tecnologico">
+  <h1>Stack tecnologico</h1>
+  <div class="page-meta">
+    <span>Fuente: DISTRIBUCION-15march.txt</span>
+    <span class="tag">#arquitectura</span>
+    <span class="tag">#tfg</span>
+  </div>
+
+  <p><strong>Python 3.9+</strong> con <strong>customtkinter</strong> para GUI nativa multiplataforma y <strong>librosa</strong> para analisis de audio.</p>
+
+  <h2>Dependencias principales</h2>
+  <table>
+    <thead><tr><th>Libreria</th><th>Proposito</th><th>Peso</th></tr></thead>
+    <tbody>
+      <tr><td><code>librosa</code></td><td>Analisis de audio (carga, STFT)</td><td><code>~3 MB</code></td></tr>
+      <tr><td><code>numpy</code></td><td>Arrays numericos</td><td><code>~30 MB</code></td></tr>
+      <tr><td><code>scipy</code></td><td>Calculo cientifico</td><td><code>~83 MB</code></td></tr>
+      <tr><td><code>matplotlib</code></td><td>Espectrogramas</td><td><code>~25 MB</code></td></tr>
+      <tr><td><code>mutagen</code></td><td>Metadatos audio</td><td><code>~1.5 MB</code></td></tr>
+      <tr><td><code>sounddevice</code></td><td>Reproduccion audio</td><td><code>~0.2 MB</code></td></tr>
+      <tr><td><code>watchdog</code></td><td>Monitor de carpetas</td><td><code>~0.4 MB</code></td></tr>
+      <tr><td><code>customtkinter</code></td><td>Framework UI moderno</td><td><code>~1.5 MB</code></td></tr>
+    </tbody>
+  </table>
+
+  <h2>Estructura del proyecto</h2>
+  <pre><code>src/
+├── main.py              Punto de entrada
+├── app.py               Clase principal AudioQualApp
+├── core/                Pipeline de analisis (4 modulos)
+├── gui/                 Interfaz grafica (12 modulos)
+├── utils/               Utilidades (8 modulos)
+├── assets/              Fuentes, iconos, logos
+└── locales/             Traducciones (es.json, en.json)</code></pre>
+  <p>31 modulos Python, ~3.8 MB de codigo fuente total.</p>
+
+  <h2>Plataformas</h2>
+  <ul>
+    <li><strong>macOS</strong>: 10.15+ (Intel + Apple Silicon). Workarounds de threading Cocoa. Ver <a href="#" onclick="navigateTo('threading-macos');return false">Threading y macOS</a>.</li>
+    <li><strong>Windows</strong>: 10+ (64-bit). Backend Win32.</li>
+    <li><strong>Linux</strong>: Ubuntu 20.04+. Requiere Tcl/Tk 8.6, portaudio, libsndfile.</li>
+  </ul>
+</div>
+
+<div class="page" id="page-threading-macos">
+  <h1>Threading y event loop en macOS</h1>
+  <div class="page-meta">
+    <span>Fuente: BLOQUEOS_MACOS.txt</span>
+    <span class="tag">#threading</span>
+    <span class="tag">#gui</span>
+    <span class="tag">#tfg</span>
+  </div>
+
+  <p>La app usa multiples hilos de fondo con GUI Tkinter. En macOS, el backend Cocoa tiene comportamientos problematicos que requirieron una arquitectura especial.</p>
+
+  <h2>El problema raiz</h2>
+  <p>Cuando no hay actividad, el run loop de Cocoa puede entrar en estado "dormant": <code>root.after()</code> se registra pero no se ejecuta, <code>event_generate()</code> no despierta el loop, y el primer clic solo otorga foco.</p>
+
+  <h2>Solucion: 3 capas de callbacks</h2>
+  <table>
+    <thead><tr><th>Capa</th><th>Mecanismo</th><th>Latencia</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Primaria</strong></td><td>pipe + createfilehandler (kqueue)</td><td>Inmediata</td></tr>
+      <tr><td><strong>Backup</strong></td><td>Poller after(50ms)</td><td>≤ 50ms</td></tr>
+      <tr><td><strong>Ultimo recurso</strong></td><td>Heartbeat after(100ms)</td><td>≤ 100ms</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Problemas resueltos</h2>
+  <table>
+    <thead><tr><th>Problema</th><th>Solucion</th></tr></thead>
+    <tbody>
+      <tr><td>UI congela tras analisis</td><td>pipe + createfilehandler</td></tr>
+      <tr><td>Primer clic no responde</td><td>bind_all + focus_force</td></tr>
+      <tr><td>Foco perdido tras modal</td><td>Delay 50ms + focus_force</td></tr>
+      <tr><td>App cada vez mas lenta</td><td>Singleton click watcher</td></tr>
+      <tr><td>Memory leak matplotlib</td><td>try/finally con plt.close()</td></tr>
+      <tr><td>Race condition audio</td><td>Generation counter</td></tr>
+    </tbody>
+  </table>
+
+  <p><strong>Regla de oro</strong>: NUNCA llamar metodos de Tkinter desde un hilo que no sea el principal. SIEMPRE usar <code>schedule_callback_from_thread()</code>.</p>
+</div>
+
+<div class="page" id="page-cache-espectrogramas">
+  <h1>Cache de espectrogramas</h1>
+  <div class="page-meta">
+    <span>Fuente: CACHE.txt</span>
+    <span class="tag">#cache</span>
+    <span class="tag">#rendimiento</span>
+  </div>
+
+  <p>El analisis genera ~100-200 MB por archivo. Sin cache, cada visualizacion requiere re-analisis (~2-3s).</p>
+
+  <h2>3 niveles</h2>
+  <table>
+    <thead><tr><th>Nivel</th><th>Tamano</th><th>Velocidad</th><th>Vida</th></tr></thead>
+    <tbody>
+      <tr><td><strong>1. Efimero</strong></td><td>~150 MB/archivo</td><td>&mdash;</td><td>Transitorio, se libera inmediatamente</td></tr>
+      <tr><td><strong>2. Disco</strong></td><td>~5 MB/archivo</td><td>~6-10ms</td><td>Hasta cerrar la app</td></tr>
+      <tr><td><strong>3. LRU memoria</strong></td><td>~50 MB total (10 ent.)</td><td>Instantaneo</td><td>Mientras la app este abierta</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Compresion</h2>
+  <p>float32 → uint8 (256 niveles, ~0.3 dB de precision perdida). Downsample a 1024×4096. Formato: numpy <code>.npz</code> en <code>~/.audioqual/cache/</code>.</p>
+
+  <h2>Flujo</h2>
+  <pre><code>Analisis → Nivel 1 (150MB) → cachear a disco → liberar
+                                    ↓
+Usuario selecciona → Nivel 3 → Nivel 2 → re-analisis
+                                  ↓
+                           promover a Nivel 3</code></pre>
+</div>
+
+<div class="page" id="page-sistema-verificacion">
+  <h1>Sistema de verificacion y testing</h1>
+  <div class="page-meta">
+    <span>Fuente: VERIFICACION.txt</span>
+    <span class="tag">#testing</span>
+    <span class="tag">#tfg</span>
+  </div>
+
+  <h2>Arquitectura de 3 capas</h2>
+  <table>
+    <thead><tr><th>Capa</th><th>Componente</th><th>Proposito</th></tr></thead>
+    <tbody>
+      <tr><td><strong>1. Verificadores</strong></td><td><code>verify_ui.py</code></td><td>15 checks de interfaz (VUI_001-015)</td></tr>
+      <tr><td></td><td><code>run_tests.py</code></td><td>Tests de algoritmo con 32 archivos reales</td></tr>
+      <tr><td><strong>2. Orquestador</strong></td><td><code>verify_implementation.py</code></td><td>Quick (~15s) o Full (~2-3 min)</td></tr>
+      <tr><td><strong>3. Scripts</strong></td><td><code>quick_check.sh</code></td><td>Verificacion rapida (~30s)</td></tr>
+      <tr><td></td><td><code>full_check.sh</code></td><td>Verificacion completa (~2-3 min)</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Decisiones clave</h2>
+  <ul>
+    <li>UI verification en <strong>subprocess</strong> (conflictos Tkinter entre roots)</li>
+    <li><code>tests.json</code> es <strong>append-only</strong>: nunca editar ni eliminar tests</li>
+    <li>ExceptionCapture sobreescribe <code>sys.excepthook</code></li>
+    <li><strong>Regla</strong>: nunca reportar completado sin ejecutar verificacion</li>
+  </ul>
+</div>
+
+<div class="page" id="page-distribucion">
+  <h1>Distribucion y empaquetado</h1>
+  <div class="page-meta">
+    <span>Fuente: DISTRIBUCION-15march.txt</span>
+    <span class="tag">#distribucion</span>
+  </div>
+
+  <p>PyInstaller para distribucion standalone.</p>
+
+  <h2>Tamano</h2>
+  <table>
+    <thead><tr><th>Formato</th><th>Tamano</th></tr></thead>
+    <tbody>
+      <tr><td>Sin comprimir</td><td><code>~220-250 MB</code></td></tr>
+      <tr><td>DMG (macOS)</td><td><code>~100-130 MB</code></td></tr>
+      <tr><td>Instalador (Windows)</td><td><code>~100-130 MB</code></td></tr>
+    </tbody>
+  </table>
+  <p><code>scipy</code> es la dependencia mas pesada (~83 MB). Eliminarla reduciria ~40-50 MB.</p>
+
+  <h2>Problemas pendientes</h2>
+  <ul>
+    <li>PNG fallback incompleto en Windows (sin cairosvg)</li>
+    <li>Sin firma de codigo (macOS: "desarrollador no identificado")</li>
+    <li>Falsos positivos antivirus en Windows</li>
+    <li>Sin build Linux</li>
+  </ul>
+
+  <h2>Requisitos minimos</h2>
+  <p>Dual-core 2 GHz+, 4 GB RAM (8 recomendado), ~500 MB disco, 1280x720 pantalla. Sin GPU.</p>
+</div>
+
+<!-- ==================== FUENTES ==================== -->
+<div class="page" id="page-tutorial-mpeg">
+  <h1>A Tutorial on MPEG/Audio Compression</h1>
+  <div class="page-meta">
+    <span>Pan, 1995 &middot; IEEE MultiMedia</span>
+    <span class="tag">#codec</span>
+    <span class="tag">#tfg</span>
+  </div>
+
+  <p><strong>Autor</strong>: Davis Pan<br>
+  <strong>Publicacion</strong>: IEEE MultiMedia, Vol. 2, No. 2, Summer 1995, pp. 60-74<br>
+  <strong>IEEE</strong>: <a href="https://ieeexplore.ieee.org/abstract/document/388209">10.1109/93.388209</a></p>
+
+  <h2>Conceptos clave para AudioQual</h2>
+
+  <h3>Modelo psicoacustico</h3>
+  <p>Los codecs MPEG explotan las limitaciones del oido humano: umbral de audicion absoluto, enmascaramiento frecuencial y enmascaramiento temporal. El encoder calcula que componentes son imperceptibles y las descarta.</p>
+
+  <h3>Banco de filtros</h3>
+  <p>Layer III (MP3) usa un banco hibrido: polifasico (32 sub-bandas) + MDCT (18 coeficientes = 576 lineas frecuenciales). La resolucion de este banco determina la precision del filtro pasa-bajos.</p>
+
+  <h3>Filtro pasa-bajos del encoder</h3>
+  <p>A menor bitrate, menos bits disponibles → mas frecuencias altas descartadas. Esta es la <strong>base fisica</strong> de la deteccion de AudioQual.</p>
+
+  <h2>Relevancia para el TFG</h2>
+  <p>Referencia primaria para explicar <strong>por que</strong> funciona la deteccion. Conecta el principio fundamental con la teoria del modelo psicoacustico. Seccion del TFG: <strong>Marco teorico / Estado del arte</strong>.</p>
+
+  <h2>Fuentes pendientes</h2>
+  <p>Ver <a href="#" onclick="navigateTo('enlaces-recopilados');return false">enlaces recopilados</a> para la lista completa de fuentes por ingestar.</p>
+</div>
+
+<div class="page" id="page-enlaces-recopilados">
+  <h1>Enlaces y recursos recopilados</h1>
+  <div class="page-meta">
+    <span>Fuente: Articulos.rtf (TFG/Material)</span>
+    <span class="tag">#tfg</span>
+  </div>
+
+  <h2>Paper academico</h2>
+  <ul>
+    <li><strong>A Tutorial on MPEG/Audio Compression</strong> (Pan, 1995) &mdash; <a href="https://ieeexplore.ieee.org/abstract/document/388209">IEEE Xplore</a>. Ver <a href="#" onclick="navigateTo('tutorial-mpeg');return false">resumen detallado</a>.</li>
+  </ul>
+
+  <h2>Herramientas de analisis espectral</h2>
+  <ul>
+    <li><strong>The Well-Tempered Computer</strong> &mdash; <a href="https://www.thewelltemperedcomputer.com/SW/AudioTools/Spectrum.htm">Comparativa de herramientas</a></li>
+  </ul>
+
+  <h2>Comunidad</h2>
+  <ul>
+    <li><strong>Reddit: How to determine the true quality of an audio file</strong> &mdash; <a href="https://www.reddit.com/r/skrillex/comments/3l0yxp/how_to_determine_the_true_quality_of_an_audio_file/">r/skrillex thread</a>. Muestra el problema que AudioQual automatiza.</li>
+  </ul>
+
+  <h2>Estandares</h2>
+  <ul>
+    <li><strong>EBU Tech 3342</strong>: Loudness Range &mdash; <a href="https://tech.ebu.ch/docs/tech/tech3342.pdf">PDF</a></li>
+  </ul>
+
+  <h2>Pendientes de anadir</h2>
+  <ul>
+    <li><strong>ISO/IEC 11172-3</strong>: Estandar MPEG-1 Audio (Layer III / MP3)</li>
+    <li><strong>LAME encoder docs</strong>: Tablas de filtros pasa-bajos por bitrate</li>
+    <li><strong>Documentacion librosa</strong>: Implementacion de STFT y <code>top_db</code></li>
+    <li><strong>Papers sobre deteccion de transcodes</strong>: Trabajos previos (si existen)</li>
+    <li><strong>Especificacion AAC (ISO/IEC 13818-7)</strong>: Cortes de YouTube</li>
+  </ul>
+</div>
+
+<div class="page" id="page-herramientas-referencia">
+  <h1>Herramientas de referencia</h1>
+  <div class="page-meta">
+    <span>Fuente: MEJORAS_EN_ALGORITMO.txt</span>
+    <span class="tag">#herramientas</span>
+    <span class="tag">#tfg</span>
+  </div>
+
+  <h2>Spek</h2>
+  <p>Analizador de espectro open source. Util para screening rapido. <strong>Limitacion</strong>: colormap crea fronteras visuales artificiales a -70/-75 dB. Ver <a href="#" onclick="navigateTo('spek-vs-musicscope');return false">Spek vs MusicScope</a>.</p>
+
+  <h2>MusicScope</h2>
+  <p>Analizador profesional. Vista clave: Linear Frequency Spectrum. <strong>Gold standard</strong> para validacion &mdash; muestra energia real sin distorsiones de colormap.</p>
+
+  <h2>librosa</h2>
+  <p>Libreria Python para analisis de audio. <strong>Quirk</strong>: <code>amplitude_to_db()</code> aplica <code>top_db=80</code> por defecto, recortando por debajo de -80 dB. En archivos con pocas secciones activas, esto aplana el contenido HF.</p>
+
+  <h2>mutagen</h2>
+  <p>Libreria Python para metadatos de audio (ID3, Vorbis, FLAC). Provee el bitrate declarado contra el que se compara el corte detectado.</p>
+</div>
+
+<!-- ==================== DECISIONES ==================== -->
+<div class="page" id="page-spek-vs-musicscope">
+  <h1>Decision: Spek vs MusicScope</h1>
+  <div class="page-meta">
+    <span>Fuente: MEJORAS_EN_ALGORITMO.txt</span>
+    <span class="tag">#decision</span>
+    <span class="tag">#herramientas</span>
+    <span class="tag">#tfg</span>
+  </div>
+
+  <p>Hasta febrero 2026, usabamos <strong>Spek</strong> como referencia visual. En abril, descubrimos que <strong>engana</strong>.</p>
+
+  <h2>El descubrimiento</h2>
+  <p>El colormap de Spek crea fronteras visuales artificiales en las transiciones de -70 a -75 dB. La transicion azul→negro hace que parezca que el contenido "se corta" cuando simplemente baja de nivel.</p>
+
+  <h3>Ejemplo: Future (MP3 320kbps)</h3>
+  <table>
+    <thead><tr><th>Herramienta</th><th>Mostraba</th><th>Interpretacion</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Spek</strong></td><td>Corte a ~17-18 kHz</td><td>"Parece transcode 192 kbps"</td></tr>
+      <tr><td><strong>MusicScope</strong></td><td>Contenido &gt;-60dB hasta 17.5 kHz, rolloff gradual</td><td>"MP3 legitimo con rolloff natural"</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Decision</h2>
+  <p>MusicScope se convirtio en la <strong>referencia definitiva</strong>. Se desarrollo <code>compute_band_peak_energy()</code> para replicar lo que MusicScope muestra.</p>
+
+  <h2>Leccion</h2>
+  <p>Las herramientas de visualizacion tienen sesgos inherentes. Nunca confiar en una sola herramienta visual para decisiones de clasificacion.</p>
+</div>
+
+<div class="page" id="page-no-virtual-scroll">
+  <h1>Decision: Por que no virtual scroll</h1>
+  <div class="page-meta">
+    <span>Fuente: VIRTUAL_SCROLL_INTENTO_FALLIDO.txt</span>
+    <span class="tag">#decision</span>
+    <span class="tag">#gui</span>
+    <span class="tag">#rendimiento</span>
+  </div>
+
+  <p>Con 300+ archivos = ~4500 widgets. El virtual scroll se implemento completo (~600 lineas) pero el <strong>rendimiento fue peor</strong>.</p>
+
+  <h2>Por que fallo</h2>
+  <ol>
+    <li><strong>customtkinter widgets son pesados</strong>: doble canvas, esquinas redondeadas. <code>place()</code>/<code>place_forget()</code> mas lento que en Tk puro.</li>
+    <li><strong>Sin debouncing</strong>: cada mousewheel event en macOS (decenas por gesto de trackpad) disparaba <code>_render_visible()</code></li>
+    <li><strong>Reciclaje costoso</strong>: destruir/crear CTkFrame + CTkLabel + bind recursivo</li>
+    <li><strong>CTkScrollableFrame ya optimiza</strong> internamente para widgets CTk</li>
+  </ol>
+
+  <h2>Alternativas no implementadas</h2>
+  <ul>
+    <li><code>ttk.Treeview</code> (widget nativo)</li>
+    <li>Lazy loading con debouncing agresivo</li>
+    <li>Canvas items nativos (text, rectangle) en vez de widgets</li>
+  </ul>
+
+  <h2>Leccion</h2>
+  <p>Los tests de CI no detectan problemas de rendimiento. Un approach incremental habria sido mas seguro que una reescritura completa.</p>
+</div>
+
+<div class="page" id="page-investigacion-cluster4">
+  <h1>Investigacion: falsos positivos cluster-4</h1>
+  <div class="page-meta">
+    <span>Fuente: MEJORAS_EN_ALGORITMO.txt</span>
+    <span class="tag">#decision</span>
+    <span class="tag">#algoritmo</span>
+    <span class="tag">#tfg</span>
+  </div>
+
+  <p>Sesiones del 22-24 abril 2026. Enfoque cluster-by-cluster, zero-regression.</p>
+
+  <h2>10 archivos investigados con MusicScope</h2>
+
+  <h3>Falsos positivos corregidos</h3>
+  <table>
+    <thead><tr><th>Archivo</th><th>AudioQual decia</th><th>Realidad</th></tr></thead>
+    <tbody>
+      <tr><td>Future (320)</td><td>transcode 192</td><td>Rolloff natural, 4% frames activos</td></tr>
+      <tr><td>Space Rodeo (320)</td><td>transcode 96</td><td>Electro oldschool, poco HF</td></tr>
+      <tr><td>Pirate Material (320)</td><td>"low"</td><td>Sampleo radio, 10.5% activos</td></tr>
+      <tr><td>Summerbreeze (320)</td><td>transcode 192</td><td>Rolloff natural</td></tr>
+      <tr><td>notaiff (AIFF)</td><td>transcode 192/160</td><td>Lossless legitimo</td></tr>
+      <tr><td>Plaisir de France (320)</td><td>transcode 160</td><td>Mezcla del 2002</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Las 5 iteraciones</h2>
+  <ol>
+    <li><strong>verify_brickwall_signature()</strong> &mdash; Demasiado agresivo, 47 tests rotos</li>
+    <li><strong>is_natural_rolloff() v1</strong> &mdash; Umbral -70dB no capturaba Future (-74.4dB)</li>
+    <li><strong>Separar media/peak</strong> &mdash; Portishead escapaba (gradiente 9.8, umbral 10.0)</li>
+    <li><strong>Doble escaneo</strong> &mdash; Peak brickwall falso en Summerbreeze a ≥17kHz</li>
+    <li><strong>Limite 17kHz para peak</strong> &mdash; Solucion final. 93 tests, 83 pasan, 0 fallos.</li>
+  </ol>
+
+  <h2>Hallazgos clave</h2>
+  <ul>
+    <li>Energia media vs peak: la media no refleja archivos con pocas secciones activas</li>
+    <li>Gradiente + varianza discriminan brickwall de rolloff con alta fiabilidad</li>
+    <li>Ningun codec genera brickwall solo en peak por encima de 17 kHz</li>
+  </ul>
+</div>
+
+<div class="page" id="page-polling-observer">
+  <h1>Decision: PollingObserver</h1>
+  <div class="page-meta">
+    <span class="tag">#decision</span>
+    <span class="tag">#arquitectura</span>
+  </div>
+
+  <p>El FolderWatcher usa <code>watchdog.observers.PollingObserver</code> en vez del <code>FSEventsObserver</code> nativo de macOS.</p>
+
+  <h2>Razon</h2>
+  <p>FSEventsObserver tiene un bug con Unicode en macOS: nombres con caracteres especiales llegan con encoding incorrecto, causando que los archivos no se encuentren.</p>
+
+  <h2>Trade-off</h2>
+  <table>
+    <thead><tr><th></th><th>PollingObserver</th><th>FSEventsObserver</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Latencia</strong></td><td>~2s (configurable)</td><td>Instantaneo</td></tr>
+      <tr><td><strong>Unicode</strong></td><td>Correcto</td><td>Bug conocido</td></tr>
+      <tr><td><strong>Portabilidad</strong></td><td>Todas las plataformas</td><td>Solo macOS</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="page" id="page-desarrollo-con-llm">
+  <h1>Decision: Desarrollo con LLM (Claude Code)</h1>
+  <div class="page-meta">
+    <span class="tag">#decision</span>
+    <span class="tag">#tfg</span>
+  </div>
+
+  <p>AudioQual se ha desarrollado desde el 28 de enero de 2026 con asistencia de Claude Code como copiloto de programacion.</p>
+
+  <h2>Modelo de trabajo</h2>
+  <ul>
+    <li><strong>El usuario</strong> define la vision, toma decisiones de diseno, valida resultados con herramientas externas (MusicScope, Spek), y dirige la calibracion</li>
+    <li><strong>Claude Code</strong> implementa codigo, propone soluciones, ejecuta tests, mantiene consistencia, y documenta conocimiento</li>
+  </ul>
+
+  <h2>Artefactos de gobierno</h2>
+  <table>
+    <thead><tr><th>Artefacto</th><th>Funcion</th></tr></thead>
+    <tbody>
+      <tr><td><code>CLAUDE.md</code></td><td>Instrucciones de alto nivel para el LLM</td></tr>
+      <tr><td><code>.claude/rules/</code></td><td>Reglas operativas (threading, testing, i18n)</td></tr>
+      <tr><td><code>knowledge/</code></td><td>Documentacion generada por LLM, curada por usuario</td></tr>
+      <tr><td><code>memory/</code></td><td>Persistencia cross-conversacion</td></tr>
+      <tr><td><code>tests.json</code></td><td>Append-only, zero-regression</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Patrones que funcionaron</h2>
+  <ul>
+    <li><strong>Cluster-by-cluster</strong>: resolver un grupo de problemas antes de pasar al siguiente</li>
+    <li><strong>Zero-regression</strong>: nunca reportar completado sin pasar tests</li>
+    <li><strong>Conocimiento acumulativo</strong>: documentar en knowledge/ lo aprendido</li>
+    <li><strong>Verificacion cruzada</strong>: LLM analiza datos, humano valida con herramientas externas</li>
+  </ul>
+
+  <h2>Lo que no funciono</h2>
+  <ul>
+    <li>Confianza ciega en Spek nos llevo a conclusiones erroneas</li>
+    <li>Reescrituras grandes sin validacion incremental (virtual scroll: 600 lineas)</li>
+  </ul>
+</div>
+
+<!-- ==================== LOG ==================== -->
+<div class="page" id="page-log">
+  <h1>Log del proyecto</h1>
+  <div class="page-meta">
+    <span>Cronologia desde el primer commit</span>
+  </div>
+
+  <div class="log-entry">
+    <span class="log-date">2026-01-28</span> <span class="log-category">inicio</span>
+    <div class="log-title">Primer commit: AudioQual audio quality analyzer</div>
+    <div class="log-body">Nace el proyecto. Analizador funcional + correccion de deteccion de transcodes + reduccion de falsos positivos. Tres commits en un dia.</div>
+  </div>
+
+  <div class="log-entry">
+    <span class="log-date">2026-01-29</span> <span class="log-category">algoritmo</span>
+    <div class="log-title">Grandes avances en deteccion de transcodes</div>
+    <div class="log-body">Mejoras en TranscodeTheBox, etiquetado por frecuencia de corte, soporte AIFF.</div>
+  </div>
+
+  <div class="log-entry">
+    <span class="log-date">2026-02-02</span> <span class="log-category">gui</span>
+    <div class="log-title">Primeros disenos de interfaz</div>
+    <div class="log-body">Colores, fuente Lowpress, scrollbar V1. La interfaz empieza a tomar forma.</div>
+  </div>
+
+  <div class="log-entry">
+    <span class="log-date">2026-02-03</span> <span class="log-category">gui</span>
+    <div class="log-title">Iteraciones rapidas de diseno</div>
+    <div class="log-body">6 commits en un dia: panel lateral → botones → nuevo diseno → burbujas de estado. Exploracion intensa.</div>
+  </div>
+
+  <div class="log-entry">
+    <span class="log-date">2026-02-05</span> <span class="log-category">gui</span>
+    <div class="log-title">Reproductor de audio y visualizador DJ</div>
+    <div class="log-body">Implementacion del reproductor con visualizador. Dos rondas de optimizacion y correccion del bloqueo de tkinter.</div>
+  </div>
+
+  <div class="log-entry">
+    <span class="log-date">2026-02-09</span> <span class="log-category">algoritmo</span>
+    <div class="log-title">Fiabilidad, LaTour y documentacion</div>
+    <div class="log-body">Sistema de confianza. Correccion de meseta de ruido (LaTour). Creacion de CLAUDE.md y ALGORITMO.txt. Atajos de teclado.</div>
+  </div>
+
+  <div class="log-entry">
+    <span class="log-date">2026-02-11</span> <span class="log-category">arquitectura</span>
+    <div class="log-title">FolderWatcher</div>
+    <div class="log-body">Monitorizacion de carpeta con watchdog (PollingObserver).</div>
+  </div>
+
+  <div class="log-entry">
+    <span class="log-date">2026-02-17</span> <span class="log-category">arquitectura</span>
+    <div class="log-title">Estabilidad macOS, tests y rebranding</div>
+    <div class="log-body">Sistema pipe+queue para threading, restauracion de foco, primera suite de tests. Rebranding AudioQual → WaxCheck.</div>
+  </div>
+
+  <div class="log-entry">
+    <span class="log-date">2026-02-19</span> <span class="log-category">testing</span>
+    <div class="log-title">Sistema de verificacion y knowledge/</div>
+    <div class="log-body">Busqueda con lupita. Sistema de testeo y verificacion. Carpeta knowledge/ creada.</div>
+  </div>
+
+  <div class="log-entry">
+    <span class="log-date">2026-02-22</span> <span class="log-category">algoritmo</span>
+    <div class="log-title">Calibracion intensiva del algoritmo</div>
+    <div class="log-body">Bangapella, GoldenBoy, LaTour arreglados. Casos YouTube arreglados. Sesion intensiva.</div>
+  </div>
+
+  <div class="log-entry">
+    <span class="log-date">2026-02-23</span> <span class="log-category">gui</span>
+    <div class="log-title">Nueva UI completa</div>
+    <div class="log-body">Burbujas de estado, hover glow, popup explicacion con animacion. Umbrales V1→V2, guard HF a 18kHz. Espectrograma tipo Spek.</div>
+  </div>
+
+  <div class="log-entry">
+    <span class="log-date">2026-02-24</span> <span class="log-category">bugfix</span>
+    <div class="log-title">Fix clics macOS y clasificacion YouTube</div>
+    <div class="log-body">acceptsFirstMouse fix. YouTube rips ≤192kbps clasificados correctamente.</div>
+  </div>
+
+  <div class="log-entry">
+    <span class="log-date">2026-03-03</span> <span class="log-category">algoritmo</span>
+    <div class="log-title">Espectrograma sin matplotlib y umbrales</div>
+    <div class="log-body">Reescritura del rendering de espectrograma. Mejoras de waveform con RMS. Fix de seek.</div>
+  </div>
+
+  <div class="log-entry">
+    <span class="log-date">2026-03-04</span> <span class="log-category">gui</span>
+    <div class="log-title">Funcionalidades avanzadas</div>
+    <div class="log-body">Metadatos iTunes-style, selector audio, menu contextual, multiseleccion. Fix RAM. Cache de espectrogramas en disco.</div>
+  </div>
+
+  <div class="log-entry">
+    <span class="log-date">2026-03-05</span> <span class="log-category">rendimiento</span>
+    <div class="log-title">Optimizacion ~50% velocidad</div>
+    <div class="log-body">HOP_LENGTH 512→1024, soundfile, 4 workers paralelos.</div>
+  </div>
+
+  <div class="log-entry">
+    <span class="log-date">2026-03-15</span> <span class="log-category">gui</span>
+    <div class="log-title">Visibilidad de seleccion + virtual scroll (fallido)</div>
+    <div class="log-body">Mejora visual de fila seleccionada. Intento de virtual scroll que resulto en peor rendimiento.</div>
+  </div>
+
+  <div class="log-entry">
+    <span class="log-date">2026-03-19</span> <span class="log-category">distribucion</span>
+    <div class="log-title">Sistema de build y empaquetado</div>
+    <div class="log-body">Specs PyInstaller macOS/Windows. Review detecto 3 problemas (PNG fallback, NSMicrophone, constante huerfana).</div>
+  </div>
+
+  <div class="log-entry">
+    <span class="log-date">2026-03-21</span> <span class="log-category">algoritmo</span>
+    <div class="log-title">Precision y nivel "medio"</div>
+    <div class="log-body">Fix falsos positivos en samples WAV de percusion. Nuevo nivel de calidad "medio".</div>
+  </div>
+
+  <div class="log-entry">
+    <span class="log-date">2026-04-14</span> <span class="log-category">gui</span>
+    <div class="log-title">Watcher glow e internacionalizacion</div>
+    <div class="log-body">Animacion glow en boton watcher. Sistema i18n completo (espanol/ingles).</div>
+  </div>
+
+  <div class="log-entry">
+    <span class="log-date">2026-04-19</span> <span class="log-category">bugfix</span>
+    <div class="log-title">Watcher subcarpetas y resize</div>
+    <div class="log-body">Fix deteccion en subcarpetas anadidas. Optimizacion de resize con archivos.</div>
+  </div>
+
+  <div class="log-entry">
+    <span class="log-date">2026-04-21</span> <span class="log-category">algoritmo</span>
+    <div class="log-title">Pre-validacion MP3 y cluster-4</div>
+    <div class="log-body">Prevencion SIGBUS. Fix falsos positivos cluster-4 (rolloff natural).</div>
+  </div>
+
+  <div class="log-entry">
+    <span class="log-date">2026-04-24</span> <span class="log-category">algoritmo</span>
+    <div class="log-title">Verificacion brickwall</div>
+    <div class="log-body">is_natural_rolloff() con gradiente + varianza. 5 iteraciones. Resultado: 93 tests, 83 pasan, 0 fallos.</div>
+  </div>
+
+  <div class="log-entry">
+    <span class="log-date">2026-04-27</span> <span class="log-category">inicio</span>
+    <div class="log-title">Creacion del wiki del proyecto</div>
+    <div class="log-body">Wiki de conocimiento con 21 paginas. Ingesta de 7 archivos de knowledge. Reconstruccion de cronologia desde git.</div>
+  </div>
+
+</div>
+
+</div><!-- content-wrap -->
+</main>
+
+<script>
+function navigateTo(pageId) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+
+  const page = document.getElementById('page-' + pageId);
+  if (page) {
+    page.classList.add('active');
+    document.getElementById('mainContent').scrollTop = 0;
+  }
+
+  const navItem = document.querySelector(`.nav-item[data-page="${pageId}"]`);
+  if (navItem) navItem.classList.add('active');
+
+  // Close mobile sidebar
+  document.getElementById('sidebar').classList.remove('open');
+
+  // Update hash
+  history.replaceState(null, '', '#' + pageId);
+}
+
+// Nav click handlers
+document.querySelectorAll('.nav-item').forEach(item => {
+  item.addEventListener('click', () => navigateTo(item.dataset.page));
+});
+
+// Sidebar overlay
+document.getElementById('sidebarOverlay').addEventListener('click', () => {
+  document.getElementById('sidebar').classList.remove('open');
+});
+
+// Search
+const searchInput = document.getElementById('searchInput');
+const searchCount = document.getElementById('searchCount');
+
+searchInput.addEventListener('input', () => {
+  const query = searchInput.value.toLowerCase().trim();
+  const navItems = document.querySelectorAll('.nav-item');
+
+  if (!query) {
+    navItems.forEach(item => item.classList.remove('search-hidden'));
+    searchCount.textContent = '';
+    return;
+  }
+
+  let visible = 0;
+  navItems.forEach(item => {
+    const pageId = item.dataset.page;
+    const page = document.getElementById('page-' + pageId);
+    const text = (item.textContent + ' ' + (page ? page.textContent : '')).toLowerCase();
+
+    if (text.includes(query)) {
+      item.classList.remove('search-hidden');
+      visible++;
+    } else {
+      item.classList.add('search-hidden');
+    }
+  });
+
+  searchCount.textContent = visible + ' resultado' + (visible !== 1 ? 's' : '');
+});
+
+// Keyboard shortcut for search
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    e.preventDefault();
+    searchInput.focus();
+  }
+  if (e.key === 'Escape') {
+    searchInput.value = '';
+    searchInput.dispatchEvent(new Event('input'));
+    searchInput.blur();
+  }
+});
+
+// Handle hash on load
+const hash = window.location.hash.slice(1);
+if (hash) navigateTo(hash);
+</script>
+
+</body>
+</html>
