@@ -77,10 +77,19 @@ Operational constraints are in `.claude/rules/` (loaded automatically with the s
 - `testing.md` — Test suite rules, post-implementation verification table
 - `i18n.md` — Internationalization conventions and constraints
 - `memory-management.md` — Transient data lifecycle and eviction
+- `wiki-maintenance.md` — When and how to update the project wiki after code changes
 
 ## Knowledge Base
 
-- `knowledge/ALGORITMO.txt` — Full algorithm explanation (read before modifying `frequency_detector.py`)
-- `knowledge/VERIFICACION.txt` — Verification system architecture
-- `scripts/diagnose_*.py` — Band-by-band diagnostic scripts for algorithm calibration
+`knowledge/wiki/` contains a structured wiki (21 pages) covering algorithm internals, architecture, design decisions, and external sources. Start from `knowledge/wiki/index.md` for navigation. See `knowledge/wiki/SCHEMA.md` for formatting conventions.
+
+Key entry points by topic:
+- **Before modifying the algorithm** → `knowledge/wiki/algoritmo/` (8 pages) + `knowledge/ALGORITMO.txt` (raw reference)
+- **Architecture & threading** → `knowledge/wiki/arquitectura/` (5 pages)
+- **Design decisions & tradeoffs** → `knowledge/wiki/decisiones/` (5 pages)
+- **External sources & tools** → `knowledge/wiki/fuentes/` (3 pages)
+- **Verification system** → `knowledge/VERIFICACION.txt`
+- **Diagnostic scripts** → `scripts/diagnose_*.py` (band-by-band analysis for algorithm calibration)
+
+Wiki maintenance rules are in `.claude/rules/wiki-maintenance.md`.
 
