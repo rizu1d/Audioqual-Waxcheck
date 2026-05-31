@@ -22,10 +22,13 @@ env/
 # PyInstaller
 dist/
 *.app
+build/waxcheck_macos/
+build/audioqual_macos/
 
 # Archivos temporales del proyecto
 src.zip
 .Rhistory
+*.log
 
 # Archivos de audio de prueba (muy pesados para git)
 references/test-files/
@@ -35,6 +38,10 @@ evaluation/originals/
 evaluation/dataset/
 evaluation/results.csv
 evaluation/report.html
+evaluation/*.xlsx
+
+# Test results (generated)
+tests/results_*.json
 
 # Claude Code (configuración local)
 .claude/
