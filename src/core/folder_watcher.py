@@ -12,9 +12,10 @@ from watchdog.events import FileSystemEventHandler
 from ..utils.file_utils import is_supported_audio_file
 
 # macOS FSEventsObserver has a bug with Unicode paths (e.g. "Música").
-# PollingObserver works universally, with a 1-second polling interval
-# that is perfectly acceptable for a file-download monitoring use case.
-_POLLING_INTERVAL = 1  # seconds
+# PollingObserver works universally, with a 3-second polling interval
+# that is perfectly acceptable for a file-download monitoring use case
+# (the stability loop already waits ~2s of constant size before dispatch).
+_POLLING_INTERVAL = 3  # seconds
 
 # Temporary file extensions to ignore (downloads in progress)
 _TEMP_EXTENSIONS = {

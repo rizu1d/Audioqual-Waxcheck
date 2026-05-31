@@ -563,12 +563,16 @@ class MainWindow(ctk.CTkFrame):
             queued = self._pending_analysis_queue[:]
             self._pending_analysis_queue.clear()
             self._start_analysis(queued)
+        elif self._glow_active:
+            self._stop_glow()
 
     def _on_cancel_analysis(self):
         """Handle cancel button from overlay."""
         self.analyzer.cancel()
         self._pending_analysis_queue.clear()
         self._set_analyzing_state(False)
+        if self._glow_active:
+            self._stop_glow()
 
     def _on_analysis_progress(
         self,
@@ -926,7 +930,6 @@ class MainWindow(ctk.CTkFrame):
             self.watcher_btn.configure(image=self._watcher_icon_on)
             self._watcher_indicator.grid()
             self._start_indicator_pulse()
-            self._start_glow()
             self._restore_watcher_status()
         else:
             self.watcher_btn.configure(image=self._watcher_icon_off)
@@ -960,6 +963,8 @@ class MainWindow(ctk.CTkFrame):
 
     def _start_glow(self):
         """Start glow animation on the watcher button."""
+        if self._glow_active:
+            return
         self._glow_active = True
         self._glow_step(0)
 
@@ -993,4 +998,6 @@ class MainWindow(ctk.CTkFrame):
         existing = set(self.results_table.get_ordered_filepaths())
         new_files = [f for f in files if f not in existing]
         if new_files:
+            if self._watcher_active:
+                self._start_glow()
             self._on_files_added(new_files)
