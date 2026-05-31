@@ -1,0 +1,422 @@
+================================================================================
+  GUÍA DE DIAGNÓSTICO Y SOLUCIÓN DE BLOQUEOS EN macOS (Tkinter + Threads)
+================================================================================
+
+Última actualización: 2026-02-24
+Commits relevantes: cb4ebe1, e580ff2, 0603f4d
+
+Este documento recoge todos los problemas de bloqueo/congelamiento que hemos
+encontrado y resuelto en la aplicación, junto con las soluciones aplicadas.
+Sirve como referencia para futuros problemas similares.
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  ÍNDICE                                                                     ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║  1. Resumen ejecutivo                                                       ║
+║  2. Problema raíz: El event loop de Cocoa y Tkinter                        ║
+║  3. Problema 1: Callbacks de threads no se ejecutaban                       ║
+║  4. Problema 2: Clics de ratón no respondían al primer intento             ║
+║  5. Problema 3: Pérdida de foco tras cerrar diálogos modales               ║
+║  6. Problema 4: Acumulación de handlers zombis (bind_all)                  ║
+║  7. Problema 5: Memory leaks y race conditions                             ║
+║  8. Arquitectura actual de callbacks thread→UI                             ║
+║  9. Checklist de diagnóstico para futuros bloqueos                         ║
+║  10. Antipatrones (qué NO hacer)                                            ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+
+================================================================================
+1. RESUMEN EJECUTIVO
+================================================================================
+
+La app usa Tkinter (a través de customtkinter) con múltiples hilos de fondo
+(análisis de audio, renderizado de espectrograma, reproducción, waveform).
+En macOS, el event loop de Cocoa/Tk tiene comportamientos problemáticos:
+
+  - El run loop puede "dormirse" y dejar de procesar timers (after())
+  - event_generate() desde hilos de fondo no es fiable
+  - El backend Cocoa no entrega clicks si la ventana no tiene foco del teclado
+  - grab_set()/grab_release() en diálogos modales puede dejar el foco "perdido"
+
+La solución es una arquitectura de 3 capas redundantes para callbacks +
+workarounds específicos para foco y clicks.
+
+
+================================================================================
+2. PROBLEMA RAÍZ: EL EVENT LOOP DE COCOA Y TKINTER
+================================================================================
+
+En macOS, Tkinter usa el backend Cocoa (Tk 8.6). Este backend tiene un bug
+conocido: cuando no hay actividad de I/O ni timers pendientes, el run loop
+de Cocoa puede entrar en un estado "dormant" donde:
+
+  - root.after(ms, callback) se registra pero NO se ejecuta hasta que algo
+    "despierte" el event loop (mover el ratón, hacer clic, etc.)
+  - event_generate() llamado desde un hilo de fondo puede no despertar el loop
+  - update_idletasks() llamado desde el heartbeat puede interferir con el
+    procesamiento de eventos de ratón
+
+Este problema NO existe en Windows/Linux (X11/Win32).
+
+
+================================================================================
+3. PROBLEMA 1: CALLBACKS DE THREADS NO SE EJECUTABAN
+================================================================================
+
+SÍNTOMA:
+  La UI se congelaba después de lanzar análisis de archivos. Los resultados
+  nunca aparecían en la tabla aunque el análisis terminaba en el thread.
+
+CAUSA RAÍZ:
+  schedule_callback_from_thread() usaba root.after(0, callback) +
+  event_generate("<<ThreadCallback>>"). Ambos mecanismos dependen del event
+  loop de Tcl, que en macOS Cocoa podía estar dormido.
+
+SOLUCIÓN (tk_utils.py — commit cb4ebe1):
+  Reemplazar root.after() + event_generate() por un sistema basado en pipe
+  del sistema operativo:
+
+  a) Se crea un os.pipe() → (read_fd, write_fd)
+  b) Se registra read_fd con Tk createfilehandler (backed by kqueue en macOS)
+  c) Los callbacks van a una queue.Queue thread-safe
+  d) Cuando un thread encola un callback, escribe un byte al pipe
+  e) kqueue detecta I/O → dispara el file handler → drena la queue
+  f) Un hilo keep-alive escribe al pipe cada 200ms como safety net
+
+  Por qué funciona: createfilehandler usa kqueue (no timers Tcl), así que
+  el event loop SIEMPRE se despierta cuando hay datos en el pipe.
+
+CÓDIGO CLAVE (tk_utils.py):
+  - init_thread_scheduler(root) — configura pipe + filehandler + keepalive
+  - schedule_callback_from_thread(root, cb, *args) — encola + escribe al pipe
+  - process_pending_callbacks() — drena queue y ejecuta callbacks
+  - _keepalive_loop() — thread daemon que escribe al pipe cada 200ms
+  - _start_callback_poller() — timer after(50ms) como backup independiente
+  - cleanup_thread_scheduler() — limpieza al cerrar
+
+TRES CAPAS DE REDUNDANCIA:
+  1. PRIMARIA: pipe + createfilehandler (macOS) / <<ThreadCallback>> (otros)
+  2. SECUNDARIA: after()-based poller cada 50ms (independiente del pipe)
+  3. TERCIARIA: heartbeat en app.py cada 100ms llama process_pending_callbacks()
+
+  Si la capa 1 falla → la capa 2 procesa en ≤50ms
+  Si capas 1 y 2 fallan → la capa 3 procesa en ≤100ms
+
+
+================================================================================
+4. PROBLEMA 2: CLICS DE RATÓN NO RESPONDÍAN AL PRIMER INTENTO
+================================================================================
+
+SÍNTOMA:
+  Después de cerrar un diálogo modal (metadata editor, settings), o tras
+  cambiar de aplicación y volver, el primer clic en la tabla de resultados
+  no hacía nada. El segundo clic sí funcionaba.
+
+CAUSA RAÍZ:
+  El backend Cocoa de macOS tiene un comportamiento llamado "acceptsFirstMouse":
+  cuando una ventana no tiene el foco del teclado, el primer clic solo otorga
+  foco (no se entrega como evento de clic al widget).
+
+SOLUCIÓN (app.py — commit 0603f4d):
+  Workaround global que fuerza el foco cuando se detecta que ningún widget
+  de la aplicación lo tiene:
+
+    def _setup_macos_click_fix(self):
+        def _on_any_click(event):
+            try:
+                if self.root.focus_get() is None:
+                    self.root.focus_force()
+            except tk.TclError:
+                pass
+        self.root.bind_all("<Button-1>", _on_any_click, add="+")
+
+  IMPORTANTE: Solo se activa en macOS (sys.platform == "darwin").
+  IMPORTANTE: Usa add="+" para no sobreescribir otros handlers de <Button-1>.
+
+PROBLEMA SECUNDARIO — DUPLICACIÓN DE CLICKS:
+  _bind_click_recursive() en ResultRow enlaza <Button-1> a TODOS los
+  widgets descendientes de la fila. Un solo clic físico disparaba el handler
+  ~15 veces (una por cada widget: frame, labels, badge, etc.).
+
+SOLUCIÓN (results_table.py — commit 0603f4d):
+  Deduplicación por event.time — el timestamp del evento X11/Cocoa es
+  idéntico para todas las propagaciones del mismo clic físico:
+
+    def _handle_click(self, event):
+        if event.time == self._last_row_click_time:
+            return
+        self._last_row_click_time = event.time
+        if self.on_click:
+            self.on_click(self)
+
+  Se usan timestamps separados para row click y badge click porque ambos
+  handlers deben dispararse exactamente una vez por clic.
+
+  TAMBIÉN: Se cambió .bind("<Button-1>", handler) por
+  .bind("<Button-1>", handler, add="+") en todos los bindings de fila
+  para no sobreescribir handlers de otros widgets (como el focus fix global).
+
+
+================================================================================
+5. PROBLEMA 3: PÉRDIDA DE FOCO TRAS CERRAR DIÁLOGOS MODALES
+================================================================================
+
+SÍNTOMA:
+  Después de cerrar el MetadataEditor o SettingsWindow, la ventana principal
+  no recuperaba el foco. Los atajos de teclado (Space, Up/Down, etc.)
+  dejaban de funcionar hasta hacer clic en la ventana.
+
+CAUSA RAÍZ:
+  1. grab_release() + destroy() en secuencia rápida: Cocoa no propaga el
+     foco de vuelta al master si la ventana se destruye inmediatamente.
+  2. self.master.focus_force() después de self.destroy() fallaba porque
+     en ese punto self.master podía haber sido desregistrado del gestor
+     de ventanas Cocoa.
+
+SOLUCIÓN (metadata_editor.py, settings_window.py — commits cb4ebe1, 0603f4d):
+
+  def _on_close(self):
+      master = self.master        # Guardar referencia ANTES de destroy
+      self.grab_release()
+      self.destroy()
+      # Delay de 50ms para que Cocoa procese la destrucción
+      master.after(50, lambda: master.focus_force())
+
+  PUNTOS CLAVE:
+  - Guardar self.master en variable local ANTES de destroy() (después de
+    destroy, self.master puede no ser accesible)
+  - Delay de 50ms para que el event loop de Cocoa procese la destrucción
+    de la ventana modal antes de forzar foco en la ventana padre
+  - La misma técnica aplica para spectrogram_window
+
+TAMBIÉN (apertura de modales):
+  Al abrir ventanas modales, doble focus_force con delay:
+    self.lift()
+    self.grab_set()
+    self.focus_force()
+    self.after(50, self.focus_force)  # Segundo intento tras mapeo completo
+
+
+================================================================================
+6. PROBLEMA 4: ACUMULACIÓN DE HANDLERS ZOMBIS (bind_all)
+================================================================================
+
+SÍNTOMA:
+  Después de abrir y cerrar el QualityPopup varias veces, los clics
+  se volvían cada vez más lentos. Eventualmente la UI se congelaba.
+
+CAUSA RAÍZ:
+  Cada vez que se abría un popup, _bind_click_outside() ejecutaba
+  self.bind_all("<Button-1>", self._on_any_click, add="+"). Pero al
+  cerrar el popup, nunca se llamaba unbind_all(). Resultado: cada apertura
+  añadía un nuevo handler global que NUNCA se eliminaba. Después de
+  20 aperturas, cada clic ejecutaba 20 handlers zombis.
+
+SOLUCIÓN (quality_popup.py — commit 0603f4d):
+  Patrón "singleton click watcher":
+
+    # Módulo-level (UNA sola instancia para todos los popups)
+    _active_popup = None
+    _click_watcher_installed = False
+
+    def _on_global_click(event):
+        if _active_popup is None or not _active_popup._listening:
+            return  # Sin popup activo → no-op (coste: ~0)
+        try:
+            top = event.widget.winfo_toplevel()
+            if top != _active_popup:
+                _active_popup.close()
+        except (tk.TclError, AttributeError):
+            if _active_popup:
+                _active_popup.close()
+
+    # En _bind_click_outside():
+    def _bind_click_outside(self):
+        global _active_popup, _click_watcher_installed
+        self._listening = True
+        _active_popup = self
+        if not _click_watcher_installed:
+            self.master.bind_all("<Button-1>", _on_global_click, add="+")
+            _click_watcher_installed = True
+
+  VENTAJAS:
+  - Un solo bind_all para toda la vida de la aplicación
+  - Coste por clic cuando no hay popup: una comparación (is None) → ~0
+  - close() limpia _active_popup = None
+  - No se necesita unbind_all (que es peligroso porque puede eliminar
+    handlers de otros widgets)
+
+
+================================================================================
+7. PROBLEMA 5: MEMORY LEAKS Y RACE CONDITIONS
+================================================================================
+
+SÍNTOMA:
+  Uso de memoria creciente, crashes esporádicos al cambiar de archivo
+  durante reproducción.
+
+SOLUCIONES (commit e580ff2):
+
+a) MEMORY LEAK: Figuras matplotlib no se cerraban
+   Archivo: spectrogram_window.py
+   Antes: fig se creaba en try block pero si ocurría excepción no se cerraba
+   Después: fig = None antes de try, finally block con fig.clear() + plt.close(fig)
+
+b) RACE CONDITION: Audio stream callback vs stop/start
+   Archivo: audio_player.py
+   Antes: _on_stream_finished() podía ejecutarse desde un stream ya reemplazado
+   Después: _stream_generation counter, cada stream captura su generation al
+   crearse, _on_stream_finished(gen) ignora callbacks de generations obsoletas.
+   Además, _start_stream() y _stop_stream() protegidos con self._lock.
+
+c) TIMER LEAK: PlayerControls._update_timer nunca se cancelaba en destroy
+   Archivo: player_controls.py
+   Después: override de destroy() que llama cleanup() primero
+
+d) MEMORY: CTkImage antiguo no se liberaba al actualizar waveform
+   Archivo: waveform_display.py
+   Después: old = self._photo_image → crear nuevo → del old
+
+
+================================================================================
+8. ARQUITECTURA ACTUAL DE CALLBACKS THREAD→UI
+================================================================================
+
+Flujo cuando un hilo de fondo quiere actualizar la UI:
+
+  Hilo de fondo                     Hilo principal (event loop Tk)
+  ─────────────                     ─────────────────────────────
+  schedule_callback_from_thread()
+    │
+    ├─ queue.put((callback, args))
+    │
+    └─ os.write(pipe_write_fd, b'\x00')
+                                    ┌─ kqueue detecta datos en pipe
+                                    ├─ createfilehandler dispara _on_pipe_readable
+                                    ├─ os.read() drena pipe
+                                    └─ process_pending_callbacks()
+                                         └─ callback(*args)  ← ejecuta en main thread
+
+  Backup 1 (50ms):                  ┌─ after(50) dispara _start_callback_poller
+                                    └─ process_pending_callbacks()
+
+  Backup 2 (100ms):                 ┌─ after(100) dispara _heartbeat
+                                    └─ process_pending_callbacks()
+
+REGLA DE ORO:
+  NUNCA llamar métodos de Tkinter desde un hilo que no sea el principal.
+  SIEMPRE usar schedule_callback_from_thread() para comunicación thread→UI.
+
+
+================================================================================
+9. CHECKLIST DE DIAGNÓSTICO PARA FUTUROS BLOQUEOS
+================================================================================
+
+Si la UI se congela o no responde, verificar en este orden:
+
+□ 1. ¿Se está llamando a Tkinter desde un hilo de fondo?
+     Buscar: root.after, widget.configure, event_generate fuera del main thread
+     Solución: envolver en schedule_callback_from_thread()
+
+□ 2. ¿Hay un callback que tarda demasiado en el main thread?
+     Si un callback encolado bloquea, todo el event loop se detiene.
+     Solución: mover trabajo pesado a un thread, solo actualizar UI en callback
+
+□ 3. ¿Se acumulan bind_all handlers?
+     Síntoma: la app se vuelve más lenta con cada interacción
+     Buscar: bind_all() sin correspondiente unbind_all() o sin patrón singleton
+     Solución: patrón singleton como en quality_popup.py
+
+□ 4. ¿Un diálogo modal dejó el foco "perdido"?
+     Síntoma: hay que hacer dos clics para que funcione
+     Buscar: grab_set/grab_release sin focus_force posterior con delay
+     Solución: master.after(50, lambda: master.focus_force()) después de destroy
+
+□ 5. ¿update_idletasks() en el heartbeat?
+     update_idletasks() puede interferir con el procesamiento de eventos de ratón
+     NUNCA usar update_idletasks() en el heartbeat — solo process_pending_callbacks()
+
+□ 6. ¿El keepalive es demasiado frecuente?
+     Si el keepalive escribe al pipe cada <100ms, puede saturar el event loop
+     con invocaciones de file handler que compiten con eventos de ratón
+     El valor actual (200ms) es un equilibrio probado
+
+□ 7. ¿Hay figuras matplotlib sin cerrar?
+     Cada Figure de matplotlib consume ~4-10MB. Sin plt.close(fig), se acumulan.
+     Siempre usar try/finally con fig.clear() + plt.close(fig)
+
+□ 8. ¿Hay streams de audio obsoletos ejecutando callbacks?
+     Race condition si _on_stream_finished se ejecuta tras crear un nuevo stream
+     Solución: generation counter para invalidar callbacks de streams reemplazados
+
+□ 9. ¿return "break" en handlers de eventos?
+     return "break" detiene la propagación del evento — puede impedir que
+     otros handlers necesarios (como el focus fix global) se ejecuten.
+     Solo usar "break" cuando realmente se quiere detener la propagación.
+     En ResultRow, se eliminó return "break" de _handle_click.
+
+□ 10. ¿Se están usando after_cancel al cerrar la app?
+     Los timers pendientes de after() pueden generar TclError si se ejecutan
+     después de que la ventana se destruye. La app cancela todos los timers
+     pendientes en _on_close() antes de llamar root.destroy().
+
+
+================================================================================
+10. ANTIPATRONES (QUÉ NO HACER)
+================================================================================
+
+❌ root.after(0, callback) desde un thread
+   El timer puede no ejecutarse si el event loop está dormido.
+   ✅ Usar schedule_callback_from_thread()
+
+❌ root.event_generate("<<Event>>") desde un thread
+   No es fiable en macOS Cocoa.
+   ✅ Usar pipe + createfilehandler
+
+❌ root.update_idletasks() en el heartbeat
+   Interfiere con eventos de ratón en macOS.
+   ✅ Solo usar process_pending_callbacks()
+
+❌ self.bind_all("<Button-1>", handler) sin gestión de ciclo de vida
+   Los handlers se acumulan con cada apertura/cierre de ventana.
+   ✅ Patrón singleton: un solo bind_all + variable _active_popup
+
+❌ self.master.focus_force() inmediatamente después de self.destroy()
+   self.master puede no ser accesible post-destroy en Cocoa.
+   ✅ Guardar master = self.master, luego master.after(50, focus_force)
+
+❌ .bind("<Button-1>", handler) sin add="+"
+   Sobreescribe handlers previos del mismo evento.
+   ✅ Siempre usar add="+" cuando otros widgets pueden tener handlers
+
+❌ Keepalive thread con sleep muy corto (<100ms)
+   Satura el event loop con invocaciones del file handler.
+   ✅ 200ms es el valor equilibrado actual
+
+❌ Streams de audio sin generation counter
+   Callbacks de streams obsoletos causan race conditions.
+   ✅ Capturar generation al crear, verificar en finished_callback
+
+❌ Figuras matplotlib sin plt.close() en finally
+   Memory leak de ~4-10MB por figura.
+   ✅ try/finally: fig.clear() + plt.close(fig)
+
+❌ Cancelar todos los after() con root.after_cancel() DURANTE la ejecución
+   Solo hacer esto en _on_close, justo antes de root.destroy().
+
+
+================================================================================
+ARCHIVOS PRINCIPALES AFECTADOS
+================================================================================
+
+  src/utils/tk_utils.py          — Sistema de callbacks thread→UI (pipe+queue)
+  src/app.py                     — Heartbeat, focus fix macOS, cleanup
+  src/gui/results_table.py       — Deduplicación de clicks, add="+" en bindings
+  src/gui/quality_popup.py       — Singleton click watcher
+  src/gui/metadata_editor.py     — Restauración de foco post-modal
+  src/gui/settings_window.py     — Restauración de foco post-modal
+  src/gui/spectrogram_window.py  — focus_force al cerrar, cleanup matplotlib
+  src/gui/audio_player.py        — Stream generation counter, lock protection
+  src/gui/player_controls.py     — destroy() override para cancelar timers
+  src/gui/waveform_display.py    — Liberación de CTkImage antiguo

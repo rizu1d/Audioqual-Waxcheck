@@ -1,0 +1,218 @@
+============================================================
+ VIRTUAL SCROLL — INTENTO FALLIDO (2026-03-15)
+ Investigación, código aplicado, y razones del fracaso
+============================================================
+
+OBJETIVO
+--------
+Con 300+ archivos la tabla de resultados iba lenta al hacer scroll.
+Causa raíz: cada fila = ~15 widgets CTk (1 CTkFrame + 7 cell frames +
+7 labels + QualityBadge). Con 300 archivos = ~4500 widgets en un
+CTkScrollableFrame. Tkinter reposiciona TODOS en cada scroll event.
+
+La idea: reemplazar CTkScrollableFrame por un tk.Canvas + CTkScrollbar
+manual, con un pool de ~25 ResultRow reutilizables. Solo renderizar
+las filas visibles, reciclando widgets al scrollear.
+
+
+ARQUITECTURA IMPLEMENTADA
+-------------------------
+
+Antes:
+  CTkScrollableFrame contiene 300 ResultRow widgets (todos pack'd)
+
+Después:
+  tk.Canvas + CTkScrollbar + tk.Frame (inner_frame)
+  _data_list: List[AnalysisResult]  → datos puros, orden de display
+  _data_map: Dict[str, AnalysisResult]  → lookup O(1) por filepath
+  _selected_keys: Set[str]  → selección basada en filepaths
+  _pool_free: List[ResultRow]  → widgets libres para reciclar
+  _row_map: Dict[int, ResultRow]  → índice visible → widget asignado
+  _render_visible()  → corazón: recicla widgets según scroll position
+
+
+CAMBIOS APLICADOS (3 archivos)
+------------------------------
+
+1. src/gui/results_table.py (cambio principal, ~1530 líneas final)
+
+   a) Import añadido:
+      import tkinter as tk
+      from typing import ..., Set
+
+   b) ResultRow — cambios mínimos:
+      - Añadido self._width_version = -1 en __init__
+      - update_result(): añadido _bind_click_recursive() tras crear
+        nuevos badges/labels (fix para que click funcione en widgets
+        reciclados)
+
+   c) ResultsTable — reescritura completa:
+
+      __init__:
+        - Reemplazados _rows, _results, _selected_rows, _anchor_row,
+          _hidden_rows por:
+          _data_list, _data_map, _selected_keys, _anchor_key, _hidden_keys
+        - Añadidos _pool_free, _row_map, _width_version
+
+      _setup_ui():
+        - CTkScrollableFrame → _canvas_container (CTkFrame) +
+          _canvas (tk.Canvas bg="#13121d") +
+          _scrollbar (CTkScrollbar command=_on_scrollbar_cmd) +
+          _inner_frame (tk.Frame bg="#13121d")
+        - _canvas_window_id = canvas.create_window(inner_frame)
+        - scroll_frame ahora es @property → _canvas_container (para DnD)
+
+      Scroll bindings:
+        - _setup_scroll_bindings(): bind en toplevel con add="+"
+          <MouseWheel> (macOS) o <Button-4>/<Button-5> (Linux)
+        - _on_mousewheel_check(): filtra por posición del ratón
+          (winfo_rootx/y del canvas) antes de hacer yview_scroll
+        - _on_scrollbar_cmd(): canvas.yview(*args) + _render_visible()
+        - _on_canvas_configure(): itemconfigure width + _render_visible()
+
+      _render_visible() — MÉTODO CENTRAL:
+        1. Calcula total_height = len(visible) * ROW_HEIGHT (41px)
+        2. Actualiza scrollregion y tamaño del inner_frame
+        3. Calcula rango visible: start/end basado en yview() + POOL_BUFFER(5)
+        4. Libera widgets fuera del rango (place_forget → _pool_free)
+        5. Asigna widgets nuevos: _get_pool_widget() → update_result() → place()
+        6. Widgets que permanecen: solo actualiza si filepath cambió
+
+      _get_pool_widget():
+        - Si hay libres en _pool_free: pop()
+        - Si no: crea nuevo ResultRow con placeholder AnalysisResult
+          (filepath="__pool__", status=STATUS_PENDING)
+
+      _apply_widths_to_row():
+        - Sincroniza column widths de un widget del pool con los actuales
+        - Usa _width_version para evitar re-sync innecesario
+
+      Selección (basada en keys, no en widgets):
+        - _select_single_by_key(filepath)
+        - _toggle_selection_by_key(filepath)
+        - _extend_selection_by_key(filepath): busca anchor e target
+          en _get_visible_data()
+        - _refresh_selection_visuals(): itera solo _row_map (~25 widgets)
+
+      Sorting:
+        - _reorder_rows(): _data_list.sort() + _render_visible()
+          (vs antes: re-pack de 300 widgets)
+
+      Filtering:
+        - _apply_filter(): calcula _hidden_keys como set comprehension
+          + _render_visible()
+        - _show_all_rows(): _hidden_keys.clear() + _render_visible()
+
+      _apply_column_widths():
+        - Solo actualiza _row_map.values() (~25) en vez de todos
+        - Incrementa _width_version
+
+      Public API (mismas firmas):
+        - add_result(): append a _data_list / update _data_map,
+          busca widget visible para update directo
+        - clear(): place_forget en pool, NO destruye widgets
+        - remove_result/remove_results(): filtra _data_list, auto-select
+        - select_next/previous: busca en visible data por índice
+        - _scroll_to_data_index(idx): calcula y=idx*ROW_HEIGHT,
+          usa yview_moveto()
+        - get_selected_result(): usa _anchor_key o iter(_selected_keys)
+        - get_ordered_filepaths(): [r.filepath for r in _data_list]
+
+2. src/gui/main_window.py — SIN CAMBIOS
+   scroll_frame property hace que líneas 414-415 (DnD) funcionen
+   sin modificar main_window.
+
+3. Ningún otro archivo modificado.
+
+
+BUG ENCONTRADO DURANTE IMPLEMENTACIÓN
+--------------------------------------
+CTkFrame.place() de customtkinter NO acepta width/height como args:
+  ValueError: 'width' and 'height' arguments must be passed to the
+  constructor of the widget, not the place method
+
+Se corrigió eliminando height=40 del place() call, ya que ResultRow
+ya tiene height=40 en su constructor.
+
+
+POR QUÉ FALLÓ (rendimiento peor que antes)
+-------------------------------------------
+Los tests (82/82) pasaron, el boot y análisis funcionaban, pero el
+rendimiento visual fue PEOR que la implementación original.
+
+Hipótesis de por qué:
+
+1. PROBLEMA CON tk.Canvas + CTk widgets:
+   customtkinter widgets (CTkFrame, CTkLabel) tienen lógica de rendering
+   interna pesada (doble canvas, esquinas redondeadas, scaling). Montar
+   estos widgets dentro de un tk.Canvas crudo via create_window + place()
+   puede ser más lento que el CTkScrollableFrame optimizado internamente
+   por customtkinter. El CTkScrollableFrame ya usa internamente un canvas
+   pero con optimizaciones específicas para CTk widgets.
+
+2. _render_visible() SE LLAMA DEMASIADO:
+   Cada mousewheel event → yview_scroll → _render_visible(). En macOS
+   con trackpad, se generan decenas de eventos por gesto. Cada llamada
+   hace: winfo_height/width, yview(), set operations, y potencialmente
+   update_result() + place() en varios widgets. No hay throttling ni
+   debouncing en _render_visible().
+
+3. update_result() ES CARO CON TRANSICIONES:
+   Cuando se recicla un widget de "Pendiente" a "Analizado" (o vice
+   versa), update_result() destruye el label/badge antiguo y crea uno
+   nuevo. Esto incluye crear CTkFrame, CTkLabel, bind events recursivo.
+   Con pool recycling esto pasa frecuentemente al scrollear.
+
+4. place() + place_forget() OVERHEAD:
+   CTkFrame.place() y place_forget() en customtkinter no son tan
+   ligeros como en tk puro. Cada llamada puede triggear re-render
+   interno del widget CTk.
+
+5. _get_visible_data() CREA LISTAS NUEVAS:
+   Cuando hay filtro activo, cada _render_visible() crea una nueva
+   lista filtrada. Sin filtro, devuelve referencia directa (OK).
+
+6. MOUSEWHEEL BINDING GLOBAL:
+   bind en toplevel con filtrado por posición añade overhead a TODOS
+   los mousewheel events en la app, no solo los del canvas.
+
+7. FALTA DE yscrollincrement:
+   Sin configurar yscrollincrement, yview_scroll(-delta, "units")
+   usa el default de Tk (1/10 del viewport), lo cual puede resultar
+   en scroll demasiado rápido o con saltos visibles.
+
+
+LECCIONES APRENDIDAS
+--------------------
+- customtkinter widgets NO son equivalentes a tk widgets estándar
+  para operaciones de pool/reciclaje. Su overhead interno (doble
+  canvas, CTkBaseClass, scaling) hace que operaciones como place(),
+  place_forget(), y configure() sean significativamente más lentas.
+
+- El approach correcto probablemente requiere:
+  a) Usar ttk.Treeview (widget nativo) en vez de CTk widgets custom,
+     O
+  b) Mantener CTkScrollableFrame pero implementar lazy loading
+     (crear widgets bajo demanda cuando se acercan al viewport,
+     destruir cuando se alejan mucho), con debouncing agresivo,
+     O
+  c) Virtualizar usando tk.Canvas con canvas items nativos (text,
+     rectangle) en vez de widgets embebidos — los canvas items son
+     mucho más ligeros que widgets.
+
+- Los tests de CI (UI tests) NO detectan problemas de rendimiento.
+  Solo verifican que la app arranca y que los métodos no crashean.
+  Se necesita testing manual con 300+ archivos para evaluar scroll.
+
+- La complejidad del cambio fue alta (reescritura de ~600 líneas)
+  para un resultado negativo. Un approach más incremental (ej:
+  solo añadir debouncing al scroll existente) habría sido más seguro.
+
+
+CÓDIGO PARA REVERTIR
+--------------------
+git checkout 212eb90 -- src/gui/results_table.py
+
+O bien:
+git stash  (si hay cambios sin commit)
+git checkout HEAD -- src/gui/results_table.py

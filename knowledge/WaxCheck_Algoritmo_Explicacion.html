@@ -1,0 +1,1435 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WaxCheck — Cómo funciona el algoritmo</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Sora:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a12;
+    --bg-card: rgba(18, 18, 32, 0.85);
+    --bg-card-hover: rgba(25, 25, 45, 0.95);
+    --purple: #9b6dff;
+    --purple-dim: #6b4db8;
+    --gold: #f0c040;
+    --gold-dim: #c49a20;
+    --cyan: #4dd4e6;
+    --green: #4ddb7a;
+    --red: #ff5c6a;
+    --orange: #ff9f43;
+    --text: #e8e4f0;
+    --text-dim: #8a82a0;
+    --text-muted: #5a5472;
+    --border: rgba(155, 109, 255, 0.15);
+    --glow-purple: 0 0 40px rgba(155, 109, 255, 0.15);
+    --glow-gold: 0 0 40px rgba(240, 192, 64, 0.12);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Sora', sans-serif;
+    line-height: 1.7;
+    overflow-x: hidden;
+  }
+
+  /* Grain overlay */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  ::selection {
+    background: var(--purple);
+    color: #fff;
+  }
+
+  code, .mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* HERO */
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 2rem;
+    position: relative;
+  }
+
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: -20%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(circle, rgba(155,109,255,0.12) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: 100px;
+    font-size: 0.8rem;
+    color: var(--purple);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 2rem;
+    animation: fadeIn 0.8s ease;
+  }
+
+  .hero h1 {
+    font-size: clamp(2.5rem, 7vw, 5rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+    margin-bottom: 1.5rem;
+    animation: fadeUp 0.8s ease;
+  }
+
+  .hero h1 .gradient {
+    background: linear-gradient(135deg, var(--purple), var(--gold));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .hero p {
+    max-width: 600px;
+    color: var(--text-dim);
+    font-size: 1.1rem;
+    font-weight: 300;
+    animation: fadeUp 0.8s ease 0.15s both;
+  }
+
+  .scroll-hint {
+    position: absolute;
+    bottom: 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    animation: pulse 2s ease infinite;
+  }
+
+  .scroll-hint svg { width: 20px; height: 20px; stroke: var(--text-muted); }
+
+  /* NAV DOTS */
+  .nav-dots {
+    position: fixed;
+    right: 1.5rem;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    z-index: 100;
+  }
+
+  .nav-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s;
+    position: relative;
+  }
+
+  .nav-dot.active {
+    background: var(--purple);
+    box-shadow: 0 0 10px var(--purple);
+  }
+
+  .nav-dot::after {
+    content: attr(data-label);
+    position: absolute;
+    right: 1.5rem;
+    top: 50%;
+    transform: translateY(-50%);
+    white-space: nowrap;
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+  }
+
+  .nav-dot:hover::after { opacity: 1; }
+
+  /* SECTIONS */
+  .section {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 6rem 2rem;
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+  }
+
+  .section.visible {
+    opacity: 1;
+    transform: none;
+  }
+
+  .section-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--gold);
+    margin-bottom: 1rem;
+  }
+
+  .section-label .num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 50%;
+    background: rgba(240, 192, 64, 0.15);
+    font-weight: 700;
+    font-size: 0.7rem;
+  }
+
+  h2 {
+    font-size: clamp(1.8rem, 4vw, 2.5rem);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-bottom: 1.5rem;
+    line-height: 1.2;
+  }
+
+  .lead {
+    font-size: 1.05rem;
+    color: var(--text-dim);
+    font-weight: 300;
+    margin-bottom: 2.5rem;
+  }
+
+  /* CARDS */
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 2rem;
+    margin-bottom: 1.5rem;
+    backdrop-filter: blur(20px);
+    transition: all 0.35s ease;
+  }
+
+  .card:hover {
+    background: var(--bg-card-hover);
+    border-color: rgba(155, 109, 255, 0.3);
+    box-shadow: var(--glow-purple);
+    transform: translateY(-2px);
+  }
+
+  .card h3 {
+    font-size: 1.15rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .card p { color: var(--text-dim); font-size: 0.95rem; }
+
+  /* INTERACTIVE DEMO: BITRATE TABLE */
+  .bitrate-demo {
+    display: grid;
+    gap: 0;
+    margin: 2rem 0;
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+
+  .bitrate-row {
+    display: grid;
+    grid-template-columns: 100px 1fr 80px;
+    align-items: center;
+    padding: 0.8rem 1.2rem;
+    background: var(--bg-card);
+    border-bottom: 1px solid rgba(155, 109, 255, 0.08);
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+
+  .bitrate-row:last-child { border-bottom: none; }
+
+  .bitrate-row:hover {
+    background: var(--bg-card-hover);
+  }
+
+  .bitrate-row.active {
+    background: rgba(155, 109, 255, 0.1);
+  }
+
+  .bitrate-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--purple);
+  }
+
+  .bitrate-bar-container {
+    height: 28px;
+    position: relative;
+    background: rgba(255,255,255,0.03);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  .bitrate-bar {
+    height: 100%;
+    border-radius: 6px;
+    transition: width 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    position: relative;
+  }
+
+  .bitrate-bar .fill-music {
+    height: 100%;
+    border-radius: 6px 0 0 6px;
+    position: absolute;
+    left: 0;
+    top: 0;
+    transition: width 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  }
+
+  .bitrate-bar .fill-noise {
+    height: 100%;
+    border-radius: 0 6px 6px 0;
+    position: absolute;
+    top: 0;
+    opacity: 0.25;
+    transition: all 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  }
+
+  .bitrate-freq {
+    text-align: right;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--text-dim);
+  }
+
+  /* SPECTROGRAM INTERACTIVE */
+  .spectrogram-container {
+    position: relative;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 2rem;
+    margin: 2rem 0;
+    overflow: hidden;
+  }
+
+  .spectrogram-canvas-wrap {
+    position: relative;
+    width: 100%;
+    height: 300px;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: crosshair;
+  }
+
+  .spectrogram-canvas-wrap canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  .spec-cutoff-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--gold);
+    box-shadow: 0 0 12px var(--gold);
+    pointer-events: none;
+    transition: top 0.5s ease;
+  }
+
+  .spec-cutoff-label {
+    position: absolute;
+    right: 8px;
+    transform: translateY(-100%);
+    background: var(--gold);
+    color: #0a0a12;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    pointer-events: none;
+    transition: top 0.5s ease;
+  }
+
+  .spec-y-axis {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 50px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 4px 0;
+    pointer-events: none;
+  }
+
+  .spec-y-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    text-align: right;
+    padding-right: 4px;
+  }
+
+  .spec-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 1.2rem;
+  }
+
+  .spec-btn {
+    padding: 0.5rem 1rem;
+    background: rgba(155, 109, 255, 0.1);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: 'Sora', sans-serif;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+
+  .spec-btn:hover {
+    background: rgba(155, 109, 255, 0.2);
+    border-color: var(--purple);
+  }
+
+  .spec-btn.active {
+    background: var(--purple);
+    color: #fff;
+    border-color: var(--purple);
+  }
+
+  .spec-info {
+    margin-top: 1rem;
+    padding: 1rem 1.2rem;
+    background: rgba(240, 192, 64, 0.06);
+    border: 1px solid rgba(240, 192, 64, 0.15);
+    border-radius: 10px;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+
+  .spec-info strong { color: var(--gold); }
+
+  /* PIPELINE */
+  .pipeline {
+    display: flex;
+    gap: 0;
+    margin: 2rem 0;
+    overflow-x: auto;
+    padding-bottom: 0.5rem;
+  }
+
+  .pipeline-step {
+    flex: 1;
+    min-width: 200px;
+    position: relative;
+    padding: 1.5rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    text-align: center;
+    transition: all 0.3s;
+    cursor: pointer;
+  }
+
+  .pipeline-step:first-child { border-radius: 12px 0 0 12px; }
+  .pipeline-step:last-child { border-radius: 0 12px 12px 0; }
+
+  .pipeline-step:not(:last-child)::after {
+    content: '→';
+    position: absolute;
+    right: -0.6rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 1.2rem;
+    color: var(--purple);
+    z-index: 2;
+  }
+
+  .pipeline-step:hover, .pipeline-step.active {
+    background: rgba(155, 109, 255, 0.08);
+    border-color: var(--purple-dim);
+  }
+
+  .pipeline-step .step-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--purple);
+    margin-bottom: 0.3rem;
+  }
+
+  .pipeline-step .step-title {
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-bottom: 0.3rem;
+  }
+
+  .pipeline-step .step-desc {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+  }
+
+  .pipeline-detail {
+    display: none;
+    padding: 1.5rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-top: 1rem;
+    animation: fadeIn 0.3s ease;
+  }
+
+  .pipeline-detail.show { display: block; }
+
+  .pipeline-detail p {
+    color: var(--text-dim);
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .pipeline-detail code {
+    background: rgba(155, 109, 255, 0.1);
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    color: var(--purple);
+  }
+
+  /* DETECTION METHODS */
+  .methods-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin: 2rem 0;
+  }
+
+  @media (max-width: 700px) {
+    .methods-grid { grid-template-columns: 1fr; }
+  }
+
+  .method-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.8rem;
+    transition: all 0.35s;
+    cursor: pointer;
+  }
+
+  .method-card:hover {
+    border-color: var(--purple-dim);
+    box-shadow: var(--glow-purple);
+    transform: translateY(-3px);
+  }
+
+  .method-card .icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.3rem;
+    margin-bottom: 1rem;
+  }
+
+  .method-card h3 {
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .method-card p {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+
+  .method-expand {
+    display: none;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .method-expand.show { display: block; }
+
+  /* TRIGGER TYPES */
+  .triggers {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+    margin: 1.5rem 0;
+  }
+
+  .trigger-item {
+    background: rgba(18, 18, 32, 0.6);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.2rem;
+    text-align: center;
+    transition: all 0.3s;
+  }
+
+  .trigger-item:hover {
+    border-color: var(--purple-dim);
+    transform: translateY(-2px);
+  }
+
+  .trigger-item .trigger-icon {
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .trigger-item .trigger-name {
+    font-weight: 600;
+    font-size: 0.85rem;
+    margin-bottom: 0.3rem;
+  }
+
+  .trigger-item .trigger-desc {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+
+  /* CONFIDENCE METER */
+  .confidence-demo {
+    margin: 2rem 0;
+    padding: 2rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+  }
+
+  .confidence-slider-wrap {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .confidence-slider-wrap label {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    white-space: nowrap;
+  }
+
+  .confidence-slider {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 8px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 4px;
+    outline: none;
+  }
+
+  .confidence-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--purple);
+    cursor: pointer;
+    box-shadow: 0 0 10px rgba(155,109,255,0.4);
+  }
+
+  .confidence-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.5rem;
+    font-weight: 700;
+    min-width: 70px;
+    text-align: right;
+  }
+
+  .confidence-result {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 1.5rem;
+    border-radius: 12px;
+    transition: all 0.4s;
+  }
+
+  .confidence-badge {
+    padding: 0.4rem 1rem;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 0.85rem;
+    white-space: nowrap;
+  }
+
+  .confidence-explanation {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+  }
+
+  /* CLASSIFICATION TABLE */
+  .class-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 2rem 0;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+
+  .class-table th, .class-table td {
+    padding: 0.8rem 1.2rem;
+    text-align: left;
+    border-bottom: 1px solid rgba(155,109,255,0.08);
+  }
+
+  .class-table th {
+    background: rgba(155,109,255,0.08);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--purple);
+  }
+
+  .class-table td {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    background: var(--bg-card);
+  }
+
+  .class-table tr:last-child td { border-bottom: none; }
+
+  .class-table .quality-badge {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  /* DECISION FLOWCHART */
+  .flowchart {
+    margin: 2rem 0;
+  }
+
+  .flow-node {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.2rem 1.5rem;
+    margin-bottom: 0.5rem;
+    position: relative;
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+
+  .flow-node:hover {
+    border-color: var(--purple-dim);
+    background: var(--bg-card-hover);
+  }
+
+  .flow-node .flow-q {
+    font-weight: 600;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .flow-node .flow-answer {
+    display: none;
+    margin-top: 0.8rem;
+    padding-top: 0.8rem;
+    border-top: 1px solid var(--border);
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+
+  .flow-node.open .flow-answer { display: block; }
+
+  .flow-connector {
+    text-align: center;
+    padding: 0.3rem;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+  }
+
+  /* FOOTER */
+  footer {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    border-top: 1px solid var(--border);
+    max-width: 900px;
+    margin: 0 auto;
+  }
+
+  /* ANIMATIONS */
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: none; }
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.5; transform: translateY(0); }
+    50% { opacity: 1; transform: translateY(4px); }
+  }
+
+  /* RESPONSIVE */
+  @media (max-width: 600px) {
+    .pipeline { flex-direction: column; }
+    .pipeline-step { border-radius: 12px !important; }
+    .pipeline-step:not(:last-child)::after { display: none; }
+    .nav-dots { display: none; }
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--purple-dim); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- HERO -->
+<section class="hero" id="sec-hero">
+  <div class="hero-badge">📡 Explicación interactiva</div>
+  <h1>Cómo <span class="gradient">WaxCheck</span><br>detecta audio falso</h1>
+  <p>Una guía visual paso a paso del algoritmo que descubre si tus archivos de audio tienen la calidad que prometen.</p>
+  <div class="scroll-hint">
+    Scroll para explorar
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+  </div>
+</section>
+
+<!-- NAV DOTS -->
+<nav class="nav-dots" id="navDots">
+  <button class="nav-dot active" data-target="sec-hero" data-label="Inicio"></button>
+  <button class="nav-dot" data-target="sec-idea" data-label="La idea"></button>
+  <button class="nav-dot" data-target="sec-pipeline" data-label="Pipeline"></button>
+  <button class="nav-dot" data-target="sec-detection" data-label="Detección"></button>
+  <button class="nav-dot" data-target="sec-triggers" data-label="Disparadores"></button>
+  <button class="nav-dot" data-target="sec-spectrogram" data-label="Espectrograma"></button>
+  <button class="nav-dot" data-target="sec-decision" data-label="Decisión"></button>
+  <button class="nav-dot" data-target="sec-confidence" data-label="Confianza"></button>
+  <button class="nav-dot" data-target="sec-classification" data-label="Clasificación"></button>
+</nav>
+
+<!-- 1. LA IDEA CLAVE -->
+<section class="section" id="sec-idea">
+  <div class="section-label"><span class="num">1</span> La idea clave</div>
+  <h2>Los codecs dejan una huella invisible</h2>
+  <p class="lead">Cuando un codec como MP3 comprime audio, recorta las frecuencias altas. Cuanto menor es el bitrate, más bajo es el corte. Esa "huella" es permanente: aunque re-codifiques el archivo a mayor calidad, las frecuencias perdidas no vuelven.</p>
+
+  <div class="bitrate-demo" id="bitrateDemo">
+    <div class="bitrate-row" data-freq="20" data-pct="100">
+      <span class="bitrate-label">320k</span>
+      <div class="bitrate-bar-container">
+        <div class="bitrate-bar">
+          <div class="fill-music" style="width:100%;background:linear-gradient(90deg,var(--purple),var(--cyan))"></div>
+        </div>
+      </div>
+      <span class="bitrate-freq">~20 kHz</span>
+    </div>
+    <div class="bitrate-row" data-freq="19" data-pct="90">
+      <span class="bitrate-label">256k</span>
+      <div class="bitrate-bar-container">
+        <div class="bitrate-bar">
+          <div class="fill-music" style="width:90%;background:linear-gradient(90deg,var(--purple),var(--cyan))"></div>
+          <div class="fill-noise" style="left:90%;width:10%;background:var(--red)"></div>
+        </div>
+      </div>
+      <span class="bitrate-freq">~19 kHz</span>
+    </div>
+    <div class="bitrate-row" data-freq="17.5" data-pct="79">
+      <span class="bitrate-label">192k</span>
+      <div class="bitrate-bar-container">
+        <div class="bitrate-bar">
+          <div class="fill-music" style="width:79%;background:linear-gradient(90deg,var(--purple),var(--cyan))"></div>
+          <div class="fill-noise" style="left:79%;width:21%;background:var(--red)"></div>
+        </div>
+      </div>
+      <span class="bitrate-freq">~17.5 kHz</span>
+    </div>
+    <div class="bitrate-row" data-freq="16" data-pct="71">
+      <span class="bitrate-label">128k</span>
+      <div class="bitrate-bar-container">
+        <div class="bitrate-bar">
+          <div class="fill-music" style="width:71%;background:linear-gradient(90deg,var(--purple),var(--cyan))"></div>
+          <div class="fill-noise" style="left:71%;width:29%;background:var(--red)"></div>
+        </div>
+      </div>
+      <span class="bitrate-freq">~16 kHz</span>
+    </div>
+    <div class="bitrate-row" data-freq="14" data-pct="60">
+      <span class="bitrate-label">96k</span>
+      <div class="bitrate-bar-container">
+        <div class="bitrate-bar">
+          <div class="fill-music" style="width:60%;background:linear-gradient(90deg,var(--purple),var(--cyan))"></div>
+          <div class="fill-noise" style="left:60%;width:40%;background:var(--red)"></div>
+        </div>
+      </div>
+      <span class="bitrate-freq">~14 kHz</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>🔍 ¿Qué es un transcode?</h3>
+    <p>Cuando alguien toma un MP3 de 128kbps (cortado a ~16 kHz) y lo re-codifica a 320kbps, el archivo resultante <em>dice</em> ser 320kbps, pero <strong>no tiene contenido real por encima de 16 kHz</strong>. Solo hay silencio o ruido ahí arriba. WaxCheck detecta exactamente esa mentira.</p>
+  </div>
+</section>
+
+<!-- 2. PIPELINE -->
+<section class="section" id="sec-pipeline">
+  <div class="section-label"><span class="num">2</span> El proceso</div>
+  <h2>Pipeline de análisis en 3 etapas</h2>
+  <p class="lead">Cada archivo pasa por tres etapas. Haz clic en cada una para ver los detalles.</p>
+
+  <div class="pipeline" id="pipeline">
+    <div class="pipeline-step" data-detail="detail-1">
+      <div class="step-num">ETAPA 1</div>
+      <div class="step-title">Carga</div>
+      <div class="step-desc">Audio + metadatos</div>
+    </div>
+    <div class="pipeline-step" data-detail="detail-2">
+      <div class="step-num">ETAPA 2</div>
+      <div class="step-title">Detección</div>
+      <div class="step-desc">Análisis espectral</div>
+    </div>
+    <div class="pipeline-step" data-detail="detail-3">
+      <div class="step-num">ETAPA 3</div>
+      <div class="step-title">Clasificación</div>
+      <div class="step-desc">Veredicto final</div>
+    </div>
+  </div>
+
+  <div class="pipeline-detail" id="detail-1">
+    <p>📂 <strong>Librosa</strong> carga la señal de audio completa. <strong>Mutagen</strong> extrae los metadatos del archivo (bitrate declarado, formato, duración, etc.).</p>
+    <p>Esto establece la "promesa" del archivo — por ejemplo: <code>MP3 320kbps</code>.</p>
+  </div>
+  <div class="pipeline-detail" id="detail-2">
+    <p>🔬 <strong>El corazón del algoritmo.</strong> Se aplican dos métodos independientes de análisis espectral para encontrar la frecuencia real de corte.</p>
+    <p>Método primario: <code>Detección por transición</code> — Busca dónde termina la música y empieza el ruido.</p>
+    <p>Método secundario: <code>Análisis por segmentos</code> — Divide el audio en 50 partes y las analiza una a una.</p>
+  </div>
+  <div class="pipeline-detail" id="detail-3">
+    <p>⚖️ Compara la frecuencia de corte detectada con lo que el archivo declara ser. Si un archivo dice "320kbps" pero su corte real está en 16 kHz → <code style="color:var(--red)">Transcode detectado</code>.</p>
+  </div>
+</section>
+
+<!-- 3. DETECCIÓN -->
+<section class="section" id="sec-detection">
+  <div class="section-label"><span class="num">3</span> El corazón</div>
+  <h2>Dos métodos de detección independientes</h2>
+  <p class="lead">Usar dos métodos y combinar sus resultados aumenta la precisión y reduce los falsos positivos.</p>
+
+  <div class="methods-grid">
+    <div class="method-card" id="method-transition">
+      <div class="icon" style="background:rgba(155,109,255,0.15);color:var(--purple)">📈</div>
+      <h3>Método Primario: Transición</h3>
+      <p>Busca el punto exacto donde la música termina y empieza el ruido. Analiza todo el audio de una vez.</p>
+      <div class="method-expand" id="expand-transition">
+        <p><strong>La intuición:</strong> el contenido musical tiene <span style="color:var(--cyan)">alta varianza temporal</span> — la energía sube y baja siguiendo el ritmo. El ruido de codificación tiene <span style="color:var(--red)">baja varianza</span> — energía constante, monótona.</p>
+        <p style="margin-top:0.8rem">Se divide el rango <code>10–21 kHz</code> en bandas de 500 Hz, y para cada banda se calcula energía media y varianza. Cuando la varianza cae abruptamente: ahí está el corte.</p>
+      </div>
+    </div>
+
+    <div class="method-card" id="method-segments">
+      <div class="icon" style="background:rgba(240,192,64,0.15);color:var(--gold)">📊</div>
+      <h3>Método Secundario: Segmentos</h3>
+      <p>Divide el audio en 50 trozos temporales y analiza cada uno por separado.</p>
+      <div class="method-expand" id="expand-segments">
+        <p><strong>La ventaja:</strong> Es más robusto con archivos que tienen secciones silenciosas o calidad variable a lo largo del tiempo.</p>
+        <p style="margin-top:0.8rem">Obtiene 50 valores de corte. Usa el <code>percentil 90</code> como corte predominante — ignora el 10% superior (picos, silencios, anomalías).</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 4. TRIGGERS -->
+<section class="section" id="sec-triggers">
+  <div class="section-label"><span class="num">4</span> Los disparadores</div>
+  <h2>4 formas de detectar el corte</h2>
+  <p class="lead">El método de transición usa cuatro detectores simultáneos. Si cualquiera de ellos se activa, se ha encontrado el punto de corte.</p>
+
+  <div class="triggers">
+    <div class="trigger-item">
+      <div class="trigger-icon">🧱</div>
+      <div class="trigger-name">Brick Wall</div>
+      <div class="trigger-desc">Caída de energía ≥ 8 dB entre bandas adyacentes. El caso clásico de MP3.</div>
+    </div>
+    <div class="trigger-item">
+      <div class="trigger-icon">📉</div>
+      <div class="trigger-name">Transición de varianza</div>
+      <div class="trigger-desc">La varianza pasa de "musical" a "ruido". Umbral adaptativo según frecuencia.</div>
+    </div>
+    <div class="trigger-item">
+      <div class="trigger-icon">⛰️</div>
+      <div class="trigger-name">Caída acumulada</div>
+      <div class="trigger-desc">≥ 12 dB de caída en 3 bandas. Detecta rolloffs graduales.</div>
+    </div>
+    <div class="trigger-item">
+      <div class="trigger-icon">🌊</div>
+      <div class="trigger-name">Decaimiento lento</div>
+      <div class="trigger-desc">Varianza cae ≥ 50% en 3 bandas con descenso monótono. Para YouTube rips.</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:1.5rem">
+    <h3>🛡️ Protección anti-sibilancia</h3>
+    <p>Los sonidos como <strong>S, T, CH</strong> crean picos aislados de energía en altas frecuencias. El algoritmo verifica que la energía no se "recupere" después del corte — para considerarlo real, exige 2+ bandas consecutivas con energía <em>y</em> varianza ≥ 0.30. Esto evita que un platillo o una sibilante engañen al detector.</p>
+  </div>
+
+  <div class="card">
+    <h3>🔒 Guarda HF (High Frequency)</h3>
+    <p>A partir de 18 kHz, los detectores de lookahead y decaimiento se <strong>desactivan</strong> si la siguiente banda aún tiene varianza musical. Esto evita falsos positivos con el rolloff natural de las altas frecuencias — que existe incluso en archivos de calidad perfecta.</p>
+  </div>
+</section>
+
+<!-- 5. SPECTROGRAM INTERACTIVE -->
+<section class="section" id="sec-spectrogram">
+  <div class="section-label"><span class="num">5</span> Visualización</div>
+  <h2>Espectrograma interactivo</h2>
+  <p class="lead">Así es como WaxCheck "ve" un archivo de audio. Selecciona diferentes escenarios para entender qué busca el algoritmo.</p>
+
+  <div class="spectrogram-container">
+    <div class="spectrogram-canvas-wrap">
+      <canvas id="specCanvas"></canvas>
+      <div class="spec-cutoff-line" id="cutoffLine" style="top:20%"></div>
+      <div class="spec-cutoff-label" id="cutoffLabel" style="top:20%">20 kHz</div>
+    </div>
+    <div class="spec-controls" id="specControls">
+      <button class="spec-btn active" data-scenario="lossless">Lossless</button>
+      <button class="spec-btn" data-scenario="320">MP3 320k</button>
+      <button class="spec-btn" data-scenario="128">MP3 128k</button>
+      <button class="spec-btn" data-scenario="transcode">⚠️ Transcode falso</button>
+      <button class="spec-btn" data-scenario="youtube">🎵 YouTube rip</button>
+    </div>
+    <div class="spec-info" id="specInfo">
+      <strong>Lossless:</strong> Contenido musical hasta el límite del rango audible (~20 kHz). Sin corte visible. El algoritmo no detecta transición → clasifica como Lossless/Excelente.
+    </div>
+  </div>
+</section>
+
+<!-- 6. DECISION LOGIC -->
+<section class="section" id="sec-decision">
+  <div class="section-label"><span class="num">6</span> La decisión</div>
+  <h2>¿Cómo se combinan los dos métodos?</h2>
+  <p class="lead">Haz clic en cada regla para ver los detalles.</p>
+
+  <div class="flowchart">
+    <div class="flow-node" onclick="this.classList.toggle('open')">
+      <div class="flow-q">🟢 Regla 1: Transición con alta confianza (≥ 70%)</div>
+      <div class="flow-answer">Se usa el resultado de la transición. <strong>Excepción:</strong> si los segmentos dan un corte mucho más bajo (gap > 2 kHz) con distribución bimodal, se verifica que las bandas intermedias realmente carezcan de contenido musical. Solo entonces se prefieren los segmentos.</div>
+    </div>
+    <div class="flow-connector">↓ si no...</div>
+
+    <div class="flow-node" onclick="this.classList.toggle('open')">
+      <div class="flow-q">🔵 Regla 2: Ambos métodos coinciden (< 2 kHz de diferencia)</div>
+      <div class="flow-answer">Se promedian los resultados y se aumenta la confianza. Los dos métodos coincidiendo = más certeza.</div>
+    </div>
+    <div class="flow-connector">↓ si no...</div>
+
+    <div class="flow-node" onclick="this.classList.toggle('open')">
+      <div class="flow-q">🟡 Regla 3: Transición más baja que segmentos (confianza ≥ 50%)</div>
+      <div class="flow-answer">Se prefiere la transición (más conservador). Si el gap es ≥ 1 kHz, se aplica un boost de confianza (+0.15) porque este patrón es firma clásica de transcode: el contenido real termina en la transición, pero el ruido residual engaña a los segmentos.</div>
+    </div>
+    <div class="flow-connector">↓ si no...</div>
+
+    <div class="flow-node" onclick="this.classList.toggle('open')">
+      <div class="flow-q">🔴 Regla 4: Fallback</div>
+      <div class="flow-answer">Se usa el resultado de los segmentos temporales como respuesta final.</div>
+    </div>
+  </div>
+</section>
+
+<!-- 7. CONFIANZA -->
+<section class="section" id="sec-confidence">
+  <div class="section-label"><span class="num">7</span> Fiabilidad</div>
+  <h2>Niveles de confianza</h2>
+  <p class="lead">El algoritmo no solo dice "sí o no" — también indica cuánta certeza tiene en su detección. Mueve el slider para ver cómo cambia la fiabilidad.</p>
+
+  <div class="confidence-demo">
+    <div class="confidence-slider-wrap">
+      <label>Confianza:</label>
+      <input type="range" class="confidence-slider" id="confSlider" min="0" max="100" value="75">
+      <span class="confidence-value" id="confValue" style="color:var(--green)">75%</span>
+    </div>
+    <div class="confidence-result" id="confResult" style="background:rgba(77,219,122,0.08); border:1px solid rgba(77,219,122,0.2)">
+      <span class="confidence-badge" id="confBadge" style="background:rgba(77,219,122,0.2);color:var(--green)">Alta</span>
+      <span class="confidence-explanation" id="confExplain">El algoritmo está muy seguro de su detección. Típico de caídas de energía claras (brick-wall) o transiciones de varianza evidentes.</span>
+    </div>
+  </div>
+</section>
+
+<!-- 8. CLASIFICACIÓN -->
+<section class="section" id="sec-classification">
+  <div class="section-label"><span class="num">8</span> El veredicto</div>
+  <h2>Clasificación final</h2>
+  <p class="lead">Con la frecuencia de corte detectada, WaxCheck determina la calidad real del archivo y la compara con lo que declara ser.</p>
+
+  <table class="class-table">
+    <thead>
+      <tr>
+        <th>Corte detectado</th>
+        <th>Calidad real</th>
+        <th>Nivel</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>> 20.5 kHz</td>
+        <td>Lossless</td>
+        <td><span class="quality-badge" style="background:rgba(77,219,122,0.15);color:var(--green)">Excelente</span></td>
+      </tr>
+      <tr>
+        <td>19.5 – 20.5 kHz</td>
+        <td>320 kbps</td>
+        <td><span class="quality-badge" style="background:rgba(77,219,122,0.15);color:var(--green)">Bueno</span></td>
+      </tr>
+      <tr>
+        <td>18.5 – 19.5 kHz</td>
+        <td>256 kbps</td>
+        <td><span class="quality-badge" style="background:rgba(240,192,64,0.15);color:var(--gold)">Medio</span></td>
+      </tr>
+      <tr>
+        <td>17.0 – 18.5 kHz</td>
+        <td>192 kbps</td>
+        <td><span class="quality-badge" style="background:rgba(240,192,64,0.15);color:var(--gold)">Medio</span></td>
+      </tr>
+      <tr>
+        <td>16.0 – 17.0 kHz</td>
+        <td>160 kbps</td>
+        <td><span class="quality-badge" style="background:rgba(255,159,67,0.15);color:var(--orange)">Bajo</span></td>
+      </tr>
+      <tr>
+        <td>15.0 – 16.0 kHz</td>
+        <td>128 kbps</td>
+        <td><span class="quality-badge" style="background:rgba(255,92,106,0.15);color:var(--red)">Bajo</span></td>
+      </tr>
+      <tr>
+        <td>13.0 – 15.0 kHz</td>
+        <td>96 kbps</td>
+        <td><span class="quality-badge" style="background:rgba(255,92,106,0.15);color:var(--red)">Bajo</span></td>
+      </tr>
+      <tr>
+        <td>< 13.0 kHz</td>
+        <td>Baja calidad</td>
+        <td><span class="quality-badge" style="background:rgba(255,92,106,0.15);color:var(--red)">Bajo</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="card">
+    <h3>🛡️ Red de seguridad para MP3</h3>
+    <p>Un MP3 de 128kbps <strong>físicamente no puede</strong> tener contenido real por encima de ~17 kHz — es un límite del codec. Si el algoritmo detecta un corte superior, se limita al máximo físico del bitrate declarado. Esto evita clasificar erróneamente un archivo que simplemente tiene ruido en altas frecuencias.</p>
+  </div>
+</section>
+
+<footer>
+  WaxCheck — Explicación interactiva del algoritmo de detección de calidad de audio
+</footer>
+
+<script>
+// ============ SECTIONS VISIBILITY (Intersection Observer) ============
+const sections = document.querySelectorAll('.section');
+const dots = document.querySelectorAll('.nav-dot');
+const sectionIds = ['sec-hero','sec-idea','sec-pipeline','sec-detection','sec-triggers','sec-spectrogram','sec-decision','sec-confidence','sec-classification'];
+
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      e.target.classList.add('visible');
+      // Update nav dots
+      const idx = sectionIds.indexOf(e.target.id);
+      if (idx >= 0) {
+        dots.forEach(d => d.classList.remove('active'));
+        dots[idx]?.classList.add('active');
+      }
+    }
+  });
+}, { threshold: 0.15 });
+
+sections.forEach(s => observer.observe(s));
+
+// Also observe hero
+const heroObs = new IntersectionObserver((entries) => {
+  if (entries[0].isIntersecting) {
+    dots.forEach(d => d.classList.remove('active'));
+    dots[0]?.classList.add('active');
+  }
+}, { threshold: 0.3 });
+heroObs.observe(document.getElementById('sec-hero'));
+
+// Nav dot clicks
+dots.forEach(d => {
+  d.addEventListener('click', () => {
+    document.getElementById(d.dataset.target)?.scrollIntoView({ behavior: 'smooth' });
+  });
+});
+
+// ============ PIPELINE INTERACTION ============
+document.querySelectorAll('.pipeline-step').forEach(step => {
+  step.addEventListener('click', () => {
+    document.querySelectorAll('.pipeline-step').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.pipeline-detail').forEach(d => d.classList.remove('show'));
+    step.classList.add('active');
+    const detail = document.getElementById(step.dataset.detail);
+    if (detail) detail.classList.add('show');
+  });
+});
+
+// ============ METHOD CARD EXPANSION ============
+document.querySelectorAll('.method-card').forEach(card => {
+  card.addEventListener('click', () => {
+    const expand = card.querySelector('.method-expand');
+    if (expand) expand.classList.toggle('show');
+  });
+});
+
+// ============ SPECTROGRAM ============
+const canvas = document.getElementById('specCanvas');
+const ctx = canvas.getContext('2d');
+
+const scenarios = {
+  lossless: {
+    cutoffKhz: 21,
+    cutoffPct: 0,
+    info: '<strong>Lossless:</strong> Contenido musical hasta el límite del rango audible (~20+ kHz). Sin corte visible. El algoritmo no detecta transición → clasifica como Lossless/Excelente.',
+    gradient: (y, h) => {
+      const t = y / h;
+      if (t < 0.1) return { r:40, g:20, b:80, a: 0.3 + Math.random()*0.15 };
+      if (t < 0.9) return { r:80+Math.random()*60, g:30+Math.random()*40, b:140+Math.random()*40, a: 0.5 + Math.random()*0.4 };
+      return { r:140+Math.random()*80, g:50+Math.random()*60, b:180+Math.random()*60, a: 0.7 + Math.random()*0.3 };
+    }
+  },
+  '320': {
+    cutoffKhz: 20,
+    cutoffPct: 5,
+    info: '<strong>MP3 320k:</strong> Corte sutil alrededor de 20 kHz. El contenido es real hasta casi el límite audible. Calidad profesional aceptable.',
+    gradient: (y, h) => {
+      const t = y / h;
+      if (t < 0.05) return { r:10, g:8, b:20, a: 0.15 + Math.random()*0.1 };
+      if (t < 0.9) return { r:80+Math.random()*60, g:30+Math.random()*40, b:140+Math.random()*40, a: 0.5 + Math.random()*0.4 };
+      return { r:140+Math.random()*80, g:50+Math.random()*60, b:180+Math.random()*60, a: 0.7 + Math.random()*0.3 };
+    }
+  },
+  '128': {
+    cutoffKhz: 16,
+    cutoffPct: 24,
+    info: '<strong>MP3 128k:</strong> Corte claro a ~16 kHz. Todo lo de arriba está vacío. Si el archivo declara ser 128k, es legítimo pero de baja calidad.',
+    gradient: (y, h) => {
+      const t = y / h;
+      if (t < 0.24) return { r:8, g:6, b:16, a: 0.08 + Math.random()*0.05 };
+      if (t < 0.9) return { r:70+Math.random()*50, g:25+Math.random()*30, b:120+Math.random()*40, a: 0.45 + Math.random()*0.4 };
+      return { r:130+Math.random()*70, g:45+Math.random()*50, b:160+Math.random()*50, a: 0.65 + Math.random()*0.3 };
+    }
+  },
+  transcode: {
+    cutoffKhz: 16,
+    cutoffPct: 24,
+    info: '<strong>⚠️ Transcode falso:</strong> Dice ser 320kbps pero el corte real está en ~16 kHz. Fue un 128k re-codificado. WaxCheck detecta que <span style="color:var(--red)">la calidad declarada no coincide con la real</span>.',
+    gradient: (y, h) => {
+      const t = y / h;
+      if (t < 0.24) {
+        // Some noise artifacts to show the fake area
+        return { r:15+Math.random()*10, g:8+Math.random()*5, b:25+Math.random()*10, a: 0.1 + Math.random()*0.08 };
+      }
+      if (t < 0.9) return { r:80+Math.random()*60, g:30+Math.random()*40, b:140+Math.random()*40, a: 0.5 + Math.random()*0.4 };
+      return { r:140+Math.random()*80, g:50+Math.random()*60, b:180+Math.random()*60, a: 0.7 + Math.random()*0.3 };
+    }
+  },
+  youtube: {
+    cutoffKhz: 15.5,
+    cutoffPct: 27,
+    info: '<strong>🎵 YouTube rip:</strong> Rolloff gradual comenzando alrededor de 15-16 kHz. Sin corte brusco — el decaimiento es suave. WaxCheck usa el detector de "decaimiento lento" (varianza que cae ≥50% en 3 bandas).',
+    gradient: (y, h) => {
+      const t = y / h;
+      if (t < 0.15) return { r:8, g:6, b:16, a: 0.05 + Math.random()*0.03 };
+      if (t < 0.27) {
+        // Gradual rolloff zone
+        const fade = (t - 0.15) / 0.12;
+        const a = 0.35 * (1 - fade) + 0.05 * fade;
+        return { r:50+Math.random()*30, g:20+Math.random()*20, b:90+Math.random()*30, a: a + Math.random()*0.1 };
+      }
+      if (t < 0.9) return { r:70+Math.random()*50, g:25+Math.random()*35, b:120+Math.random()*40, a: 0.45 + Math.random()*0.35 };
+      return { r:120+Math.random()*70, g:40+Math.random()*50, b:150+Math.random()*50, a: 0.6 + Math.random()*0.3 };
+    }
+  }
+};
+
+function drawSpectrogram(scenario) {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+  const w = rect.width;
+  const h = rect.height;
+
+  ctx.fillStyle = '#08080f';
+  ctx.fillRect(0, 0, w, h);
+
+  const s = scenarios[scenario];
+  const pixelSize = 3;
+
+  for (let x = 0; x < w; x += pixelSize) {
+    for (let y = 0; y < h; y += pixelSize) {
+      const c = s.gradient(y, h);
+      // Add temporal variation (columns)
+      const timeVar = 0.7 + 0.3 * Math.sin(x * 0.03 + y * 0.01);
+      const alpha = Math.min(1, c.a * timeVar);
+      if (alpha > 0.05) {
+        ctx.fillStyle = `rgba(${c.r|0},${c.g|0},${c.b|0},${alpha.toFixed(2)})`;
+        ctx.fillRect(x, y, pixelSize, pixelSize);
+      }
+    }
+  }
+
+  // Cutoff line
+  const line = document.getElementById('cutoffLine');
+  const label = document.getElementById('cutoffLabel');
+  const top = s.cutoffPct + '%';
+  line.style.top = top;
+  label.style.top = top;
+  label.textContent = s.cutoffKhz + ' kHz';
+
+  if (scenario === 'lossless') {
+    line.style.opacity = '0.3';
+    label.style.opacity = '0.3';
+  } else {
+    line.style.opacity = '1';
+    label.style.opacity = '1';
+  }
+
+  // Red zone overlay for transcode
+  if (scenario === 'transcode') {
+    ctx.fillStyle = 'rgba(255,60,70,0.06)';
+    ctx.fillRect(0, 0, w, h * 0.24);
+    ctx.strokeStyle = 'rgba(255,60,70,0.3)';
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.moveTo(0, h * 0.24);
+    ctx.lineTo(w, h * 0.24);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
+// Spec button handlers
+document.querySelectorAll('.spec-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.spec-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const sc = btn.dataset.scenario;
+    drawSpectrogram(sc);
+    document.getElementById('specInfo').innerHTML = scenarios[sc].info;
+  });
+});
+
+// Initial draw
+let specDrawn = false;
+const specObs = new IntersectionObserver((entries) => {
+  if (entries[0].isIntersecting && !specDrawn) {
+    specDrawn = true;
+    drawSpectrogram('lossless');
+  }
+}, { threshold: 0.2 });
+specObs.observe(document.getElementById('sec-spectrogram'));
+
+// Redraw on resize
+window.addEventListener('resize', () => {
+  const active = document.querySelector('.spec-btn.active');
+  if (active && specDrawn) drawSpectrogram(active.dataset.scenario);
+});
+
+// ============ CONFIDENCE SLIDER ============
+const slider = document.getElementById('confSlider');
+const confVal = document.getElementById('confValue');
+const confResult = document.getElementById('confResult');
+const confBadge = document.getElementById('confBadge');
+const confExplain = document.getElementById('confExplain');
+
+slider.addEventListener('input', () => {
+  const v = parseInt(slider.value);
+  confVal.textContent = v + '%';
+
+  if (v >= 70) {
+    confVal.style.color = 'var(--green)';
+    confResult.style.background = 'rgba(77,219,122,0.08)';
+    confResult.style.borderColor = 'rgba(77,219,122,0.2)';
+    confBadge.style.background = 'rgba(77,219,122,0.2)';
+    confBadge.style.color = 'var(--green)';
+    confBadge.textContent = 'Alta';
+    confExplain.textContent = 'El algoritmo está muy seguro de su detección. Típico de caídas de energía claras (brick-wall) o transiciones de varianza evidentes.';
+  } else if (v >= 50) {
+    confVal.style.color = 'var(--gold)';
+    confResult.style.background = 'rgba(240,192,64,0.08)';
+    confResult.style.borderColor = 'rgba(240,192,64,0.2)';
+    confBadge.style.background = 'rgba(240,192,64,0.2)';
+    confBadge.style.color = 'var(--gold)';
+    confBadge.textContent = 'Media';
+    confExplain.textContent = 'Detección razonable pero con cierta incertidumbre. Puede ocurrir con rolloffs graduales o contenido escaso en agudos.';
+  } else {
+    confVal.style.color = 'var(--red)';
+    confResult.style.background = 'rgba(255,92,106,0.08)';
+    confResult.style.borderColor = 'rgba(255,92,106,0.2)';
+    confBadge.style.background = 'rgba(255,92,106,0.2)';
+    confBadge.style.color = 'var(--red)';
+    confBadge.textContent = 'Baja';
+    confExplain.textContent = 'El algoritmo no está seguro. El resultado se marca como "Incierto". Puede ocurrir con archivos muy cortos, audio muy procesado, o contenido atípico.';
+  }
+});
+</script>
+
+</body>
+</html>

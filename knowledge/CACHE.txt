@@ -1,0 +1,145 @@
+SISTEMA DE CACHÉ DE ESPECTROGRAMAS
+===================================
+
+Problema que resuelve
+---------------------
+Durante el análisis, frequency_detector.py genera una matriz spectrogram_db
+de ~100-200MB por archivo (float32, resolución completa STFT). Esta matriz
+es necesaria para visualizar el espectrograma, pero mantenerla en RAM para
+todos los archivos analizados es inviable (ej: 30 archivos = 3-6GB solo en
+espectrogramas).
+
+Sin caché, cada vez que el usuario quiere ver el espectrograma de un archivo
+ya analizado, hay que re-analizar el audio completo (~2-3 segundos por archivo).
+
+
+Arquitectura: 3 niveles de caché
+---------------------------------
+
+  Nivel 1: Resultado fresco (efímero)
+  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  - Fuente: AnalysisResult.frequency_analysis (salida directa del análisis)
+  - Tamaño: ~100-200MB por archivo (float32, resolución STFT completa)
+  - Vida útil: se libera inmediatamente después de:
+      1. Pasar los datos al callback de progreso de la UI
+      2. Guardar una copia comprimida en el caché de disco (Nivel 2)
+  - Dónde se libera: main_window.py (líneas con `frequency_analysis = None`)
+    y analyzer.py (la lista `results` de analyze_batch usa copias ligeras)
+  - Propósito: paso transitorio, nunca se retiene en memoria
+
+
+  Nivel 2: Caché de disco (~5MB por archivo)
+  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  - Implementación: src/utils/spectrogram_cache.py
+  - Ubicación: ~/.audioqual/cache/<hash>.npz
+  - Hash: SHA-256 de la ruta completa del archivo, truncado a 16 caracteres
+  - Formato: numpy .npz comprimido con 4 campos:
+      spec_uint8   - espectrograma downsampled y cuantizado
+      max_freq_hz  - frecuencia máxima (para reconstruir eje Y)
+      confidence   - confianza de la detección
+      cutoff_khz   - frecuencia de corte detectada
+
+  Proceso de compresión (save_to_cache):
+    1. Downsample por slicing: se toman cada N-ésima fila/columna
+       hasta alcanzar 1024 bins de frecuencia × 4096 frames temporales
+       (sin interpolación — suficiente para visualización)
+    2. Clamp al rango [-80dB, 0dB] (mismo rango que spectrogram_window.py)
+    3. Cuantización: float32 → uint8 (256 niveles de 80dB de rango dinámico)
+    4. Guardado con np.savez
+
+  Proceso de lectura (load_from_cache):
+    1. Cargar .npz
+    2. Dequantizar: uint8 → float32 (invertir la normalización)
+    3. Reconstruir FrequencyAnalysis mínimo (solo los campos necesarios
+       para el renderizado; energy_spectrum queda vacío)
+    4. Tiempo de carga: ~6-10ms (vs ~2-3s de re-análisis)
+
+  Tamaño real en disco:
+    - ~5MB por archivo individual
+    - 103 archivos → 504MB
+    - 397 archivos → 1.94GB
+    - Regla práctica: ~4.9MB por archivo analizado
+
+  Ciclo de vida:
+    - Se escribe durante el análisis (antes de liberar el Nivel 1)
+    - Se lee cuando el usuario selecciona un archivo para ver el espectrograma
+    - Se borra completamente al cerrar la app (app.py → _on_close → clear_cache)
+    - Los archivos corruptos se eliminan automáticamente al intentar leerlos
+
+
+  Nivel 3: Caché LRU en memoria (máx. 10 entradas)
+  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  - Implementación: app.py → self._spectrogram_cache (OrderedDict)
+  - Capacidad: MAX_SPECTROGRAM_CACHE = 10 entradas
+  - Contenido: tupla (FrequencyAnalysis, filename, cutoff_khz) por entrada
+  - Tamaño: ~5MB × 10 = ~50MB máximo en RAM
+  - Política de evicción: LRU (popitem(last=False) al exceder capacidad)
+
+  Se puebla desde:
+    - Resultados frescos (Nivel 1) cuando el usuario selecciona un archivo
+    - Hits de disco (Nivel 2) — se "promueven" a memoria para acceso instantáneo
+
+  Propósito: cuando el usuario alterna entre archivos con la ventana del
+  espectrograma abierta, los últimos 10 se muestran instantáneamente sin
+  tocar disco.
+
+
+Flujo completo de un archivo
+-----------------------------
+
+  1. ANÁLISIS
+     analyzer.py genera AnalysisResult con frequency_analysis (~150MB)
+         ↓
+     main_window.py recibe el resultado via callback
+         ↓
+     app.py._on_cache_spectrogram() → save_to_cache() [Nivel 1 → Nivel 2]
+         ↓
+     main_window.py hace frequency_analysis = None [libera Nivel 1]
+
+  2. USUARIO ABRE ESPECTROGRAMA (archivo recién analizado)
+     app.py._get_analysis_data() busca en orden:
+       a) result.frequency_analysis  → ya es None (liberado en paso 1)
+       b) self._spectrogram_cache    → hit si fue seleccionado recientemente [Nivel 3]
+       c) _load_spec_from_disk()     → hit desde disco [Nivel 2 → promovido a Nivel 3]
+       d) Si todo falla → _reanalyze_for_spectrogram_async() (re-análisis completo)
+
+  3. USUARIO CAMBIA ENTRE ARCHIVOS
+     - Los últimos 10 vienen del Nivel 3 (~0ms)
+     - Los demás vienen del Nivel 2 (~6-10ms)
+     - Solo si el caché fue borrado manualmente se re-analiza (~2-3s)
+
+  4. CIERRE DE LA APP
+     app.py._on_close() → clear_cache() → borra todos los .npz de disco
+
+
+Casos especiales
+-----------------
+
+  Renombrado de archivo (metadata_editor):
+    Cuando el usuario guarda metadatos con renombrado activado, app.py
+    actualiza la clave del caché LRU en memoria (old_filepath → new_filepath).
+    El caché de disco NO se actualiza (el .npz queda con el hash viejo y
+    se pierde; se regenerará en la próxima visualización).
+
+  Deduplicación de re-análisis:
+    _spectrogram_reanalyze_pending guarda la ruta del archivo que se está
+    re-analizando. Si el usuario hace clic rápidamente en varios archivos,
+    solo se lanza un re-análisis a la vez (evita hilos duplicados).
+
+  Limpiar resultados (botón Clear):
+    _on_clear() vacía el caché LRU en memoria pero NO borra el caché de
+    disco. Los .npz sobreviven hasta que se cierre la app.
+
+
+Consideraciones de rendimiento
+-------------------------------
+
+  - El cuello de botella es el análisis original (~2-3s), no el caché
+  - La cuantización uint8 pierde ~0.3dB de precisión (80dB / 256 niveles),
+    imperceptible visualmente
+  - El downsample por slicing (sin interpolación) es O(1) en tiempo,
+    aunque puede perder picos finos — aceptable para visualización
+  - Con max_workers=2 en batch, el pico de RAM es ~1.2GB (2 análisis
+    concurrentes × ~150MB spectrogram + overhead de librosa/numpy)
+  - El caché de disco se escribe secuencialmente dentro del callback
+    de cada resultado; no hay contención de I/O entre workers

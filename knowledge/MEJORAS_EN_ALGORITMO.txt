@@ -1,0 +1,404 @@
+================================================================================
+  MEJORAS EN ALGORITMO — Detección de brickwall vs rolloff natural
+  Sesiones del 22-24 de abril de 2026
+================================================================================
+
+ÍNDICE
+------
+  1. Contexto y motivación
+  2. El descubrimiento: Spek miente
+  3. Investigación de casos
+  4. Diagnóstico técnico
+  5. Estrategia de implementación
+  6. Implementación e iteraciones
+  7. Resultado final
+  8. Lecciones aprendidas
+
+
+================================================================================
+  1. CONTEXTO Y MOTIVACIÓN
+================================================================================
+
+AudioQual detecta archivos de audio "transcodeados" — archivos que dicen ser
+de alta calidad (320kbps) pero que en realidad fueron re-codificados desde
+fuentes de menor calidad. El algoritmo busca la frecuencia donde el contenido
+musical termina ("cutoff") y la compara con lo que el bitrate declarado debería
+tener.
+
+El problema: el algoritmo estaba generando falsos positivos en archivos
+legítimos. Archivos MP3 de 320kbps perfectamente buenos estaban siendo marcados
+como "transcode" porque su contenido frecuencial se reducía naturalmente en los
+agudos — un fenómeno normal en muchas mezclas y producciones musicales.
+
+La pregunta fundamental que guió todo este trabajo:
+  "¿Debemos penalizar un archivo porque su contenido frecuencial baja
+   naturalmente, o solo cuando hay un corte artificial de codec?"
+
+La respuesta del usuario fue clara:
+  "Solo penalizar los cortes de codec. Si un artista decide tener menos
+   contenido frecuencial en sus agudos, no debería ser penalizado."
+
+
+================================================================================
+  2. EL DESCUBRIMIENTO: SPEK MIENTE
+================================================================================
+
+Todo empezó con un descubrimiento importante sobre Spek, la herramienta que
+hasta ahora se usaba como referencia visual para validar el análisis:
+
+  - Spek usa un colormap que crea FRONTERAS VISUALES ARTIFICIALES en las
+    transiciones de -70 a -75 dB. La transición de color azul→negro hace
+    que parezca que el contenido "se corta" cuando en realidad simplemente
+    baja de nivel.
+
+  - MusicScope (Linear Frequency Spectrum) muestra la REALIDAD: hay contenido
+    musical real por encima de esas frecuencias, solo que a menor nivel.
+
+Ejemplo concreto: el archivo "Future" (MP3 320kbps).
+  - En Spek: parecía tener un corte a ~17-18 kHz (visual de "muro negro")
+  - En MusicScope: contenido real a más de -60 dB hasta 17.5 kHz, luego
+    rolloff gradual natural. Sin ningún brickwall ni artefacto de codec.
+
+Este descubrimiento cambió la premisa de trabajo: ya no podíamos confiar en
+Spek para determinar la "verdad" sobre un archivo. MusicScope se convirtió
+en la referencia definitiva.
+
+APRENDIZAJE: Siempre contrastar con MusicScope (Linear Frequency Spectrum)
+antes de afirmar que un archivo es transcode. Spek es útil para una primera
+impresión visual, pero su colormap puede crear ilusiones ópticas que llevan
+a conclusiones erróneas.
+
+
+================================================================================
+  3. INVESTIGACIÓN DE CASOS
+================================================================================
+
+Se analizaron 10 archivos con MusicScope para establecer la "verdad" de cada
+uno. Esto reveló que varios archivos que creíamos conocer habían sido mal
+clasificados por nuestras suposiciones basadas en Spek.
+
+FALSOS POSITIVOS (archivos legítimos marcados incorrectamente como transcode):
+-----------------------------------------------------------------------------
+
+  Future (MP3 320kbps)
+    - AudioQual detectaba: cutoff 18kHz → transcode 192kbps
+    - MusicScope mostraba: contenido >-60dB hasta 17.5kHz, rolloff gradual
+    - Realidad: rolloff natural de mezcla, NO transcode
+    - Solo 4% de frames activos → la energía media enterraba el contenido
+
+  Space Rodeo (MP3 320kbps)
+    - AudioQual detectaba: cutoff 14.5kHz → transcode 96kbps
+    - MusicScope mostraba: armónicos naturales por encima de 15kHz
+    - Realidad: electro oldschool con limitado contenido HF, NO transcode
+
+  Pirate Material (MP3 320kbps)
+    - AudioQual detectaba: cutoff 10.5kHz → transcode "low"
+    - MusicScope mostraba: sin brickwall, contenido real en peak hasta 20kHz
+    - Realidad: sampleo de radio con 10.5% frames activos. La voz solo ocupa
+      unos pocos momentos del archivo, pero cuando suena, tiene contenido
+      frecuencial completo. La media temporal ocultaba completamente esto.
+
+  Summerbreeze (MP3 320kbps)
+    - AudioQual detectaba: cutoff 18kHz → transcode 192kbps
+    - MusicScope mostraba: contenido hasta 18.8kHz, rolloff natural
+    - Realidad: producción electro con rolloff natural, NO transcode
+
+  notaiff-detected (AIFF lossless)
+    - AudioQual detectaba: cutoff 17kHz → transcode 192kbps
+    - MusicScope mostraba: contenido real, sin brickwall
+    - Realidad: archivo lossless legítimo con rolloff natural
+
+  notaiff-undetected (AIFF lossless)
+    - AudioQual detectaba: cutoff 16kHz → transcode 160kbps
+    - MusicScope mostraba: contenido real, sin brickwall
+    - Realidad: archivo lossless legítimo
+
+  Plaisir de France (MP3 320kbps)
+    - AudioQual detectaba: cutoff 16kHz → transcode 160kbps
+    - MusicScope mostraba: rolloff natural sin artefactos
+    - Realidad: MP3 legítimo, mezcla del año 2002
+
+TRANSCODES REALES (correctamente detectados, deben seguir siéndolo):
+--------------------------------------------------------------------
+
+  transcode-manuchao (MP3)
+    - MusicScope: brickwall EVIDENTE a 13-14kHz
+    - Gradiente: 30 dB/kHz (caída brutal)
+    - Varianza post-corte: 0.02 (silencio total)
+
+  transcode-portishead (MP3)
+    - MusicScope: brickwall a 13-14kHz
+    - Gradiente: ~10 dB/kHz (en energía media)
+    - Varianza post-corte: 0.15
+
+  transcode-sickomode (MP3)
+    - MusicScope: caída abrupta visible a 16-17kHz
+    - Particularidad: artefactos de ruido POST-brickwall (ruido artificial
+      generado por el codec que aparece intermitentemente por encima del
+      corte). Energía post-corte elevada pero sin varianza musical.
+
+  transcode-thebox (MP3)
+    - MusicScope: brickwall a 15-16kHz
+    - Rolloff gradual en energía media (2.9 dB/kHz) pero brickwall en peak
+
+
+================================================================================
+  4. DIAGNÓSTICO TÉCNICO
+================================================================================
+
+La investigación reveló DOS problemas raíz en el algoritmo:
+
+PROBLEMA 1: Medición de energía deficiente
+-------------------------------------------
+La función compute_energy_per_frequency() calculaba la MEDIA de TODOS los
+frames temporales. Archivos con pocas secciones activas (Pirate Material:
+10.5% de frames activos, Future: 4%) veían su contenido real enterrado bajo
+el ruido de fondo.
+
+  - AudioQual medía -80 dB a 17kHz para Pirate Material
+  - MusicScope mostraba -63 dB a 17kHz
+
+La diferencia: MusicScope muestra la energía del frame más activo, mientras
+que nuestro algoritmo promediaba con todos los frames silenciosos.
+
+Además, librosa.amplitude_to_db() aplica por defecto un top_db=80 que recorta
+todo por debajo de -80 dB. Archivos con poca actividad tenían TODAS las bandas
+frecuenciales altas al mismo nivel (-80 dB), eliminando cualquier variación
+que permitiera detectar dónde termina el contenido real.
+
+SOLUCIÓN: Se creó compute_band_peak_energy() que calcula el máximo de la
+energía media por frame (max de mean_per_frame), coincidiendo con lo que
+MusicScope muestra. Esta función se usa SOLO para la verificación de
+brickwall, sin modificar la detección de transición existente.
+
+PROBLEMA 2: Sin discriminación brickwall vs rolloff natural
+------------------------------------------------------------
+El algoritmo detectaba "cutoffs" donde la energía bajaba, pero NO distinguía:
+
+  a) Caídas ABRUPTAS de codec (brickwall) — gradiente >9 dB/kHz, varianza
+     temporal post-corte prácticamente cero. Esto es un corte artificial.
+
+  b) Caídas GRADUALES naturales (rolloff) — gradiente <6 dB/kHz, varianza
+     temporal sostenida. Esto es una decisión de mezcla/mastering.
+
+  c) Rolloff gradual de YouTube (doble encoding AAC→MP3) — sin brickwall
+     pero energía decayendo constantemente. Técnicamente un transcode pero
+     sin firma de brickwall clara.
+
+HALLAZGO CLAVE: Dos métricas combinadas discriminan transcodes de rolloff
+natural:
+
+  - Gradiente (dB/kHz en energía media):
+      Transcodes: >9 dB/kHz (manuchao: 11.9, portishead: 9.8)
+      Naturales:  <6.1 dB/kHz (Summerbreeze: 6.1, máximo legítimo)
+      Umbral:     9.0 dB/kHz (margen de 2.9 dB/kHz)
+
+  - Varianza temporal post-corte (normalizada por referencia):
+      Transcodes: <0.5 (manuchao: 0.02, portishead: 0.15)
+      Naturales:  >0.3 en al menos algunas bandas
+      Umbral:     0.5
+
+
+================================================================================
+  5. ESTRATEGIA DE IMPLEMENTACIÓN
+================================================================================
+
+FILOSOFÍA: "Solo penalizar cortes artificiales de codec"
+
+Se decidió crear una función is_natural_rolloff() que se ejecuta DESPUÉS de
+que el algoritmo existente determine un cutoff. Si el cutoff no muestra firma
+de brickwall y hay contenido real por encima, se anula el cutoff y se marca
+el archivo como buena calidad.
+
+DECISIONES DE DISEÑO:
+  - NO modificar compute_energy_per_frequency() ni compute_band_energy_simple()
+    para no romper la detección de transición existente que funciona bien.
+  - NO modificar detect_transcode() en el clasificador. La lógica de
+    clasificación no cambia, solo recibe cutoffs más precisos.
+  - Mantener el guard de gradual-rolloff existente como capa adicional.
+  - La nueva función opera como ÚLTIMO filtro antes de pasar al clasificador.
+
+
+================================================================================
+  6. IMPLEMENTACIÓN E ITERACIONES
+================================================================================
+
+La implementación pasó por múltiples iteraciones, cada una resolviendo un
+problema pero revelando el siguiente. Este proceso es inherente al trabajo
+con señales de audio reales, donde cada archivo tiene características únicas.
+
+ITERACIÓN 1: verify_brickwall_signature() con peak energy
+----------------------------------------------------------
+Primera implementación: usar compute_band_peak_energy() para medir tanto el
+gradiente como la energía elevada. Si no se encontraba brickwall (gradiente
+< umbral), se marcaba como natural.
+
+  Problema: demasiado agresivo. Overrideaba TODOS los cutoffs sin brickwall,
+  incluyendo YouTube rips legítimos que sí son transcodes. 47 tests rotos.
+
+  Aprendizaje: no basta con "no hay brickwall = natural". Hay transcodes
+  con rolloff gradual (YouTube double-encoding) que no tienen brickwall pero
+  sí son transcodes.
+
+ITERACIÓN 2: is_natural_rolloff() con verificación de contenido
+----------------------------------------------------------------
+Se añadió un segundo requisito: además de no tener brickwall, debe haber
+contenido elevado (peak energy > umbral) por encima del cutoff.
+
+  Problema: el umbral de -70 dB no capturaba Future (-74.4 dB) ni
+  Summerbreeze (-70.1 dB). Y Pirate Material seguía fallando porque
+  se detectaba un "brickwall falso" en peak energy a 12kHz (transición
+  vocal natural con gradiente alto pero contenido abundante por encima).
+
+ITERACIÓN 3: Energía media para brickwall + peak para contenido
+----------------------------------------------------------------
+Se separaron las métricas: usar energía MEDIA para la detección de brickwall
+(los transcodes reales muestran gradientes enormes en media) y energía PICO
+para la verificación de contenido.
+
+  Problema: ahora portishead escapaba — su gradiente medio era 9.8, justo
+  debajo del umbral de 10.0.
+
+  Solución: bajar el umbral de gradiente a 9.0 dB/kHz. Margen de seguridad:
+  3 dB/kHz por encima del máximo legítimo (Summerbreeze: 6.1).
+
+ITERACIÓN 4: Doble escaneo (mean + peak brickwall)
+----------------------------------------------------
+Se añadió un escaneo de brickwall con peak energy ADEMÁS del de media, para
+capturar YouTube rips con brickwalls más sutiles. Cuando peak brickwall se
+detecta, se permite override solo si hay ≥4 bandas con contenido fuerte
+(>-65 dB) — esto captura Pirate Material (6 bandas fuertes) pero no YouTube
+rips (2 bandas máximo).
+
+  Problema: Summerbreeze y notaiff-undetected tenían peak brickwall detectado
+  a ≥17kHz (en zonas de rolloff natural). Esto los penalizaba incorrectamente.
+
+ITERACIÓN 5 (FINAL): Límite de frecuencia para peak brickwall
+--------------------------------------------------------------
+Regla generalizable: ningún codec real genera un brickwall detectable SOLO
+en peak energy por encima de 17kHz. Si un codec tuviera un corte tan alto,
+su gradiente medio también sería elevado. Se limitó la detección de peak
+brickwall a frecuencias < 17kHz.
+
+Además, se implementó un umbral de energía adaptativo por frecuencia:
+  - Cutoffs ≥ 17kHz (cerca de Nyquist): umbral relajado de -76 dB.
+    Cualquier contenido es significativo a estas frecuencias.
+  - Cutoffs < 17kHz: umbral estándar de -70 dB.
+    Se necesita contenido más fuerte para considerar natural.
+
+RESULTADO: 93 tests, 83 pasan, 0 fallos, 10 known bugs.
+
+
+================================================================================
+  7. RESULTADO FINAL
+================================================================================
+
+CÓDIGO MODIFICADO
+-----------------
+  src/utils/constants.py — 5 nuevas constantes:
+    BRICKWALL_MIN_GRADIENT_DB_PER_KHZ = 9.0
+    BRICKWALL_MAX_POST_VARIANCE = 0.5
+    BRICKWALL_ELEVATED_ENERGY_DB = -76.0
+    BRICKWALL_OVERRIDE_ENERGY_DB = -65.0
+    BRICKWALL_ELEVATED_RATIO = 0.5
+
+  src/core/frequency_detector.py — 2 nuevas funciones:
+    compute_band_peak_energy()  — energía pico por banda (max del mean por frame)
+    is_natural_rolloff()        — verificación de brickwall vs rolloff natural
+
+  Integración en analyze_frequency_cutoff() — llamada a is_natural_rolloff()
+  después de determinar el cutoff, antes de la verificación HF.
+
+  tests/tests.json — 3 nuevos tests (CLU4_001, CLU4_002, CLU4_003),
+  4 tests con expectativas actualizadas (_b variants), 2 known bugs nuevos.
+
+ARQUITECTURA DE is_natural_rolloff()
+-------------------------------------
+La función opera en 3 capas, de más definitivo a más permisivo:
+
+  Capa 1 — Brickwall en energía media:
+    Busca gradiente ≥ 9 dB/kHz con varianza post-corte ≤ 0.5.
+    Si se encuentra → corte de codec DEFINITIVO → return False.
+    Captura: manuchao (11.9 dB/kHz), portishead (9.8 dB/kHz).
+
+  Capa 2 — Brickwall en energía pico (solo < 17kHz):
+    Busca el mismo patrón pero en peak energy.
+    Si se encuentra → posible codec O transición natural.
+    Override solo si ≥4 bandas con peak > -65 dB por encima.
+    Captura YouTube rips (2 bandas fuertes → no override → codec).
+    Permite Pirate Material (6 bandas fuertes → override → natural).
+
+  Capa 3 — Verificación de contenido persistente:
+    Sin brickwall encontrado. Verifica si peak energy se mantiene
+    elevada por encima del cutoff.
+    Umbral adaptativo: -76 dB para cutoffs ≥17kHz, -70 dB para <17kHz.
+    Ratio mínimo: 50% de bandas deben estar elevadas.
+    Captura Future/Summerbreeze (cutoff alto, contenido cerca de Nyquist).
+
+KNOWN BUGS CONOCIDOS
+---------------------
+  YT_012 (NTM Boogie Man): YouTube rip con rolloff gradual sin brickwall
+  en ninguna métrica y peak energy persistente. Indistinguible de rolloff
+  natural sin análisis de metadata. Limitación inherente del análisis
+  espectral puro.
+
+
+================================================================================
+  8. LECCIONES APRENDIDAS
+================================================================================
+
+SOBRE HERRAMIENTAS DE REFERENCIA:
+  - Spek engaña. Su colormap crea fronteras visuales artificiales a -70/-75 dB.
+    Lo que parece un "corte" puede ser simplemente la transición de color.
+  - MusicScope (Linear Frequency Spectrum) es la referencia definitiva para
+    verificar si existe contenido real en una frecuencia determinada.
+  - Nunca dar por sentado que un archivo es transcode solo porque Spek lo
+    "muestra". Siempre contrastar con MusicScope.
+
+SOBRE MEDICIÓN DE ENERGÍA:
+  - La media temporal (mean across all frames) NO refleja el contenido real
+    de archivos con pocas secciones activas. Un archivo con 10% de frames
+    activos tendrá su contenido real enterrado 10 dB por debajo de lo que
+    MusicScope muestra.
+  - Peak energy (max of mean_per_frame) coincide con MusicScope y captura
+    contenido real incluso en archivos con muy pocos frames activos.
+  - top_db=80 en librosa.amplitude_to_db recorta todo por debajo de -80 dB.
+    En archivos con pocas secciones activas, esto aplana todo el contenido HF
+    al mismo nivel, eliminando las variaciones que permiten detectar cutoffs.
+
+SOBRE DISCRIMINACIÓN BRICKWALL/ROLLOFF:
+  - Dos métricas combinadas (gradiente + varianza) discriminan con alta
+    fiabilidad entre cortes de codec y rolloff natural.
+  - La energía MEDIA es mejor para detectar brickwalls reales (los transcodes
+    tienen gradientes enormes en media). La energía PICO es mejor para verificar
+    si existe contenido real (captura frames activos aislados).
+  - Los YouTube rips (doble encoding) crean rolloff gradual, no brickwall.
+    Son el caso más difícil: parecen rolloff natural pero son transcodes.
+  - Ningún codec real genera un brickwall detectable SOLO en peak energy
+    por encima de 17kHz. Si fuera real, también sería visible en media.
+  - Los artefactos post-brickwall (caso sickomode) tienen energía elevada pero
+    varianza temporal muy baja — son ruido constante, no contenido musical.
+
+SOBRE PROCESO DE DESARROLLO:
+  - Cada iteración resuelve un problema pero puede revelar el siguiente.
+    Es inherente al trabajo con señales de audio reales.
+  - El overfitting es un riesgo real. Es tentador ajustar umbrales para que
+    un archivo específico pase, pero cada ajuste puede romper otro caso.
+    Las reglas deben basarse en PRINCIPIOS FÍSICOS (cómo funcionan los codecs,
+    qué es un brickwall, qué es rolloff natural), no en valores específicos
+    de archivos individuales.
+  - "Known bug" es una respuesta honesta cuando un caso es genuinamente
+    ambiguo. Mejor documentar una limitación que hiperparametrizar.
+  - El test suite es CRÍTICO. Sin la suite de 93 tests, habría sido imposible
+    iterar sin introducir regresiones. Cada cambio se verificaba contra
+    todos los archivos, no solo los que se estaban corrigiendo.
+
+SOBRE FILOSOFÍA DEL ALGORITMO:
+  - El propósito es detectar ARTEFACTOS ARTIFICIALES de codec, no penalizar
+    decisiones artísticas o de producción.
+  - Un rolloff gradual de energía en los agudos puede ser perfectamente
+    natural — depende del género musical, la producción, el mastering.
+  - Solo debemos marcar "transcode" cuando hay evidencia POSITIVA de un
+    corte artificial: gradiente abrupto + pérdida de varianza temporal.
+  - La ausencia de contenido HF no es evidencia de transcode. La presencia
+    de un brickwall sí lo es.
