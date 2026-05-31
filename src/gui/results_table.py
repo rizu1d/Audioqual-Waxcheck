@@ -6,6 +6,12 @@ from typing import Callable, Dict, List, Optional
 
 import customtkinter as ctk
 
+try:
+    from tkinterdnd2 import DND_FILES, COPY
+    HAS_DND = True
+except ImportError:
+    HAS_DND = False
+
 from ..core.analyzer import AnalysisResult
 from ..utils.constants import (
     STATUS_COLORS, THEME_COLORS, FONT_FAMILY, FONT_FAMILY_MONO, FONT_SIZES,
@@ -128,8 +134,10 @@ class ResultRow(ctk.CTkFrame):
         result: AnalysisResult,
         columns: list,
         on_click: Optional[Callable] = None,
+        on_release: Optional[Callable] = None,
         on_right_click: Optional[Callable] = None,
         on_badge_click: Optional[Callable] = None,
+        on_drag_files: Optional[Callable] = None,
         **kwargs
     ):
         super().__init__(
@@ -142,13 +150,16 @@ class ResultRow(ctk.CTkFrame):
 
         self.result = result
         self.on_click = on_click
+        self.on_release = on_release
         self.on_right_click = on_right_click
         self._on_badge_click = on_badge_click
+        self._on_drag_files = on_drag_files
         self._selected = False
         # Deduplication: prevent multiple firings per physical click.
         # Separate timestamps because both handlers should fire once per click
         # (badge click should both open popup AND select the row).
         self._last_row_click_time = 0
+        self._last_row_release_time = 0
         self._last_badge_click_time = 0
         # Store as mutable list of lists so widths can be updated
         self._columns = [list(col) for col in columns]
@@ -235,6 +246,7 @@ class ResultRow(ctk.CTkFrame):
 
         # Bind click/hover events to the row
         self.bind("<Button-1>", self._handle_click, add="+")
+        self.bind("<ButtonRelease-1>", self._handle_release, add="+")
         self.bind("<Enter>", self._on_enter)
         self.bind("<Leave>", self._on_leave)
 
@@ -246,6 +258,29 @@ class ResultRow(ctk.CTkFrame):
 
         # Bind click events to all descendants (needed for CTk widgets with internal structure)
         self._bind_click_recursive(self)
+
+        # Register drag-out (export files to Finder/other apps) if tkinterdnd2 is available
+        if HAS_DND and self._on_drag_files is not None:
+            self._register_drag_source(self)
+
+    def _register_drag_source(self, widget):
+        """Register widget and all descendants as a drag source exporting files."""
+        try:
+            widget.drag_source_register(1, DND_FILES)
+            widget.dnd_bind("<<DragInitCmd>>", self._handle_drag_init)
+        except Exception:
+            return
+        for child in widget.winfo_children():
+            self._register_drag_source(child)
+
+    def _handle_drag_init(self, event):
+        """Provide the file paths to export when a drag-out gesture starts."""
+        paths = self._on_drag_files(self) if self._on_drag_files else []
+        # Only export files that still exist on disk
+        paths = [p for p in paths if p and Path(p).exists()]
+        if not paths:
+            return None
+        return (COPY, DND_FILES, tuple(paths))
 
     def _get_value(self, col_id: str, width: int) -> str:
         """Get the display value for a column, truncated if necessary."""
@@ -282,6 +317,7 @@ class ResultRow(ctk.CTkFrame):
         """Bind click and right-click events to all descendants of the widget."""
         for child in widget.winfo_children():
             child.bind("<Button-1>", self._handle_click, add="+")
+            child.bind("<ButtonRelease-1>", self._handle_release, add="+")
             if sys.platform == "darwin":
                 child.bind("<Button-2>", self._handle_right_click, add="+")
             else:
@@ -305,6 +341,17 @@ class ResultRow(ctk.CTkFrame):
             return
         if self.on_click:
             self.on_click(self, event)
+
+    def _handle_release(self, event):
+        """Handle button-1 release (used to finalize a deferred single-select)."""
+        if event.time == self._last_row_release_time:
+            return
+        self._last_row_release_time = event.time
+        # Skip on macOS Ctrl+click (treated as right-click on press)
+        if sys.platform == "darwin" and (event.state & 0x4):
+            return
+        if self.on_release:
+            self.on_release(self, event)
 
     def _handle_right_click(self, event):
         """Handle right-click on row or its children."""
@@ -453,6 +500,9 @@ class ResultsTable(ctk.CTkFrame):
         self._rows: Dict[str, ResultRow] = {}
         self._selected_rows: List[ResultRow] = []
         self._anchor_row: Optional[ResultRow] = None
+        # Row whose collapse-to-single was deferred from press to release,
+        # so a drag-out can keep the full multi-selection (Finder-style).
+        self._pending_collapse_row: Optional[ResultRow] = None
         self._quality_popup: Optional[QualityPopup] = None
 
         # Mutable column widths (source of truth for current widths)
@@ -983,6 +1033,19 @@ class ResultsTable(ctk.CTkFrame):
             if cell:
                 cell.configure(text=row._get_value("filename", width))
 
+    def _get_drag_filepaths(self, row: ResultRow) -> List[str]:
+        """Return file paths to export on drag-out.
+
+        If the dragged row is part of the current multi-selection, export all
+        selected files; otherwise export just the dragged row (Finder-style).
+        """
+        # A drag is starting: cancel any deferred collapse so the release does
+        # not shrink the multi-selection after the files have been exported.
+        self._pending_collapse_row = None
+        if row in self._selected_rows and len(self._selected_rows) > 1:
+            return [r.result.filepath for r in self._selected_rows]
+        return [row.result.filepath]
+
     def _on_row_click(self, row: ResultRow, event=None):
         """Handle row click for selection with modifier key support."""
         cmd_held = False
@@ -995,10 +1058,23 @@ class ResultsTable(ctk.CTkFrame):
             shift_held = bool(event.state & 0x1)     # Shift
 
         if cmd_held:
+            self._pending_collapse_row = None
             self._toggle_selection(row)
         elif shift_held:
+            self._pending_collapse_row = None
             self._extend_selection(row)
+        elif row in self._selected_rows and len(self._selected_rows) > 1:
+            # Pressing on an already multi-selected row: defer collapsing to a
+            # single selection until release, so a drag-out can export them all.
+            self._pending_collapse_row = row
         else:
+            self._pending_collapse_row = None
+            self._select_single(row)
+
+    def _on_row_release(self, row: ResultRow, event=None):
+        """Finalize a deferred single-select if the press did not start a drag."""
+        if self._pending_collapse_row is row:
+            self._pending_collapse_row = None
             self._select_single(row)
 
     def _select_single(self, row: ResultRow):
@@ -1205,8 +1281,10 @@ class ResultsTable(ctk.CTkFrame):
                 result,
                 self._current_columns(),
                 on_click=self._on_row_click,
+                on_release=self._on_row_release,
                 on_right_click=self._on_row_right_click,
                 on_badge_click=self._on_badge_click,
+                on_drag_files=self._get_drag_filepaths,
             )
             row.pack(fill="x", pady=(0, 1))
             self._rows[result.filepath] = row

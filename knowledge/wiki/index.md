@@ -39,6 +39,7 @@ updated: 2026-06-01
 - [PollingObserver](decisiones/polling-observer.md) — Por qué no FSEventsObserver (bug Unicode macOS)
 - [Medición de CPU](decisiones/medicion-cpu.md) — Cómo medir rendimiento: powermetrics vs ps, wakeups, verdicto de R3
 - [Desarrollo con LLM](decisiones/desarrollo-con-llm.md) — Modelo de trabajo humano + Claude Code
+- [Drag-out de archivos](decisiones/drag-out-archivos.md) — Arrastrar resultados a Finder; mueve vs copia (⌥), colapso diferido
 
 ## Cronología
 
