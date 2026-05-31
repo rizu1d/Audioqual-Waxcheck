@@ -1,0 +1,192 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2867
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fnil\fcharset0 Menlo-Regular;\f1\fnil\fcharset0 Menlo-Bold;}
+{\colortbl;\red255\green255\blue255;\red0\green0\blue0;\red162\green168\blue247;\red56\green185\blue199;
+\red202\green51\blue35;\red57\green192\blue38;}
+{\*\expandedcolortbl;;\csgray\c0;\cssrgb\c69412\c72549\c97647;\cssrgb\c25546\c77007\c82023;
+\cssrgb\c83899\c28663\c18026;\cssrgb\c25706\c77963\c19557;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\pard\tx560\tx1120\tx1680\tx2240\tx2800\tx3360\tx3920\tx4480\tx5040\tx5600\tx6160\tx6720\pardirnatural\partightenfactor0
+
+\f0\fs22 \cf2 \CocoaLigature0  
+\f1\b Estructura
+\f0\b0                                                                                                                                                                                                                                                                  \
+                                                                             \
+  El sistema tiene 
+\f1\b 3 capas
+\f0\b0 :                                                                                                                                                                                                                                                  \
+                                                                             \
+  1. 
+\f1\b \cf3 tests.json
+\f0\b0 \cf2  \'97 La verdad absoluta. Cada entrada define un archivo de audio, qu\'e9 resultado esperamos (status, rango de cutoff, calidad) y si es un bug conocido. Nunca se edita ni se borra una entrada existente.\
+  2. 
+\f1\b Dos
+\f0\b0  
+\f1\b suites
+\f0\b0  
+\f1\b de
+\f0\b0  
+\f1\b verificaci\'f3n
+\f0\b0  que reciben los resultados ya analizados:\
+    - \cf3 test_detection.py\cf2  \'97 Compara el cutoff detectado contra los rangos \cf3 cutoff_below_khz\cf2  / \cf3 cutoff_above_khz\cf2 \
+    - \cf3 test_classification.py\cf2  \'97 Compara el status (\cf3 "Transcode\cf2  \cf3 detectado"\cf2 , \cf3 "OK"\cf2 , etc.) y la calidad detectada contra lo esperado\
+  3. 
+\f1\b \cf3 run_tests.py
+\f0\b0 \cf2  \'97 Orquestador. Analiza los 32 archivos 
+\f1\b una
+\f0\b0  
+\f1\b sola
+\f0\b0  
+\f1\b vez
+\f0\b0  con \cf3 AudioAnalyzer\cf2 , pasa los resultados a ambas suites, y muestra PASS/FAIL/SKIP.\
+\
+  
+\f1\b Flujo
+\f0\b0  
+\f1\b de
+\f0\b0  
+\f1\b una
+\f0\b0  
+\f1\b ejecuci\'f3n
+\f0\b0 \
+\
+  run_tests.py\
+    \uc0\u9492 \u9472  Carga tests.json\
+    \uc0\u9492 \u9472  Ejecuta AudioAnalyzer.analyze_file() \'d7 32 archivos (~42s)\
+    \uc0\u9492 \u9472  Pasa resultados a test_detection \u8594  32 checks de cutoff\
+    \uc0\u9492 \u9472  Pasa resultados a test_classification \u8594  32 checks de status/quality\
+    \uc0\u9492 \u9472  Ejecuta test_ui \u8594  3 checks de instanciaci\'f3n\
+    \uc0\u9492 \u9472  Resumen: 67/67 passed \u8594  exit code 0\
+\
+  
+\f1\b Qu\'e9
+\f0\b0  
+\f1\b verifica
+\f0\b0  
+\f1\b cada
+\f0\b0  
+\f1\b test
+\f0\b0 \
+\
+  Tomando un ejemplo de \cf3 tests.json\cf2 :\
+\
+  \{\
+    \cf4 "id"\cf2 : \cf5 "BASE_006"\cf2 ,\
+    \cf4 "file"\cf2 : \cf5 "references/test-files/base/transcode-manuchao.mp3"\cf2 ,\
+    \cf4 "expected"\cf2 : \{\
+      \cf4 "status"\cf2 : \cf5 "Transcode\cf2  \cf5 detectado"\cf2 ,\
+      \cf4 "detected_quality_in"\cf2 : [\cf5 "96kbps"\cf2 ],\
+      \cf4 "cutoff_below_khz"\cf2 : \cf6 14.5\cf2 \
+    \}\
+  \}\
+\
+  - 
+\f1\b Detection
+\f0\b0 : el cutoff debe ser \uc0\u8804  14.5 kHz (resultado actual: 13.0 kHz \u8594  PASS)\
+  - 
+\f1\b Classification
+\f0\b0 : el status debe ser exactamente \cf3 "Transcode\cf2  \cf3 detectado"\cf2  y la calidad debe estar en \cf3 ["96kbps"]\cf2  \uc0\u8594  PASS\
+\
+  Los rangos tienen margen (\'b11.5 kHz para transcodes, \'b12 kHz para edge cases) para que peque\'f1os ajustes al algoritmo no rompan tests innecesariamente, pero cambios grandes s\'ed se detecten.\
+\
+  ---\
+  
+\f1\b C\'f3mo
+\f0\b0  
+\f1\b lo
+\f0\b0  
+\f1\b usar\'e9
+\f0\b0  
+\f1\b en
+\f0\b0  
+\f1\b futuros
+\f0\b0  
+\f1\b cambios
+\f0\b0 \
+\
+  
+\f1\b Antes
+\f0\b0  
+\f1\b de
+\f0\b0  
+\f1\b tocar
+\f0\b0  
+\f1\b el
+\f0\b0  
+\f1\b algoritmo
+\f0\b0 \
+\
+  Ejecuto \cf3 python\cf2  \cf3 tests/run_tests.py\cf2  para confirmar el estado base: 67/67 PASS.\
+\
+  
+\f1\b Despu\'e9s
+\f0\b0  
+\f1\b de
+\f0\b0  
+\f1\b cada
+\f0\b0  
+\f1\b cambio
+\f0\b0 \
+\
+  Vuelvo a ejecutar. Tres escenarios posibles:\
+\
+  1. 
+\f1\b Todo
+\f0\b0  
+\f1\b sigue
+\f0\b0  
+\f1\b PASS
+\f0\b0  \uc0\u8594  El cambio no rompi\'f3 nada, seguimos.\
+  2. 
+\f1\b Alg\'fan
+\f0\b0  
+\f1\b test
+\f0\b0  
+\f1\b FAIL
+\f0\b0  \uc0\u8594  El cambio provoc\'f3 una regresi\'f3n. Ejemplo:\
+  FAIL BASE_006: cutoff 16.0 kHz > max esperado 14.5 kHz\
+  2. Esto significa que el cambio movi\'f3 el cutoff de Manu Chao de 13.0 a 16.0 kHz, lo cual es un problema. Hay que revisar el cambio.\
+  3. 
+\f1\b Un
+\f0\b0  
+\f1\b test
+\f0\b0  
+\f1\b FAIL
+\f0\b0  
+\f1\b pero
+\f0\b0  
+\f1\b el
+\f0\b0  
+\f1\b nuevo
+\f0\b0  
+\f1\b resultado
+\f0\b0  
+\f1\b es
+\f0\b0  
+\f1\b el
+\f0\b0  
+\f1\b correcto
+\f0\b0  \uc0\u8594  El algoritmo mejor\'f3. En ese caso, \cf3 tests.json\cf2  se puede actualizar para reflejar el nuevo expected (solo si estamos seguros de que es una mejora real, no un falso positivo).\
+\
+  
+\f1\b Para
+\f0\b0  
+\f1\b archivos
+\f0\b0  
+\f1\b nuevos
+\f0\b0 \
+\
+  Si a\'f1adimos archivos de test al directorio \cf3 references/test-files/\cf2 , se a\'f1ade una entrada nueva en \cf3 generate_baseline.py\cf2  y se regenera \cf3 tests.json\cf2 , o se a\'f1ade manualmente la entrada al JSON.\
+\
+  
+\f1\b Atajo
+\f0\b0  
+\f1\b r\'e1pido
+\f0\b0 \
+\
+  Si solo toqu\'e9 c\'f3digo de UI y quiero verificar r\'e1pido sin esperar 42s:\
+\
+  python tests/run_tests.py --suite ui\
+\
+  En resumen: es una red de seguridad. Cada vez que modifique \cf3 frequency_detector.py\cf2 , \cf3 bitrate_classifier.py\cf2  o \cf3 analyzer.py\cf2 , ejecuto los tests para verificar que no romp\'ed resultados que antes eran correctos.\
+\
+}
