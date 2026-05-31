@@ -8,8 +8,13 @@ user to perceive a freeze.
 
 Redundant callback processing ensures reliability:
   1. Primary: pipe + createfilehandler (macOS) or <<ThreadCallback>> event (other)
-  2. Secondary: after()-based poller every 50ms (all platforms)
-  3. Tertiary: heartbeat in app.py calls process_pending_callbacks() every 100ms
+  2. Secondary: after()-based poller every 250ms (all platforms)
+  3. Tertiary: heartbeat in app.py calls process_pending_callbacks() every 500ms
+
+The primary path is event-driven and fires immediately on each callback;
+the secondary/tertiary intervals only bound the safety-net latency for the
+case where the primary path goes dormant, so they are kept conservative to
+minimise idle wake-ups (Cocoa CPU) without sacrificing reliability.
 """
 import os
 import sys
@@ -84,26 +89,26 @@ def _start_callback_poller():
 
     If the pipe+createfilehandler mechanism is working, this just finds
     an empty queue on each tick (negligible overhead — one queue.Empty check).
-    If the pipe mechanism fails, this catches callbacks within 50ms.
+    If the pipe mechanism fails, this catches callbacks within 250ms.
     """
     if _shutting_down or _tk_root is None:
         return
     process_pending_callbacks()
     try:
-        _tk_root.after(50, _start_callback_poller)
+        _tk_root.after(250, _start_callback_poller)
     except Exception:
         pass  # Window destroyed during shutdown
 
 
 def _keepalive_loop():
-    """Write a byte to the pipe every ~200 ms to keep the Cocoa run loop alive.
+    """Write a byte to the pipe every ~500 ms to keep the Cocoa run loop alive.
 
-    200ms balances responsiveness (thread callbacks delivered within 200ms
-    worst case) against not flooding the event loop with file-handler
-    invocations that could interfere with mouse event processing.
+    Each real callback already wakes the loop immediately via its own pipe
+    write, so this only needs to prevent prolonged dormancy during idle.
+    500ms keeps the loop responsive while minimising idle wake-ups.
     """
     while not _shutting_down:
-        time.sleep(0.2)
+        time.sleep(0.5)
         if _shutting_down:
             break
         fd = _pipe_write_fd

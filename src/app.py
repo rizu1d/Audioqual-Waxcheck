@@ -663,15 +663,15 @@ class AudioQualApp:
 
         Three independent mechanisms process callbacks:
           1. pipe+createfilehandler in tk_utils (primary, macOS)
-          2. after()-based 50ms poller in tk_utils (secondary, all platforms)
+          2. after()-based 250ms poller in tk_utils (secondary, all platforms)
           3. This heartbeat (tertiary safety net)
 
         Even if mechanisms 1 and 2 both fail, this ensures callbacks
-        are processed within 100ms.
+        are processed within 500ms.
         """
         from .utils.tk_utils import process_pending_callbacks
         process_pending_callbacks()
-        self.root.after(100, self._heartbeat)
+        self.root.after(500, self._heartbeat)
 
     def run(self):
         """Start the application main loop."""

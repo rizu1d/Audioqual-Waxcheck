@@ -1,6 +1,5 @@
 """Main application window."""
 
-import math
 import os
 import subprocess
 import sys
@@ -78,7 +77,6 @@ class MainWindow(ctk.CTkFrame):
         self._pending_analysis_queue: List[str] = []
         self._pulse_active = False
         self._watcher_active = False
-        self._glow_active = False
 
         self._setup_ui()
 
@@ -563,16 +561,12 @@ class MainWindow(ctk.CTkFrame):
             queued = self._pending_analysis_queue[:]
             self._pending_analysis_queue.clear()
             self._start_analysis(queued)
-        elif self._glow_active:
-            self._stop_glow()
 
     def _on_cancel_analysis(self):
         """Handle cancel button from overlay."""
         self.analyzer.cancel()
         self._pending_analysis_queue.clear()
         self._set_analyzing_state(False)
-        if self._glow_active:
-            self._stop_glow()
 
     def _on_analysis_progress(
         self,
@@ -935,7 +929,6 @@ class MainWindow(ctk.CTkFrame):
             self.watcher_btn.configure(image=self._watcher_icon_off)
             self._watcher_indicator.grid_remove()
             self._stop_indicator_pulse()
-            self._stop_glow()
 
     def _restore_watcher_status(self):
         """Restore status bar to show watcher-active state."""
@@ -961,43 +954,9 @@ class MainWindow(ctk.CTkFrame):
         self._watcher_indicator.configure(text_color=color)
         self.after(800, self._pulse_step, not bright)
 
-    def _start_glow(self):
-        """Start glow animation on the watcher button."""
-        if self._glow_active:
-            return
-        self._glow_active = True
-        self._glow_step(0)
-
-    def _stop_glow(self):
-        """Stop glow animation and reset button color."""
-        self._glow_active = False
-        self.watcher_btn.configure(fg_color=THEME_COLORS["toolbar_btn"])
-
-    def _glow_step(self, step: int):
-        """Animate watcher button with a breathing glow effect."""
-        if not self._glow_active:
-            return
-        # Sinusoidal pulse: 0.0 → 1.0 → 0.0 over ~60 steps (~3s cycle)
-        t = (math.sin(step * 0.105) + 1) / 2
-        color = self._interpolate_color(THEME_COLORS["toolbar_btn"], THEME_COLORS["primary"], t)
-        self.watcher_btn.configure(fg_color=color)
-        self.after(50, self._glow_step, step + 1)
-
-    @staticmethod
-    def _interpolate_color(c1: str, c2: str, t: float) -> str:
-        """Linearly interpolate between two hex colors."""
-        r1, g1, b1 = int(c1[1:3], 16), int(c1[3:5], 16), int(c1[5:7], 16)
-        r2, g2, b2 = int(c2[1:3], 16), int(c2[3:5], 16), int(c2[5:7], 16)
-        r = int(r1 + (r2 - r1) * t)
-        g = int(g1 + (g2 - g1) * t)
-        b = int(b1 + (b2 - b1) * t)
-        return f"#{r:02x}{g:02x}{b:02x}"
-
     def add_files_from_watcher(self, files: List[str]):
         """Add files detected by the folder watcher (deduplicates first)."""
         existing = set(self.results_table.get_ordered_filepaths())
         new_files = [f for f in files if f not in existing]
         if new_files:
-            if self._watcher_active:
-                self._start_glow()
             self._on_files_added(new_files)

@@ -1,6 +1,7 @@
 """Audio file loading and metadata extraction."""
 
 import struct
+import warnings
 from dataclasses import dataclass
 from math import gcd
 from pathlib import Path
@@ -24,8 +25,12 @@ try:
 except ImportError:
     HAS_SOUNDFILE = False
 
-# Formats that soundfile (libsndfile) can read natively
+# Formats that soundfile (libsndfile) can read natively.
+# MP3 is added only if the installed libsndfile (>= 1.1.0) supports it,
+# which lets us skip librosa's deprecated audioread fallback for MP3s.
 _SOUNDFILE_FORMATS = {'wav', 'flac', 'ogg', 'aiff', 'aif'}
+if HAS_SOUNDFILE and 'MP3' in sf.available_formats():
+    _SOUNDFILE_FORMATS.add('mp3')
 
 # Valid MPEG audio version/layer combinations for sync word validation
 _MPEG_SYNC_MASK = 0xFFE00000  # 11 sync bits
@@ -184,12 +189,27 @@ def _load_with_soundfile(filepath: str, target_sr: int) -> Tuple[np.ndarray, int
     return samples, target_sr
 
 
+def _load_with_librosa(filepath: str, target_sr: int) -> Tuple[np.ndarray, int]:
+    """Load via librosa for formats libsndfile can't read (m4a, aac, wma).
+
+    librosa falls back to the (deprecated) audioread backend for these, which
+    emits a UserWarning + FutureWarning. The fallback is intended and works,
+    so we suppress that expected noise here.
+    """
+    # librosa attributes these warnings to the caller's module (via stacklevel),
+    # so they must be filtered by message, not by module="librosa".
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="PySoundFile failed")
+        warnings.filterwarnings("ignore", message=".*audioread.*")
+        return librosa.load(filepath, sr=target_sr, mono=True)
+
+
 def load_audio(filepath: str, target_sr: int = SAMPLE_RATE) -> AudioData:
     """
     Load an audio file and return audio data with metadata.
 
-    Uses soundfile (libsndfile) for WAV/FLAC/OGG/AIFF (3-5x faster),
-    falls back to librosa for MP3/M4A/AAC/WMA.
+    Uses soundfile (libsndfile) for WAV/FLAC/OGG/AIFF/MP3 (3-5x faster),
+    falls back to librosa for M4A/AAC/WMA.
 
     Args:
         filepath: Path to the audio file
@@ -212,10 +232,10 @@ def load_audio(filepath: str, target_sr: int = SAMPLE_RATE) -> AudioData:
         try:
             samples, sr = _load_with_soundfile(filepath, target_sr)
         except Exception:
-            samples, sr = librosa.load(filepath, sr=target_sr, mono=True)
+            samples, sr = _load_with_librosa(filepath, target_sr)
     else:
-        # Slow path: librosa for MP3, M4A, AAC, WMA
-        samples, sr = librosa.load(filepath, sr=target_sr, mono=True)
+        # Slow path: librosa for M4A, AAC, WMA (and MP3 if libsndfile lacks it)
+        samples, sr = _load_with_librosa(filepath, target_sr)
 
     # Update metadata with actual loaded values if they were missing
     if metadata.duration == 0:
