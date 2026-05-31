@@ -1,7 +1,7 @@
 ---
 title: Stack tecnológico
 created: 2026-04-27
-updated: 2026-04-27
+updated: 2026-06-01
 sources: [DISTRIBUCION-15march.txt]
 tags: [arquitectura, distribucion, tfg]
 ---
@@ -18,7 +18,8 @@ tags: [arquitectura, distribucion, tfg]
 
 | Librería | Propósito | Peso |
 |----------|-----------|------|
-| **librosa** | Análisis de audio (carga, STFT, features) | ~3 MB |
+| **librosa** | Análisis de audio (STFT, features) y carga de formatos no soportados por libsndfile (m4a/aac/wma) | ~3 MB |
+| **soundfile** (libsndfile) | Carga rápida de WAV/FLAC/OGG/AIFF/MP3 (3-5× más rápida que librosa) | ~1 MB |
 | **numpy** | Arrays numéricos, operaciones matriciales | ~30 MB |
 | **scipy** | Cálculo científico (complemento de STFT) | ~83 MB |
 | **matplotlib** | Visualización de espectrogramas | ~25 MB |
@@ -42,6 +43,12 @@ src/
 ```
 
 31 módulos Python, ~3.8 MB de código fuente total.
+
+## Carga de audio: soundfile vs librosa
+
+`audio_loader.py` usa **soundfile (libsndfile)** como ruta rápida para WAV/FLAC/OGG/AIFF y, desde junio 2026, también **MP3** (libsndfile ≥ 1.1.0 lo soporta nativamente; se detecta en tiempo de import). Solo m4a/aac/wma caen a `librosa.load`, que internamente recurre al backend `audioread` (deprecado en librosa 0.10, se eliminará en 1.0).
+
+Ese fallback emite un `UserWarning` ("PySoundFile failed") + `FutureWarning`. Se silencian en `_load_with_librosa()`. **Gotcha:** librosa atribuye esos warnings al **módulo que llama** (vía `stacklevel`), por lo que hay que filtrarlos por `message=`, no por `module="librosa"` (que no casa).
 
 ## Plataformas soportadas
 

@@ -1,7 +1,7 @@
 ---
 title: Índice del Wiki AudioQual
 created: 2026-04-27
-updated: 2026-04-27
+updated: 2026-06-01
 ---
 
 # AudioQual Wiki — Índice
@@ -37,6 +37,7 @@ updated: 2026-04-27
 - [No virtual scroll](decisiones/no-virtual-scroll.md) — Por qué el intento de virtualización falló
 - [Investigación cluster-4](decisiones/investigacion-cluster4.md) — Proceso de 5 iteraciones para resolver falsos positivos
 - [PollingObserver](decisiones/polling-observer.md) — Por qué no FSEventsObserver (bug Unicode macOS)
+- [Medición de CPU](decisiones/medicion-cpu.md) — Cómo medir rendimiento: powermetrics vs ps, wakeups, verdicto de R3
 - [Desarrollo con LLM](decisiones/desarrollo-con-llm.md) — Modelo de trabajo humano + Claude Code
 
 ## Cronología

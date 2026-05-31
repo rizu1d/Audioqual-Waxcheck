@@ -658,6 +658,7 @@ mark {
       <a class="nav-item" data-page="no-virtual-scroll">No virtual scroll</a>
       <a class="nav-item" data-page="investigacion-cluster4">Investigación cluster-4</a>
       <a class="nav-item" data-page="polling-observer">PollingObserver</a>
+      <a class="nav-item" data-page="medicion-cpu">Medición de CPU</a>
       <a class="nav-item" data-page="desarrollo-con-llm">Desarrollo con LLM</a>
     </div>
 
@@ -688,7 +689,7 @@ mark {
     <div class="welcome-hero-sub">Base de conocimiento del proyecto</div>
     <div class="welcome-hero-stats">
       <div class="welcome-stat">
-        <div class="welcome-stat-value">21</div>
+        <div class="welcome-stat-value">22</div>
         <div class="welcome-stat-label">Páginas</div>
       </div>
       <div class="welcome-stat">
@@ -1103,7 +1104,8 @@ BRICKWALL_ELEVATED_RATIO = 0.5</code></pre>
   <table>
     <thead><tr><th>Libreria</th><th>Propósito</th><th>Peso</th></tr></thead>
     <tbody>
-      <tr><td><code>librosa</code></td><td>Análisis de audio (carga, STFT)</td><td><code>~3 MB</code></td></tr>
+      <tr><td><code>librosa</code></td><td>Análisis de audio (STFT) y carga de m4a/aac/wma</td><td><code>~3 MB</code></td></tr>
+      <tr><td><code>soundfile</code></td><td>Carga rápida (WAV/FLAC/OGG/AIFF/MP3), 3-5× más rápida</td><td><code>~1 MB</code></td></tr>
       <tr><td><code>numpy</code></td><td>Arrays numéricos</td><td><code>~30 MB</code></td></tr>
       <tr><td><code>scipy</code></td><td>Calculo cientifico</td><td><code>~83 MB</code></td></tr>
       <tr><td><code>matplotlib</code></td><td>Espectrogramas</td><td><code>~25 MB</code></td></tr>
@@ -1124,6 +1126,9 @@ BRICKWALL_ELEVATED_RATIO = 0.5</code></pre>
 ├── assets/              Fuentes, iconos, logos
 └── locales/             Traducciones (es.json, en.json)</code></pre>
   <p>31 modulos Python, ~3.8 MB de código fuente total.</p>
+
+  <h2>Carga de audio: soundfile vs librosa</h2>
+  <p><code>audio_loader.py</code> usa <strong>soundfile (libsndfile)</strong> como ruta rápida para WAV/FLAC/OGG/AIFF y, desde junio 2026, también <strong>MP3</strong> (libsndfile ≥ 1.1.0 lo soporta). Solo m4a/aac/wma caen a <code>librosa.load</code>, que recurre al backend <code>audioread</code> (deprecado en librosa 0.10). Ese fallback emite warnings que se silencian en <code>_load_with_librosa()</code>. <strong>Gotcha:</strong> librosa atribuye sus warnings al módulo que llama (vía <code>stacklevel</code>), así que hay que filtrarlos por <code>message=</code>, no por <code>module="librosa"</code>.</p>
 
   <h2>Plataformas</h2>
   <ul>
@@ -1152,10 +1157,11 @@ BRICKWALL_ELEVATED_RATIO = 0.5</code></pre>
     <thead><tr><th>Capa</th><th>Mecanismo</th><th>Latencia</th></tr></thead>
     <tbody>
       <tr><td><strong>Primaria</strong></td><td>pipe + createfilehandler (kqueue)</td><td>Inmediata</td></tr>
-      <tr><td><strong>Backup</strong></td><td>Poller after(50ms)</td><td>≤ 50ms</td></tr>
-      <tr><td><strong>Último recurso</strong></td><td>Heartbeat after(100ms)</td><td>≤ 100ms</td></tr>
+      <tr><td><strong>Backup</strong></td><td>Poller after(250ms)</td><td>≤ 250ms</td></tr>
+      <tr><td><strong>Último recurso</strong></td><td>Heartbeat after(500ms)</td><td>≤ 500ms</td></tr>
     </tbody>
   </table>
+  <p>El hilo keep-alive (escribe al pipe para evitar la dormancia de Cocoa) corre cada 500ms.</p>
 
   <h2>Problemás resueltos</h2>
   <table>
@@ -1171,6 +1177,14 @@ BRICKWALL_ELEVATED_RATIO = 0.5</code></pre>
   </table>
 
   <p><strong>Regla de oro</strong>: NUNCA llamar métodos de Tkinter desde un hilo que no sea el principal. SIEMPRE usar <code>schedule_callback_from_thread()</code>.</p>
+
+  <h2>Consumo de CPU en reposo (medido, junio 2026)</h2>
+  <p>El informe <code>DIAGNOSTICO_CPU.txt</code> temía que estas 3 capas (originalmente 50/100/200ms ≈ 35 despertares/s) impidieran que Cocoa entrara en bajo consumo. La medición con <code>powermetrics</code> lo desmintió:</p>
+  <ul>
+    <li><strong>Pkg-idle wakeups ~1/s</strong> — el chip sí entra en sueño profundo; el miedo original estaba sobredimensionado.</li>
+    <li><strong>Intr wakeups ~54/s</strong> — y el grueso no viene de nuestras capas, sino del notifier propio de Tcl/Tk.</li>
+  </ul>
+  <p>Subir los intervalos a 250/500/500ms recortó los intr wakeups un ~22% y ~0.5% de CPU, sin tocar los pkg-idle wakeups. Beneficio modesto pero real. La ruta primaria (pipe) sigue entregando callbacks al instante. Metodología completa en <a href="#" onclick="navigateTo('medicion-cpu');return false">Medición de CPU</a>.</p>
 </div>
 
 <div class="page" id="page-cache-espectrogramas">
@@ -1474,11 +1488,66 @@ Usuario seleccióna → Nivel 3 → Nivel 2 → re-análisis
   <table>
     <thead><tr><th></th><th>PollingObserver</th><th>FSEventsObserver</th></tr></thead>
     <tbody>
-      <tr><td><strong>Latencia</strong></td><td>~2s (configurable)</td><td>Instantaneo</td></tr>
+      <tr><td><strong>Latencia</strong></td><td>3s (intervalo de polling)</td><td>Instantaneo</td></tr>
       <tr><td><strong>Unicode</strong></td><td>Correcto</td><td>Bug conocido</td></tr>
       <tr><td><strong>Portabilidad</strong></td><td>Todas las plataformas</td><td>Solo macOS</td></tr>
     </tbody>
   </table>
+
+  <h2>Coste de CPU y ajuste del intervalo (junio 2026)</h2>
+  <p>El <code>PollingObserver</code> ejecuta un <code>os.walk()</code> recursivo completo cada intervalo. Con el intervalo original de <strong>1s</strong>, monitorizar consumía <strong>~29% de CPU</strong> (cientos de <code>stat()</code> por segundo). Subir el intervalo a <strong>3s</strong> bajó la monitorización a <strong>~4%</strong> en una carpeta de ~100 archivos — casi el mismo coste que la app en reposo. La latencia añadida es invisible: el bucle de estabilidad ya espera ~2s de tamaño constante antes de despachar. Ver <a href="#" onclick="navigateTo('medicion-cpu');return false">Medición de CPU</a>.</p>
+</div>
+
+<div class="page" id="page-medicion-cpu">
+  <h1>Medición de CPU y rendimiento</h1>
+  <div class="page-meta">
+    <span>Fuente: DIAGNOSTICO_CPU.txt</span>
+    <span class="tag">#rendimiento</span>
+    <span class="tag">#threading</span>
+    <span class="tag">#herramientas</span>
+  </div>
+
+  <p>Guía de referencia para medir el consumo de CPU y decidir, con datos, si una optimización merece la pena.</p>
+
+  <h2>Estados a medir</h2>
+  <p>Comparar siempre los mismos estados antes/después de un cambio: <strong>(1)</strong> reposo sin archivos, <strong>(2)</strong> reposo con archivos cargados, <strong>(3)</strong> analizando un lote, <strong>(4)</strong> monitorizando una carpeta sin archivos nuevos.</p>
+
+  <h2>Herramientas, de menos a más fiable</h2>
+  <table>
+    <thead><tr><th>Herramienta</th><th>Mide</th><th>Cuándo</th></tr></thead>
+    <tbody>
+      <tr><td><code>scripts/measure_cpu.sh</code></td><td><code>%cpu</code> medio del proceso</td><td>Cambios grandes (29%→4%). Demasiado ruidoso para deltas de ~2%.</td></tr>
+      <tr><td><code>powermetrics</code></td><td>Wakeups reales (intr / pkg-idle)</td><td>Microoptimizaciones de reposo.</td></tr>
+    </tbody>
+  </table>
+  <pre><code># Rápido (orientativo)
+python3 src/main.py            # en una terminal
+bash scripts/measure_cpu.sh    # en otra
+
+# Preciso (deltas pequeños), con la app en reposo
+sudo powermetrics --samplers tasks -i 1000 -n 5 2>/dev/null | grep -iE "^Name|python"</code></pre>
+
+  <h2>Cómo interpretar</h2>
+  <ul>
+    <li><strong>Intr Wakeups</strong>: despertares por timer/interrupción. Bajan al reducir timers.</li>
+    <li><strong>Pkg idle wakeups</strong>: sacan al chip del sueño profundo. Son los <strong>caros</strong> (batería). Mantenerlos bajos es el objetivo real.</li>
+    <li><strong>CPU ms/s</strong>: 10 ms/s ≈ 1% de un core.</li>
+    <li><code>%cpu</code> puede exceder 100%: se normaliza por núcleo. Analizar a ~330% = ~3.3 cores (4 workers) es trabajo real, no un problema.</li>
+  </ul>
+
+  <h2>Verdicto de R3 (intervalos de callbacks)</h2>
+  <table>
+    <thead><tr><th>Métrica</th><th>R3 on</th><th>R3 off</th><th>Efecto</th></tr></thead>
+    <tbody>
+      <tr><td>Intr Wakeups</td><td>~54/s</td><td>~69/s</td><td>−22%</td></tr>
+      <tr><td>CPU</td><td>~3.3%</td><td>~3.8%</td><td>−0.5%</td></tr>
+      <tr><td>Pkg idle wakeups</td><td>~0.8/s</td><td>~1.2/s</td><td>igual (bajísimos)</td></tr>
+    </tbody>
+  </table>
+  <p>Beneficio real pero modesto, sin contrapartida en los wakeups caros. Se mantiene.</p>
+
+  <h2>Si hay que bajar más el reposo</h2>
+  <p>El siguiente objetivo serían los ~54/s de base del notifier de Tcl/Tk, no más ajustes de nuestros timers. Opción no implementada: FSEventsObserver con workaround Unicode (ver <a href="#" onclick="navigateTo('polling-observer');return false">PollingObserver</a>). Validar siempre con <code>powermetrics</code>, nunca solo con <code>ps</code>.</p>
 </div>
 
 <div class="page" id="page-desarrollo-con-llm">
@@ -1666,6 +1735,12 @@ Usuario seleccióna → Nivel 3 → Nivel 2 → re-análisis
     <span class="log-date">2026-04-27</span> <span class="log-category">inicio</span>
     <div class="log-title">Creacion del wiki del proyecto</div>
     <div class="log-body">Wiki de conocimiento con 21 páginas. Ingesta de 7 archivos de knowledge. Reconstruccion de cronología desde git.</div>
+  </div>
+
+  <div class="log-entry">
+    <span class="log-date">2026-06-01</span> <span class="log-category">rendimiento</span>
+    <div class="log-title">Optimización de CPU y medición con powermetrics</div>
+    <div class="log-body">Aplicadas las recomendaciones de DIAGNOSTICO_CPU.txt. Polling del watcher 1s→3s: monitorización 29%→~4%. Eliminado thread_watchdog.py (código muerto) y la animación glow (redundante con el overlay de análisis). Intervalos de las 3 capas de callbacks subidos (R3): −22% intr wakeups, −0.5% CPU, validado con powermetrics. Hallazgo clave: el run loop de Cocoa sí entra en bajo consumo (pkg-idle wakeups ~1/s) y el grueso de los wakeups viene del notifier de Tcl/Tk, no de nuestro código. MP3 enrutado por soundfile (libsndfile lo soporta), evitando el audioread deprecado; warning de librosa silenciado por message=. Nueva página decisiones/medicion-cpu.md.</div>
   </div>
 
 </div>

@@ -1,8 +1,8 @@
 ---
 title: Threading y event loop en macOS
 created: 2026-04-27
-updated: 2026-04-27
-sources: [BLOQUEOS_MACOS.txt]
+updated: 2026-06-01
+sources: [BLOQUEOS_MACOS.txt, DIAGNOSTICO_CPU.txt]
 tags: [threading, gui, arquitectura, tfg]
 ---
 
@@ -31,12 +31,23 @@ Implementado en `src/utils/tk_utils.py`:
 - kqueue detecta I/O → dispara el file handler → drena la queue
 
 ### Capa 2 (backup): poller basado en after()
-Timer `after(50ms)` independiente del pipe, como safety net.
+Timer `after(250ms)` independiente del pipe, como safety net.
 
 ### Capa 3 (último recurso): heartbeat
-Timer `after(100ms)` en `app.py` que llama `process_pending_callbacks()`.
+Timer `after(500ms)` en `app.py` que llama `process_pending_callbacks()`.
+
+El hilo keep-alive (escribe al pipe para evitar dormancia de Cocoa) corre cada 500ms.
 
 **Regla de oro**: NUNCA llamar métodos de Tkinter desde un hilo que no sea el principal. SIEMPRE usar `schedule_callback_from_thread()`.
+
+## Consumo de CPU en reposo (medido, junio 2026)
+
+El informe `DIAGNOSTICO_CPU.txt` temía que estas 3 capas (originalmente 50/100/200ms ≈ 35 despertares/s) impidieran que el run loop de Cocoa entrara en bajo consumo. La medición con `powermetrics` lo desmintió:
+
+- **Pkg-idle wakeups ~1/s** — el chip **sí** entra en sueño profundo; el miedo original estaba sobredimensionado.
+- **Intr wakeups ~54/s** — y el grueso **no** viene de nuestras capas, sino del notifier propio de Tcl/Tk.
+
+Subir los intervalos a 250/500/500ms (cambio "R3") recortó los intr wakeups un ~22% y ~0.5% de CPU, sin tocar los pkg-idle wakeups. Beneficio modesto pero real; se mantuvo. La ruta primaria (pipe) sigue entregando callbacks al instante, así que solo cambia la latencia de la red de seguridad. Metodología completa en [Medición de CPU](../decisiones/medicion-cpu.md).
 
 ## Problemas resueltos
 

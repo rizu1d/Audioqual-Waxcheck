@@ -1,0 +1,332 @@
+# Informe Diagnóstico: Consumo Excesivo de CPU y Recursos
+
+## AudioQual (WaxCheck) — macOS Apple Silicon (M1, 16 GB RAM)
+
+**Fecha:** 28 de abril de 2026
+**Tipo:** Solo diagnóstico — sin implementación de cambios
+
+---
+
+## 1. Resumen ejecutivo
+
+| Métrica | Observado | Esperado | Veredicto |
+|---------|-----------|----------|-----------|
+| CPU en reposo | 4.2% / 11 hilos | ~0% | ANÓMALO |
+| CPU monitorizando carpeta | 29.0% / 13 hilos | ~0% entre eventos | CRÍTICO |
+| Memoria | Normal | Normal | OK |
+
+**Causa raíz del 4.2% en reposo:** Triple mecanismo redundante de drenaje de callbacks que genera ~35 despertares/segundo, impidiendo que el run loop de Cocoa entre en modo de bajo consumo.
+
+**Causa raíz del 29.0% monitorizando:** `PollingObserver` de watchdog ejecuta un `os.walk()` recursivo completo del árbol de directorios cada 1 segundo, generando cientos de llamadas al sistema `stat()` de forma sostenida.
+
+La columna "Activaciones tr." del Monitor de Actividad lo confirma: en reposo hay **71 activaciones** (muchos despertares pequeños de timers) con solo 4.2% CPU, mientras que monitorizando hay solo **9 activaciones** pero 29% CPU (trabajo sostenido de `os.walk()`, no pulsos frecuentes).
+
+---
+
+## 2. Mapa de hilos
+
+### 2.1 Hilos permanentes (siempre activos)
+
+| # | Hilo | Ubicación | Función | CPU idle |
+|---|------|-----------|---------|---------|
+| 1 | Main thread | tkinter `mainloop()` | Procesa eventos de UI | Base |
+| 2 | TkKeepAlive | `src/utils/tk_utils.py:63-66` | Escribe 1 byte al pipe cada 200ms para evitar dormancia de Cocoa | Bajo |
+
+Más ~9 hilos internos de Python/macOS (GC, signal handler, threading internals, etc.), que son normales.
+
+### 2.2 Hilos bajo demanda (se crean, ejecutan y mueren)
+
+| Hilo | Ubicación | Se crea cuando... |
+|------|-----------|-------------------|
+| File scan | `main_window.py:520` | Se añaden archivos |
+| Analysis batch | `main_window.py:556` | Se lanza análisis por lote |
+| Waveform render | `waveform_display.py:194` | Resize o carga |
+| Spectrogram render | `spectrogram_window.py:259` | Se muestra espectrograma |
+| Audio load | `audio_player.py:121` | Se carga un archivo |
+| Reanalyze | `app.py:555` | Re-análisis para espectrograma |
+
+Ninguno de estos persiste. Se crean, ejecutan su tarea, y terminan. **No contribuyen al consumo en reposo.**
+
+### 2.3 Hilos del vigilante de carpetas (+2 al activar)
+
+| Hilo | Ubicación | Función |
+|------|-----------|---------|
+| PollingObserver | `folder_watcher.py:101-106` | Escaneo recursivo del filesystem cada 1s |
+| Stability loop | `folder_watcher.py:112-115` | Verifica estabilidad de tamaño de archivos pendientes |
+
+Esto explica exactamente 11 → 13 hilos al activar la monitorización.
+
+### 2.4 Código muerto: thread_watchdog.py
+
+`src/utils/thread_watchdog.py` define un `WatchdogThread` con `ENABLED = True`, pero **no se importa ni se invoca desde ningún archivo de la aplicación.** Verifiqué con grep que `start_watchdog`, `setup_click_tracking`, `heartbeat_tick` y `is_block_detected` no aparecen en ningún otro `.py`. Es código de depuración residual con **impacto actual: cero hilos, cero CPU.**
+
+---
+
+## 3. Mapa de timers y polling — La causa del 4.2% en reposo
+
+Cuatro capas de procesamiento de callbacks, tres activas simultáneamente en macOS:
+
+### Capa 1 — Pipe + createfilehandler (event-driven)
+
+**Archivo:** `src/utils/tk_utils.py:42-59`
+
+- Crea un pipe de OS y lo registra con Tcl via `createfilehandler` (usa kqueue en macOS)
+- Se dispara cuando un hilo escribe al pipe
+- **Coste en idle: CERO** — es event-driven, no hace polling
+
+### Capa 2 — Poller `after(50ms)` (SIEMPRE activo)
+
+**Archivo:** `src/utils/tk_utils.py:82-95`
+
+```python
+def _start_callback_poller():
+    process_pending_callbacks()   # drena cola vacía
+    _tk_root.after(50, _start_callback_poller)  # se re-agenda
+```
+
+- `after()` recursivo que se re-agenda indefinidamente
+- Corre **siempre**, independientemente de si el pipe funciona
+- Coste por tick: un `queue.get_nowait()` → `queue.Empty` (~1μs)
+- **20 despertares/segundo**
+
+### Capa 3 — Heartbeat `after(100ms)` (SIEMPRE activo)
+
+**Archivo:** `src/app.py:661-674`
+
+```python
+def _heartbeat(self):
+    process_pending_callbacks()   # drena la misma cola
+    self.root.after(100, self._heartbeat)  # se re-agenda
+```
+
+- Idéntico en función a la Capa 2, con diferente intervalo
+- Corre **siempre**, incondicionalmente
+- **10 despertares/segundo**
+
+### TkKeepAlive thread — Escritura al pipe cada 200ms
+
+**Archivo:** `src/utils/tk_utils.py:98-114`
+
+```python
+def _keepalive_loop():
+    while not _shutting_down:
+        time.sleep(0.2)
+        os.write(_pipe_write_fd, b'\x00')
+```
+
+- Bucle con `time.sleep(0.2)` que escribe 1 byte al pipe
+- Fuerza entrega vía kqueue → activa handler → llama `process_pending_callbacks()`
+- **5 despertares/segundo**
+
+### Capa 4 — Evento virtual `<<ThreadCallback>>`
+
+**Archivo:** `src/utils/tk_utils.py:40`
+
+- En macOS: **no se usa** (la ruta del pipe tiene prioridad en `schedule_callback_from_thread()`)
+- Coste en macOS: **cero**
+
+### Impacto acumulado
+
+| Fuente | Frecuencia | Mecanismo |
+|--------|-----------|-----------|
+| Poller `after(50ms)` | 20/s | Timer Tcl |
+| Heartbeat `after(100ms)` | 10/s | Timer Tcl |
+| TkKeepAlive pipe write | 5/s | `time.sleep()` + I/O |
+| **TOTAL** | **~35 despertares/s** | |
+
+Cada despertar individual cuesta casi nada. Pero el efecto agregado es que **el run loop de Cocoa nunca entra en modo de bajo consumo**. macOS mantiene el proceso marcado como "activo" porque recibe eventos de forma continua. Esto es exactamente lo que se diseñó para evitar freezes de UI en macOS, pero el coste es 4.2% de CPU constante en un M1.
+
+---
+
+## 4. Análisis del vigilante de carpetas (29% CPU)
+
+### 4.1 El consumidor dominante: PollingObserver
+
+**Archivo:** `src/core/folder_watcher.py:101`
+
+```python
+self._observer = PollingObserver(timeout=_POLLING_INTERVAL)  # 1 segundo
+self._observer.schedule(handler, folder_path, recursive=True)
+```
+
+El `PollingObserver` de watchdog funciona así internamente:
+1. Cada `timeout` segundos (1s), ejecuta `os.walk()` recursivo completo
+2. Construye un snapshot con todos los nombres, tamaños y timestamps
+3. Compara con el snapshot anterior para detectar cambios (creaciones, renombramientos)
+4. Cada `os.walk()` genera una llamada `stat()` por cada archivo y subdirectorio
+
+**En una carpeta con cientos de archivos y subdirectorios, esto produce cientos o miles de system calls por segundo, de forma SOSTENIDA.** No son picos — es trabajo continuo. Esto explica por qué Activity Monitor muestra 29% CPU con solo 9 "activaciones": el hilo apenas duerme.
+
+El propio código lo reconoce (`folder_watcher.py:14-16`):
+> *"macOS FSEventsObserver has a bug with Unicode paths (e.g. 'Música'). PollingObserver works universally..."*
+
+### 4.2 Bucle de estabilidad (consumo menor)
+
+**Archivo:** `src/core/folder_watcher.py:157-201`
+
+- Usa `_stop_event.wait(1.0)` como temporizador (eficiente, no busy-wait)
+- Cada segundo: `os.path.exists()` + `os.path.getsize()` por archivo pendiente
+- **Coste: bajo** con pocos archivos pendientes (caso normal)
+- Mucho más barato que el PollingObserver
+
+### 4.3 Animaciones del botón de vigilancia
+
+| Animación | Archivo | Intervalo | Freq. | Coste |
+|-----------|---------|-----------|-------|-------|
+| **Glow** (respiración sinusoidal) | `main_window.py:971-979` | `after(50, ...)` | 20/s | `math.sin()` + 6× `int()` + `configure()` |
+| Pulse (indicador) | `main_window.py:953-959` | `after(800, ...)` | 1.25/s | Despreciable |
+
+La animación de glow se ejecuta **continuamente** mientras el vigilante está activo, incluso cuando no hay archivos procesándose. 20 llamadas `configure()` por segundo fuerzan repintados parciales del widget.
+
+---
+
+## 5. Consumidores correctamente implementados (NO contribuyen al problema)
+
+| Componente | Archivo | Por qué está bien |
+|------------|---------|-------------------|
+| Posición del reproductor | `player_controls.py:315-329` | Solo corre mientras `PLAYING`, se auto-termina al parar |
+| Spinner de análisis | `analysis_overlay.py:190-195` | Solo durante análisis activo, cancela con `after_cancel()` |
+| Renderizado de waveform | `waveform_display.py` | Hilo bajo demanda, debounce 400ms en resize |
+| Renderizado de espectrograma | `spectrogram_window.py` | Hilo bajo demanda, cancela renders previos |
+| Timers de tabla | `results_table.py` | Debounce one-shot, correctamente cancelados |
+| Fade de popup de calidad | `quality_popup.py` | 8 pasos × 20ms = 160ms total, luego para |
+| Matplotlib | `app.py:11-16` | Backend `Agg` configurado una vez, sin figuras persistentes |
+| `update_idletasks()` | `quality_popup.py:184` | Una sola llamada para cálculo de tamaño |
+
+---
+
+## 6. Evaluación de memoria
+
+| Recurso | Consumo máx. | Riesgo |
+|---------|-------------|--------|
+| Cache de espectrogramas en memoria | 10 × FrequencyAnalysis = variable | BAJO (LRU con evicción) |
+| Cache en disco (`~/.audioqual/cache/`) | uint8 comprimido por archivo | BAJO |
+| `_dispatched_files` set (folder_watcher) | Crece sin límite (strings) | BAJO (necesitaría millones) |
+| Muestras de audio | 1 pista float32 a la vez | BAJO |
+| Figuras de matplotlib | Ninguna persistente | NINGUNO |
+| Referencias circulares | No detectadas | NINGUNO |
+
+**Conclusión de memoria:** Perfil saludable. Sin fugas detectadas.
+
+---
+
+## 7. Ranking de consumidores por impacto
+
+### Estado: Monitorizando carpeta (29% total)
+
+| # | Consumidor | CPU est. | Constante? |
+|---|-----------|---------|------------|
+| 1 | **PollingObserver** `os.walk()` recursivo cada 1s | ~24-27% | Sí, mientras el watcher esté activo |
+| 2 | Mecanismo de callbacks (3 capas) | ~1.5-2% | Sí, siempre |
+| 3 | Glow animation (50ms) | ~0.5-1% | Sí, mientras el watcher esté activo |
+| 4 | Stability loop | ~0.1-0.3% | Sí, mientras el watcher esté activo |
+| 5 | Pulse animation (800ms) | ~0.05% | Sí, mientras el watcher esté activo |
+
+### Estado: En reposo (4.2% total)
+
+| # | Consumidor | CPU est. | Constante? |
+|---|-----------|---------|------------|
+| 1 | **Poller after(50ms)** — 20 wakeups/s | ~1.5-2% | Sí, siempre |
+| 2 | **Heartbeat after(100ms)** — 10 wakeups/s | ~0.8-1.2% | Sí, siempre |
+| 3 | **TkKeepAlive pipe write** — 5 wakeups/s | ~0.5-0.8% | Sí, siempre |
+| 4 | Overhead de Cocoa por no entrar en dormancia | ~0.3-0.5% | Sí, siempre |
+
+---
+
+## 8. Consumo innecesario por estado
+
+### En reposo
+
+- **Poller 50ms + Heartbeat 100ms:** Redundantes si el pipe+keepalive funciona. Fueron añadidos como safety net, pero en macOS donde el pipe funciona correctamente, drenan una cola vacía 30 veces/segundo sin necesidad.
+- **TkKeepAlive cada 200ms:** Necesario para evitar dormancia de Cocoa, pero 5/s es agresivo. 2/s (cada 500ms) sería suficiente.
+
+### Monitorizando (sin archivos nuevos)
+
+- **PollingObserver:** Escanea recursivamente TODO el árbol de directorios cada 1 segundo, incluso cuando no ha cambiado nada. 100% innecesario entre cambios reales.
+- **Animación de glow a 20fps:** Puramente cosmética, corre continuamente aunque no haya actividad.
+- **Stability loop cada 1s:** Correcto en diseño (usa `Event.wait()`), pero innecesario cuando `_pending_files` está vacío (igualmente el coste es mínimo).
+
+---
+
+## 9. Recomendaciones (sin implementar)
+
+### R1 — Aumentar intervalo del PollingObserver (1s → 3-5s)
+
+**Impacto:** 29% → ~6-10% CPU monitorizando
+**Riesgo de regresión:** BAJO
+**Esfuerzo:** Cambiar una línea (`folder_watcher.py:17`)
+
+La detección de descargas se retrasaría 2-4 segundos, lo cual es invisible para el usuario dado que el bucle de estabilidad ya espera 2 segundos de tamaño constante.
+
+**Archivos:** `src/core/folder_watcher.py`
+
+### R2 — Reemplazar PollingObserver por FSEventsObserver con workaround Unicode
+
+**Impacto:** 29% → ~0.1% CPU monitorizando
+**Riesgo de regresión:** MEDIO
+**Esfuerzo:** Alto
+
+macOS provee FSEvents, un mecanismo nativo de notificaciones que no requiere polling. El bug de Unicode con rutas como "Música" podría evitarse con:
+- Normalización NFC/NFD de rutas
+- Detección y manejo específico de rutas con caracteres no-ASCII
+- Fallback automático a PollingObserver si FSEvents falla
+
+**Archivos:** `src/core/folder_watcher.py`
+
+### R3 — Consolidar las capas de drenaje de callbacks
+
+**Impacto:** 4.2% → ~0.5-1% CPU en reposo
+**Riesgo de regresión:** MEDIO
+**Esfuerzo:** Medio
+
+Opciones, de más conservadora a más agresiva:
+
+**Opción A (conservadora):** Aumentar intervalos — poller de 50ms→250ms, heartbeat de 100ms→500ms, keepalive de 200ms→500ms. Reduce de ~35 a ~6 despertares/s.
+
+**Opción B (moderada):** Eliminar el poller de 50ms (Capa 2), mantener heartbeat a 200ms y keepalive a 500ms. Reduce a ~7 despertares/s.
+
+**Opción C (agresiva):** Mantener solo pipe+keepalive (Capa 1 + TkKeepAlive). Eliminar poller y heartbeat. Reduce a ~2 despertares/s. Riesgo: si el pipe falla, no hay safety net.
+
+**Precaución:** La redundancia fue añadida para resolver un bug real de congelamiento en macOS. Debe probarse extensivamente en macOS. La Opción A es la más segura.
+
+**Archivos:** `src/utils/tk_utils.py`, `src/app.py`
+
+### R4 — Detener animación de glow cuando no hay actividad
+
+**Impacto:** ~20 despertares/s menos cuando el watcher está activo sin archivos pendientes
+**Riesgo de regresión:** BAJO
+**Esfuerzo:** Bajo
+
+Solo animar cuando hay archivos pendientes de estabilidad o análisis. Cuando la cola está vacía, mostrar un indicador estático o un pulse lento (como el de 800ms que ya existe).
+
+**Archivos:** `src/gui/main_window.py`
+
+### R5 — Eliminar thread_watchdog.py (código muerto)
+
+**Impacto en CPU:** Ninguno (ya no se ejecuta)
+**Riesgo de regresión:** NINGUNO
+**Esfuerzo:** Mínimo
+
+232 líneas de código de depuración que nunca se importan ni ejecutan. Incluye un monitor NSEvent y un watchdog thread que no están conectados a nada. Eliminarlo reduce superficie de mantenimiento.
+
+**Archivos a eliminar:** `src/utils/thread_watchdog.py`
+
+### Orden sugerido de implementación
+
+```
+R1 (polling interval) → R5 (dead code) → R4 (glow) → R3 (callbacks) → R2 (FSEvents)
+```
+
+De menor a mayor riesgo, priorizando victorias rápidas. R1+R5+R4 se pueden hacer en una sola sesión con riesgo bajo. R3 requiere testing cuidadoso en macOS. R2 es un proyecto independiente.
+
+---
+
+## 10. Verificación post-implementación
+
+Cualquier cambio futuro deberá pasar:
+
+1. `python3 tests/run_tests.py` → 32 tests pass
+2. 238 drum WAVs → 0 transcodes
+3. BASE_004/BASE_005 → detectados como transcode
+4. Verificar en macOS que no hay freezes de UI (el bug original que motivó las 4 capas)
+5. Monitorizar CPU con Activity Monitor en los 3 estados: reposo, monitorizando, analizando

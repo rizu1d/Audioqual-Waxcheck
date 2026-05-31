@@ -1,7 +1,7 @@
 ---
 title: Cronología del proyecto AudioQual
 created: 2026-04-27
-updated: 2026-04-27
+updated: 2026-06-01
 ---
 
 # Log del proyecto
@@ -105,3 +105,6 @@ Implementación de is_natural_rolloff() con verificación de brickwall. Discrimi
 
 ## [2026-04-27] inicio | Creación del wiki del proyecto
 Se crea el wiki de conocimiento del proyecto, con páginas sobre algoritmo, arquitectura, fuentes y decisiones de diseño. Ingesta de los 7 archivos de knowledge/ existentes. Reconstrucción de cronología desde git.
+
+## [2026-06-01] rendimiento | Optimización de CPU y medición con powermetrics
+Aplicadas las recomendaciones del informe DIAGNOSTICO_CPU.txt. Polling del watcher 1s→3s: monitorización 29%→~4%. Eliminado thread_watchdog.py (código muerto) y la animación glow (redundante con el overlay de análisis). Intervalos de las 3 capas de callbacks subidos (R3): −22% intr wakeups, −0.5% CPU, validado con powermetrics. Hallazgo clave: el run loop de Cocoa sí entra en bajo consumo (pkg-idle wakeups ~1/s) y el grueso de los wakeups viene del notifier de Tcl/Tk, no de nuestro código; la preocupación del informe estaba sobredimensionada. MP3 enrutado por soundfile (libsndfile lo soporta), evitando el audioread deprecado; warning de librosa silenciado por message=. Nueva página decisiones/medicion-cpu.md con la metodología.
