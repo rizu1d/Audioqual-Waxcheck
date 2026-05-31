@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WaxCheck — Quality System v2</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
+
+  :root {
+    --purple: #7969A8;
+    --purple-dark: #524479;
+    --purple-deep: #3a2d5c;
+    --gold: #FCC844;
+    --cream: #F3F1E5;
+    --bg: #0c0b14;
+    --surface: #13121d;
+    --surface-hover: #1a1928;
+    --border: rgba(121, 105, 168, 0.15);
+    --border-hover: rgba(121, 105, 168, 0.3);
+    --glass: rgba(17, 17, 24, 0.8);
+    --text-secondary: #6b6b7b;
+    --red: #E85555;
+    --red-bg: rgba(232, 85, 85, 0.08);
+    --yellow: #FCC844;
+    --yellow-bg: rgba(252, 200, 68, 0.08);
+    --green-light: #6BCB77;
+    --green-light-bg: rgba(107, 203, 119, 0.08);
+    --blue: #6BA3E8;
+    --blue-bg: rgba(107, 163, 232, 0.08);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--cream);
+    font-family: 'Outfit', -apple-system, sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ===== APP SHELL ===== */
+  .app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+
+  /* ===== TITLE BAR (macOS style) ===== */
+  .titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 11px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    flex-shrink: 0;
+    -webkit-app-region: drag;
+  }
+
+  .traffic-lights {
+    position: absolute;
+    left: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    gap: 7px;
+  }
+
+  .traffic-light {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+  }
+
+  .tl-close { background: #FF5F57; }
+  .tl-minimize { background: #FEBC2E; }
+  .tl-maximize { background: #28C840; }
+
+  .titlebar-text {
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.5px;
+    color: var(--cream);
+    opacity: 0.7;
+  }
+
+  /* ===== TOOLBAR ===== */
+  .toolbar {
+    display: flex;
+    align-items: center;
+    padding: 12px 20px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    gap: 12px;
+  }
+
+  .toolbar-logo-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    border: 1.5px solid var(--border);
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .toolbar-logo-icon svg {
+    width: 22px;
+    height: 22px;
+    stroke: var(--purple);
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+  }
+
+  .toolbar-spacer { flex: 1; }
+
+  .toolbar-icons {
+    display: flex;
+    gap: 6px;
+  }
+
+  .toolbar-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 9px;
+    border: 1px solid transparent;
+    background: rgba(121, 105, 168, 0.06);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .toolbar-btn:hover {
+    background: rgba(121, 105, 168, 0.14);
+    border-color: var(--border);
+    color: var(--cream);
+  }
+
+  .toolbar-btn.active {
+    background: rgba(121, 105, 168, 0.16);
+    border-color: var(--border-hover);
+    color: var(--purple);
+  }
+
+  .toolbar-btn svg {
+    width: 17px;
+    height: 17px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* ===== TABLE ===== */
+  .table-container {
+    flex: 1;
+    overflow: auto;
+    padding: 0;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  thead {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+
+  thead th {
+    padding: 12px 16px;
+    text-align: left;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--purple);
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+
+  thead th:hover {
+    color: var(--cream);
+  }
+
+  tbody tr {
+    border-bottom: 1px solid rgba(121, 105, 168, 0.06);
+    transition: background 0.15s;
+  }
+
+  tbody tr:hover {
+    background: var(--surface-hover);
+  }
+
+  tbody tr.selected {
+    background: rgba(121, 105, 168, 0.1);
+  }
+
+  tbody td {
+    padding: 11px 16px;
+    font-size: 13px;
+    color: var(--cream);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 260px;
+  }
+
+  .cell-mono {
+    font-family: 'Space Mono', monospace;
+    font-size: 11.5px;
+    color: rgba(243, 241, 229, 0.65);
+  }
+
+  .cell-filename {
+    font-weight: 500;
+    font-size: 13px;
+  }
+
+  .cell-format {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+  }
+
+  /* ===== FREQUENCY CUTOFF - visual highlight ===== */
+  .cell-freq {
+    font-family: 'Space Mono', monospace;
+    font-size: 11.5px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .freq-value {
+    flex-shrink: 0;
+  }
+
+  .freq-bar-wrap {
+    flex: 1;
+    height: 4px;
+    background: rgba(121, 105, 168, 0.1);
+    border-radius: 2px;
+    max-width: 60px;
+    overflow: hidden;
+  }
+
+  .freq-bar {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.4s ease;
+  }
+
+  .freq-bajo .freq-value { color: var(--red); }
+  .freq-bajo .freq-bar { background: var(--red); width: 30%; }
+
+  .freq-medio .freq-value { color: var(--yellow); }
+  .freq-medio .freq-bar { background: var(--yellow); width: 55%; }
+
+  .freq-bueno .freq-value { color: var(--green-light); }
+  .freq-bueno .freq-bar { background: var(--green-light); width: 78%; }
+
+  .freq-excelente .freq-value { color: var(--blue); }
+  .freq-excelente .freq-bar { background: var(--blue); width: 100%; }
+
+  /* ===== QUALITY BADGES ===== */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px 4px 9px;
+    border-radius: 20px;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    white-space: nowrap;
+  }
+
+  .badge-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .badge-bajo {
+    color: var(--red);
+    background: var(--red-bg);
+    border: 1px solid rgba(232, 85, 85, 0.12);
+  }
+  .badge-bajo .badge-dot { background: var(--red); }
+
+  .badge-medio {
+    color: var(--yellow);
+    background: var(--yellow-bg);
+    border: 1px solid rgba(252, 200, 68, 0.12);
+  }
+  .badge-medio .badge-dot { background: var(--yellow); }
+
+  .badge-bueno {
+    color: var(--green-light);
+    background: var(--green-light-bg);
+    border: 1px solid rgba(107, 203, 119, 0.12);
+  }
+  .badge-bueno .badge-dot { background: var(--green-light); }
+
+  .badge-excelente {
+    color: var(--blue);
+    background: var(--blue-bg);
+    border: 1px solid rgba(107, 163, 232, 0.12);
+  }
+  .badge-excelente .badge-dot { background: var(--blue); }
+
+  /* ===== PLAYER BAR ===== */
+  .player {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    background: linear-gradient(180deg, var(--purple-deep) 0%, #2a1f48 100%);
+    border-top: 1px solid rgba(121, 105, 168, 0.2);
+    flex-shrink: 0;
+    min-height: 58px;
+  }
+
+  .player-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .player-ctrl-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    color: rgba(243, 241, 229, 0.6);
+    cursor: pointer;
+    transition: color 0.2s;
+  }
+
+  .player-ctrl-btn:hover {
+    color: var(--cream);
+  }
+
+  .player-ctrl-btn svg {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+  }
+
+  .player-ctrl-btn.play-btn {
+    width: 34px;
+    height: 34px;
+    background: rgba(243, 241, 229, 0.12);
+    border: 1px solid rgba(243, 241, 229, 0.15);
+    color: var(--cream);
+  }
+
+  .player-ctrl-btn.play-btn:hover {
+    background: rgba(243, 241, 229, 0.2);
+  }
+
+  .player-ctrl-btn.play-btn svg {
+    width: 15px;
+    height: 15px;
+    margin-left: 2px;
+  }
+
+  .player-time-current {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: rgba(243, 241, 229, 0.5);
+    flex-shrink: 0;
+    min-width: 72px;
+  }
+
+  .player-waveform {
+    flex: 1;
+    height: 36px;
+    position: relative;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    border-radius: 4px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.2);
+    padding: 0 2px;
+  }
+
+  .waveform-canvas {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    gap: 1px;
+  }
+
+  .wf-bar {
+    flex: 1;
+    border-radius: 1px;
+    min-width: 1.5px;
+    transition: background 0.05s;
+  }
+
+  .wf-bar.played {
+    background: var(--purple);
+  }
+
+  .wf-bar.unplayed {
+    background: rgba(121, 105, 168, 0.25);
+  }
+
+  /* Playhead indicator */
+  .player-waveform::after {
+    content: '';
+    position: absolute;
+    left: 25%;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--cream);
+    box-shadow: 0 0 6px rgba(243, 241, 229, 0.4);
+    border-radius: 1px;
+  }
+
+  .player-volume {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .player-volume svg {
+    width: 15px;
+    height: 15px;
+    stroke: rgba(243, 241, 229, 0.5);
+    fill: none;
+    stroke-width: 1.8;
+    flex-shrink: 0;
+  }
+
+  .volume-track {
+    width: 70px;
+    height: 4px;
+    background: rgba(243, 241, 229, 0.12);
+    border-radius: 2px;
+    position: relative;
+    cursor: pointer;
+  }
+
+  .volume-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    width: 75%;
+    background: var(--purple);
+    border-radius: 2px;
+  }
+
+  .volume-knob {
+    position: absolute;
+    right: -5px;
+    top: -4px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--cream);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  }
+
+  /* ===== STATUS BAR ===== */
+  .statusbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 16px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    font-size: 11.5px;
+    flex-shrink: 0;
+  }
+
+  .statusbar-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--green-light);
+  }
+
+  .statusbar-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--green-light);
+  }
+
+  .statusbar-right {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+
+  /* ===== SCROLLBAR ===== */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(121, 105, 168, 0.2); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(121, 105, 168, 0.35); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- TITLE BAR -->
+  <div class="titlebar">
+    <div class="traffic-lights">
+      <div class="traffic-light tl-close"></div>
+      <div class="traffic-light tl-minimize"></div>
+      <div class="traffic-light tl-maximize"></div>
+    </div>
+    <span class="titlebar-text">WaxCheck</span>
+  </div>
+
+  <!-- TOOLBAR -->
+  <div class="toolbar">
+    <div class="toolbar-logo-icon">
+      <svg viewBox="0 0 24 24"><path d="M2 12c0 0 3-7 10-7s10 7 10 7" /><path d="M6 12c0 0 1.5-3 6-3s6 3 6 3"/><line x1="12" y1="5" x2="12" y2="19" opacity="0.3"/></svg>
+    </div>
+
+    <div class="toolbar-spacer"></div>
+
+    <div class="toolbar-icons">
+      <button class="toolbar-btn active" title="Espectrograma">
+        <svg viewBox="0 0 24 24"><rect x="4" y="14" width="3" height="6" rx="1"/><rect x="8.5" y="10" width="3" height="10" rx="1"/><rect x="13" y="6" width="3" height="14" rx="1"/><rect x="17.5" y="11" width="3" height="9" rx="1"/></svg>
+      </button>
+      <button class="toolbar-btn" title="Watcher">
+        <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
+      <button class="toolbar-btn" title="Limpiar">
+        <svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2m2 0v14a2 2 0 01-2 2H8a2 2 0 01-2-2V6h12z"/></svg>
+      </button>
+      <button class="toolbar-btn" title="Metadatos">
+        <svg viewBox="0 0 24 24"><path d="M14 3v4a1 1 0 001 1h4"/><path d="M17 21H7a2 2 0 01-2-2V5a2 2 0 012-2h7l5 5v11a2 2 0 01-2 2z"/><line x1="9" y1="9" x2="10" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
+      </button>
+      <button class="toolbar-btn" title="Exportar">
+        <svg viewBox="0 0 24 24"><path d="M14 3v4a1 1 0 001 1h4"/><path d="M17 21H7a2 2 0 01-2-2V5a2 2 0 012-2h7l5 5v11a2 2 0 01-2 2z"/><path d="M12 11v6m0 0l-3-3m3 3l3-3"/></svg>
+      </button>
+      <button class="toolbar-btn" title="Ajustes">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- TABLE -->
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:26%">Archivo</th>
+          <th style="width:7%">Formato</th>
+          <th style="width:8%">Duración</th>
+          <th style="width:9%">Bitrate</th>
+          <th style="width:12%">Frec. Corte</th>
+          <th style="width:11%">Bitrate Real</th>
+          <th style="width:11%">Calidad</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="cell-filename">yt5s.io – Kinny – Afro Love For...</td>
+          <td class="cell-format">MP3</td>
+          <td class="cell-mono">04:09</td>
+          <td class="cell-mono">128 kbps</td>
+          <td>
+            <div class="cell-freq freq-bajo">
+              <span class="freq-value">13.0 kHz</span>
+              <div class="freq-bar-wrap"><div class="freq-bar"></div></div>
+            </div>
+          </td>
+          <td class="cell-mono">96 kbps</td>
+          <td><span class="badge badge-bajo"><span class="badge-dot"></span>Bajo</span></td>
+        </tr>
+        <tr>
+          <td class="cell-filename">Walkman Music (Acapella).mp3</td>
+          <td class="cell-format">MP3</td>
+          <td class="cell-mono">03:24</td>
+          <td class="cell-mono">320 kbps</td>
+          <td>
+            <div class="cell-freq freq-bajo">
+              <span class="freq-value">14.5 kHz</span>
+              <div class="freq-bar-wrap"><div class="freq-bar"></div></div>
+            </div>
+          </td>
+          <td class="cell-mono">96 kbps</td>
+          <td><span class="badge badge-bajo"><span class="badge-dot"></span>Bajo</span></td>
+        </tr>
+        <tr>
+          <td class="cell-filename">The Humpty Dance (Acapella).mp3</td>
+          <td class="cell-format">MP3</td>
+          <td class="cell-mono">03:52</td>
+          <td class="cell-mono">320 kbps</td>
+          <td>
+            <div class="cell-freq freq-medio">
+              <span class="freq-value">15.0 kHz</span>
+              <div class="freq-bar-wrap"><div class="freq-bar"></div></div>
+            </div>
+          </td>
+          <td class="cell-mono">128 kbps</td>
+          <td><span class="badge badge-medio"><span class="badge-dot"></span>Medio</span></td>
+        </tr>
+        <tr>
+          <td class="cell-filename">Suprême NTM – Seine Saint Deni...</td>
+          <td class="cell-format">MP3</td>
+          <td class="cell-mono">03:09</td>
+          <td class="cell-mono">192 kbps</td>
+          <td>
+            <div class="cell-freq freq-bajo">
+              <span class="freq-value">14.0 kHz</span>
+              <div class="freq-bar-wrap"><div class="freq-bar"></div></div>
+            </div>
+          </td>
+          <td class="cell-mono">96 kbps</td>
+          <td><span class="badge badge-bajo"><span class="badge-dot"></span>Bajo</span></td>
+        </tr>
+        <tr>
+          <td class="cell-filename">Suprême NTM – Come Again (Remi...</td>
+          <td class="cell-format">MP3</td>
+          <td class="cell-mono">03:35</td>
+          <td class="cell-mono">192 kbps</td>
+          <td>
+            <div class="cell-freq freq-medio">
+              <span class="freq-value">15.0 kHz</span>
+              <div class="freq-bar-wrap"><div class="freq-bar"></div></div>
+            </div>
+          </td>
+          <td class="cell-mono">128 kbps</td>
+          <td><span class="badge badge-medio"><span class="badge-dot"></span>Medio</span></td>
+        </tr>
+        <tr>
+          <td class="cell-filename">Supreme NTM – Boogie man acape...</td>
+          <td class="cell-format">MP3</td>
+          <td class="cell-mono">04:25</td>
+          <td class="cell-mono">320 kbps</td>
+          <td>
+            <div class="cell-freq freq-bajo">
+              <span class="freq-value">14.0 kHz</span>
+              <div class="freq-bar-wrap"><div class="freq-bar"></div></div>
+            </div>
+          </td>
+          <td class="cell-mono">96 kbps</td>
+          <td><span class="badge badge-bajo"><span class="badge-dot"></span>Bajo</span></td>
+        </tr>
+        <tr>
+          <td class="cell-filename">Shook Ones Pt. 2 (Acapella) 94...</td>
+          <td class="cell-format">MP3</td>
+          <td class="cell-mono">03:45</td>
+          <td class="cell-mono">192 kbps</td>
+          <td>
+            <div class="cell-freq freq-medio">
+              <span class="freq-value">15.0 kHz</span>
+              <div class="freq-bar-wrap"><div class="freq-bar"></div></div>
+            </div>
+          </td>
+          <td class="cell-mono">128 kbps</td>
+          <td><span class="badge badge-medio"><span class="badge-dot"></span>Medio</span></td>
+        </tr>
+        <tr>
+          <td class="cell-filename">Regulate Acapella.mp3</td>
+          <td class="cell-format">MP3</td>
+          <td class="cell-mono">04:10</td>
+          <td class="cell-mono">320 kbps</td>
+          <td>
+            <div class="cell-freq freq-bajo">
+              <span class="freq-value">14.5 kHz</span>
+              <div class="freq-bar-wrap"><div class="freq-bar"></div></div>
+            </div>
+          </td>
+          <td class="cell-mono">96 kbps</td>
+          <td><span class="badge badge-bajo"><span class="badge-dot"></span>Bajo</span></td>
+        </tr>
+        <tr class="selected">
+          <td class="cell-filename">DJ Premier – Classic Beat.flac</td>
+          <td class="cell-format">FLAC</td>
+          <td class="cell-mono">03:28</td>
+          <td class="cell-mono">1411 kbps</td>
+          <td>
+            <div class="cell-freq freq-excelente">
+              <span class="freq-value">22.0 kHz</span>
+              <div class="freq-bar-wrap"><div class="freq-bar"></div></div>
+            </div>
+          </td>
+          <td class="cell-mono">Lossless</td>
+          <td><span class="badge badge-excelente"><span class="badge-dot"></span>Excelente</span></td>
+        </tr>
+        <tr>
+          <td class="cell-filename">Gang Starr – Mass Appeal (HQ).mp3</td>
+          <td class="cell-format">MP3</td>
+          <td class="cell-mono">03:45</td>
+          <td class="cell-mono">320 kbps</td>
+          <td>
+            <div class="cell-freq freq-bueno">
+              <span class="freq-value">20.0 kHz</span>
+              <div class="freq-bar-wrap"><div class="freq-bar"></div></div>
+            </div>
+          </td>
+          <td class="cell-mono">320 kbps</td>
+          <td><span class="badge badge-bueno"><span class="badge-dot"></span>Bueno</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- PLAYER -->
+  <div class="player">
+    <div class="player-controls">
+      <button class="player-ctrl-btn" title="Previous">
+        <svg viewBox="0 0 24 24"><polygon points="19,20 9,12 19,4"/><line x1="5" y1="4" x2="5" y2="20" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+      </button>
+      <button class="player-ctrl-btn play-btn" title="Play">
+        <svg viewBox="0 0 24 24"><polygon points="6,3 20,12 6,21"/></svg>
+      </button>
+      <button class="player-ctrl-btn" title="Next">
+        <svg viewBox="0 0 24 24"><polygon points="5,4 15,12 5,20"/><line x1="19" y1="4" x2="19" y2="20" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+      </button>
+    </div>
+
+    <span class="player-time-current">0:55 / 4:13</span>
+
+    <div class="player-waveform">
+      <div class="waveform-canvas" id="waveform"></div>
+    </div>
+
+    <div class="player-volume">
+      <svg viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 010 7.07"/></svg>
+      <div class="volume-track">
+        <div class="volume-fill">
+          <div class="volume-knob"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STATUS BAR -->
+  <div class="statusbar">
+    <div class="statusbar-left">
+      <span class="statusbar-dot"></span>
+      <span>Listo</span>
+    </div>
+    <div class="statusbar-right">10 archivos</div>
+  </div>
+
+</div>
+
+<script>
+  // Generate waveform bars simulating real audio waveform
+  const waveform = document.getElementById('waveform');
+  const totalBars = 200;
+  const playedRatio = 0.25;
+
+  // Create a more realistic waveform shape
+  const baseShape = [];
+  for (let i = 0; i < totalBars; i++) {
+    const t = i / totalBars;
+    // Simulate musical dynamics with multiple sine waves
+    const base = 0.3 + 
+      0.25 * Math.sin(t * Math.PI * 6) + 
+      0.15 * Math.sin(t * Math.PI * 14 + 1) + 
+      0.1 * Math.sin(t * Math.PI * 23 + 2);
+    const noise = (Math.random() - 0.5) * 0.25;
+    baseShape.push(Math.max(0.08, Math.min(1, base + noise)));
+  }
+
+  baseShape.forEach((h, i) => {
+    const bar = document.createElement('div');
+    bar.className = 'wf-bar ' + (i / totalBars < playedRatio ? 'played' : 'unplayed');
+    bar.style.height = (h * 100) + '%';
+    waveform.appendChild(bar);
+  });
+</script>
+</body>
+</html>

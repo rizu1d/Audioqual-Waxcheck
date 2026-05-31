@@ -1,0 +1,39 @@
+<svg width="800" height="800" viewBox="0 0 220 220" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="clipB">
+      <circle cx="110" cy="110" r="100"/>
+    </clipPath>
+  </defs>
+  <rect width="220" height="220" fill="#0a0a0a"/>
+  <circle cx="110" cy="110" r="100" fill="#0a0a0a" stroke="#1a1a1a" stroke-width="1"/>
+  <g clip-path="url(#clipB)">
+    <circle cx="110" cy="110" r="92" fill="none" stroke="#1a1a1a" stroke-width="0.5"/>
+    <circle cx="110" cy="110" r="86" fill="none" stroke="#181818" stroke-width="0.5"/>
+    <circle cx="110" cy="110" r="80" fill="none" stroke="#1a1a1a" stroke-width="0.5"/>
+    <circle cx="110" cy="110" r="74" fill="none" stroke="#181818" stroke-width="0.5"/>
+    <circle cx="110" cy="110" r="68" fill="none" stroke="#1a1a1a" stroke-width="0.5"/>
+    <circle cx="110" cy="110" r="62" fill="none" stroke="#181818" stroke-width="0.5"/>
+    <circle cx="110" cy="110" r="56" fill="none" stroke="#1a1a1a" stroke-width="0.5"/>
+    <circle cx="110" cy="110" r="50" fill="none" stroke="#181818" stroke-width="0.5"/>
+    <circle cx="110" cy="110" r="44" fill="none" stroke="#1a1a1a" stroke-width="0.5"/>
+    <circle cx="110" cy="110" r="38" fill="none" stroke="#181818" stroke-width="0.5"/>
+    <circle cx="110" cy="110" r="32" fill="none" stroke="#1a1a1a" stroke-width="0.5"/>
+    <circle cx="110" cy="110" r="26" fill="none" stroke="#181818" stroke-width="0.5"/>
+    <circle cx="110" cy="110" r="89" fill="none" stroke="#151515" stroke-width="0.3"/>
+    <circle cx="110" cy="110" r="83" fill="none" stroke="#151515" stroke-width="0.3"/>
+    <circle cx="110" cy="110" r="77" fill="none" stroke="#151515" stroke-width="0.3"/>
+    <circle cx="110" cy="110" r="71" fill="none" stroke="#151515" stroke-width="0.3"/>
+    <circle cx="110" cy="110" r="65" fill="none" stroke="#151515" stroke-width="0.3"/>
+    <circle cx="110" cy="110" r="59" fill="none" stroke="#151515" stroke-width="0.3"/>
+    <circle cx="110" cy="110" r="53" fill="none" stroke="#151515" stroke-width="0.3"/>
+    <circle cx="110" cy="110" r="47" fill="none" stroke="#151515" stroke-width="0.3"/>
+    <circle cx="110" cy="110" r="41" fill="none" stroke="#151515" stroke-width="0.3"/>
+    <circle cx="110" cy="110" r="35" fill="none" stroke="#151515" stroke-width="0.3"/>
+  </g>
+  <circle cx="110" cy="110" r="20" fill="#524479" opacity="0.15"/>
+  <circle cx="110" cy="110" r="3" fill="#524479" opacity="0.6"/>
+  <circle cx="110" cy="110" r="100" fill="none" stroke="#524479" stroke-width="1.5" opacity="0.5"/>
+  <path d="M 15 112 C 30 112, 38 112, 48 110 C 58 108, 62 100, 70 85 C 78 70, 84 58, 90 72 C 96 86, 102 115, 110 135 C 118 155, 124 160, 132 142 C 140 124, 146 108, 155 110 C 164 112, 175 112, 205 112" fill="none" stroke="#F3F1E5" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="90" cy="68" r="5" fill="#7969A8" opacity="0.9"/>
+  <circle cx="90" cy="68" r="9" fill="#7969A8" opacity="0.15"/>
+</svg>
