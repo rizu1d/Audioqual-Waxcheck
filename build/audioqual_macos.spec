@@ -60,6 +60,10 @@ a = Analysis(
         'sphinx',
         'setuptools',
         'wheel',
+        # scikit-learn: dependencia transitiva de librosa que el código nunca
+        # alcanza (verificado: 0 imports en el repo y no se carga en runtime).
+        # Excluida para reducir ~45 MB del paquete.
+        'sklearn',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
