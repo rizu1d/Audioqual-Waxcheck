@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec file for macOS build."""
+"""PyInstaller spec file for Linux build."""
 
 import sys
 from pathlib import Path
@@ -21,6 +21,7 @@ datas = [
 # Native audio libs: libsndfile (ships in _soundfile_data) and PortAudio
 # (ships in _sounddevice_data). The official PyInstaller hooks already collect
 # these, but we add them explicitly as a safety net across hook versions.
+# If absent in the wheels, install system packages libsndfile1 / libportaudio2.
 binaries = []
 for _pkg in ('_soundfile_data', '_sounddevice_data'):
     try:
@@ -82,7 +83,7 @@ exe = EXE(
     upx=True,
     console=False,
     disable_windowed_traceback=False,
-    argv_emulation=True,
+    argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
@@ -97,21 +98,4 @@ coll = COLLECT(
     upx=True,
     upx_exclude=[],
     name='AudioQual',
-)
-
-app = BUNDLE(
-    coll,
-    name='AudioQual.app',
-    icon=None,  # Add icon path here if available: 'assets/icon.icns'
-    bundle_identifier='com.audioqual.app',
-    info_plist={
-        'CFBundleName': 'AudioQual',
-        'CFBundleDisplayName': 'AudioQual',
-        'CFBundleGetInfoString': 'Audio Quality Analyzer',
-        'CFBundleIdentifier': 'com.audioqual.app',
-        'CFBundleVersion': '1.0.0',
-        'CFBundleShortVersionString': '1.0.0',
-        'NSHighResolutionCapable': 'True',
-        'NSRequiresAquaSystemAppearance': 'False',
-    },
 )

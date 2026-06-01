@@ -4,17 +4,36 @@
 import sys
 from pathlib import Path
 
+from PyInstaller.utils.hooks import collect_dynamic_libs
+
 block_cipher = None
 
 # Get the project root
 project_root = Path(SPECPATH).parent
 
+# Bundle app data: fonts/icons (src/assets) and translations (src/locales).
+# Destination paths match what resource_path.py / i18n.py expect under sys._MEIPASS.
+datas = [
+    (str(project_root / 'src' / 'assets'), 'src/assets'),
+    (str(project_root / 'src' / 'locales'), 'src/locales'),
+]
+
+# Native audio libs: libsndfile (ships in _soundfile_data) and PortAudio
+# (ships in _sounddevice_data). The official PyInstaller hooks already collect
+# these, but we add them explicitly as a safety net across hook versions.
+binaries = []
+for _pkg in ('_soundfile_data', '_sounddevice_data'):
+    try:
+        binaries += collect_dynamic_libs(_pkg)
+    except Exception:
+        pass
+
 # Analysis
 a = Analysis(
     [str(project_root / 'src' / 'main.py')],
     pathex=[str(project_root)],
-    binaries=[],
-    datas=[],
+    binaries=binaries,
+    datas=datas,
     hiddenimports=[
         'customtkinter',
         'tkinterdnd2',

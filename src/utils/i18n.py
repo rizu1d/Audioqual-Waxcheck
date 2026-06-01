@@ -15,9 +15,19 @@ Usage::
 
 import json
 import os
+import sys
 from typing import Any, Dict
 
-_LOCALES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "locales")
+
+def _locales_dir() -> str:
+    """Resolve the locales directory in both development and frozen mode."""
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        # PyInstaller extracts datas under sys._MEIPASS (mapped to src/locales)
+        return os.path.join(sys._MEIPASS, "src", "locales")
+    return os.path.join(os.path.dirname(os.path.dirname(__file__)), "locales")
+
+
+_LOCALES_DIR = _locales_dir()
 
 # Maps internal STATUS_* constant values → translation keys
 _STATUS_KEY_MAP = {

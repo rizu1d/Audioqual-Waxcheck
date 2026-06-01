@@ -1461,7 +1461,9 @@ class MetadataEditor(ctk.CTkToplevel):
         for ch in forbidden:
             name = name.replace(ch, "")
         # Collapse multiple spaces and strip
-        return " ".join(name.split()).strip()
+        cleaned = " ".join(name.split()).strip()
+        # Fallback if nothing usable remains (e.g. name was all forbidden chars)
+        return cleaned if cleaned else "Sin nombre"
 
     def _save_id3(self):
         """Write ID3 tags (MP3, AIFF, WAV)."""
