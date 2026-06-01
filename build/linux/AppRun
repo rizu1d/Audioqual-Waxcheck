@@ -1,0 +1,5 @@
+#!/bin/sh
+# Punto de entrada del AppImage. Lanza el ejecutable de PyInstaller
+# ubicado en usr/bin/ dentro del AppDir.
+HERE="$(dirname "$(readlink -f "$0")")"
+exec "${HERE}/usr/bin/AudioQual" "$@"

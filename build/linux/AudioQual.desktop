@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=AudioQual
+Comment=Analizador de calidad real de archivos de audio
+Exec=AudioQual
+Icon=audioqual
+Categories=AudioVideo;Audio;Utility;
+Terminal=false

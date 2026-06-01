@@ -1,0 +1,130 @@
+name: Build installers
+
+# Compila AudioQual en macOS, Windows y Linux y produce instaladores:
+#   - macOS:   DMG (arrastrar a Applications)
+#   - Windows: instalador Inno Setup (.exe)
+#   - Linux:   AppImage portable
+# Se dispara manualmente (workflow_dispatch) o al crear un tag vX.Y.Z.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: '3.12'
+
+jobs:
+  # ---------------------------------------------------------------- macOS ----
+  macos:
+    name: macOS (DMG)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build app
+        run: pyinstaller --noconfirm build/audioqual_macos.spec
+
+      - name: Create DMG
+        run: |
+          mkdir -p dmg-stage
+          cp -R "dist/AudioQual.app" dmg-stage/
+          ln -s /Applications dmg-stage/Applications
+          hdiutil create -volname "AudioQual" \
+            -srcfolder dmg-stage -ov -format UDZO \
+            "dist/AudioQual-macos.dmg"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AudioQual-macos-dmg
+          path: dist/AudioQual-macos.dmg
+
+  # -------------------------------------------------------------- Windows ----
+  windows:
+    name: Windows (Inno Setup)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build app
+        run: pyinstaller --noconfirm build/audioqual_windows.spec
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build installer
+        run: iscc build\installer_windows.iss
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AudioQual-windows-setup
+          path: dist/AudioQual-windows-setup.exe
+
+  # ---------------------------------------------------------------- Linux ----
+  linux:
+    name: Linux (AppImage)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install system build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libportaudio2 libsndfile1 libcairo2 \
+            python3-tk libfuse2
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build app
+        run: pyinstaller --noconfirm build/audioqual_linux.spec
+
+      - name: Assemble AppDir
+        run: |
+          APPDIR=AudioQual.AppDir
+          mkdir -p "$APPDIR/usr/bin"
+          cp -R dist/AudioQual/. "$APPDIR/usr/bin/"
+          cp build/linux/AppRun "$APPDIR/AppRun"
+          chmod +x "$APPDIR/AppRun"
+          cp build/linux/AudioQual.desktop "$APPDIR/AudioQual.desktop"
+          cp src/assets/logo-WaxCheck.png "$APPDIR/audioqual.png"
+
+      - name: Build AppImage
+        run: |
+          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+          ./appimagetool-x86_64.AppImage --appimage-extract-and-run \
+            AudioQual.AppDir dist/AudioQual-linux-x86_64.AppImage
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AudioQual-linux-appimage
+          path: dist/AudioQual-linux-x86_64.AppImage
