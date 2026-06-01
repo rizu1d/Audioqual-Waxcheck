@@ -49,17 +49,32 @@ scipy es la dependencia más pesada (~83 MB). Eliminarla reduciría ~40-50 MB.
 
 ## Problemas pendientes
 
-1. **PNG fallback incompleto** (Windows): cuando cairosvg no está disponible, los SVGs V2/V3 no tienen PNGs equivalentes → iconos invisibles
-2. **Sin firma de código**: macOS mostrará "app de desarrollador no identificado"
-3. **Falsos positivos antivirus**: PyInstaller en Windows sin certificado de code signing
+1. **Icono de app genérico en Windows**: los specs llevan `icon=None`, así que el `.exe`
+   y su entrada en la barra de tareas usan el icono por defecto de Windows. Falta generar
+   un `.ico` (Windows) y `.icns` (macOS) propios y referenciarlos en los specs. *(También
+   por verificar: que el logo de la toolbar — `logo-waxcheckV2.png` — se renderice; en la
+   QA del 2026-06-01 los 6 iconos de toolbar sí salían pero el logo no se confirmó.)*
+2. **Sin firma de código**: macOS mostrará "app de desarrollador no identificado"; en
+   Windows SmartScreen avisa por `.exe` sin firmar (confirmado en QA: aparece la pantalla
+   azul, "Más información → Ejecutar de todas formas" funciona).
+3. **Falsos positivos antivirus**: PyInstaller en Windows sin certificado de code signing.
 4. **QA manual del build**: validar en VM Windows/Linux que fuentes, iconos, i18n, audio y
-   drag-out (`tkinterdnd2`) funcionan en un empaquetado real. No es testeable desde el código.
+   drag-out (`tkinterdnd2`) funcionan en un empaquetado real. macOS y Windows validados
+   (2026-06-01, vía Guacamole); **Linux/AppImage aún sin probar en máquina real**.
+
+> **Objetivo abierto:** seguir investigando a fondo la compatibilidad máxima entre SO
+> (audio nativo, drag-out, iconos, firma). Ver `wiki/log.md` y la nota de plan.
 
 ### Resuelto (2026-06-01)
 
 - ~~Specs con `datas=[]`~~ → ahora empaquetan assets y locales.
 - ~~Libs nativas de audio sin empaquetar~~ → recogidas vía hooks + `collect_dynamic_libs`.
 - ~~Sin build Linux~~ → `build/audioqual_linux.spec` creado.
+- ~~Sin pipeline de build~~ → CI en GitHub Actions (`.github/workflows/build.yml`) produce
+  DMG, instalador Inno Setup y AppImage en cada `workflow_dispatch` o tag `vX.Y.Z`.
+- ~~PNG fallback incompleto (iconos en blanco en Windows)~~ → los 8 SVG cargados en runtime
+  (logo + toolbar) pre-rasterizados a PNG 256×256 junto a los SVG; `icon_utils` los usa
+  cuando no hay libcairo. Confirmado en Windows real (2026-06-01).
 - Dependencias de sistema por SO documentadas en `README.md`.
 
 ## Requisitos mínimos
