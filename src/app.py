@@ -8,13 +8,6 @@ from typing import Optional
 
 import customtkinter as ctk
 
-# Configure matplotlib ONCE at module load, before any imports that might use it
-# This avoids the overhead of calling matplotlib.use('Agg') and plt.style.use() on every render
-import matplotlib
-matplotlib.use('Agg')  # Non-interactive backend (thread-safe)
-import matplotlib.pyplot as plt
-plt.style.use('dark_background')
-
 try:
     from tkinterdnd2 import TkinterDnD
     HAS_DND = True
@@ -129,23 +122,11 @@ class AudioQualApp:
         try:
             from PIL import Image, ImageTk
             from .utils.resource_path import get_resource
-            icon_img = None
 
-            # Try SVG first (requires cairosvg + libcairo)
-            try:
-                import cairosvg
-                import io
-                svg_path = get_resource("logo-waxcheckV2.svg")
-                png_bytes = cairosvg.svg2png(url=svg_path, output_width=256, output_height=256)
-                icon_img = Image.open(io.BytesIO(png_bytes))
-            except (ImportError, OSError):
-                pass
-
-            # Fallback to PNG
-            if icon_img is None:
-                png_path = get_resource("logo-WaxCheck.png")
-                icon_img = Image.open(png_path).convert("RGBA")
-                icon_img = icon_img.resize((256, 256), Image.LANCZOS)
+            # App icon ships as a pre-rendered 256x256 PNG (no cairosvg needed).
+            png_path = get_resource("logo-waxcheckV2.png")
+            icon_img = Image.open(png_path).convert("RGBA")
+            icon_img = icon_img.resize((256, 256), Image.LANCZOS)
 
             self._app_icon = ImageTk.PhotoImage(icon_img)
             self.root.iconphoto(True, self._app_icon)

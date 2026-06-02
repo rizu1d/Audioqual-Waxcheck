@@ -247,26 +247,14 @@ class AudioPlayer:
         """
         self._volume = max(0.0, min(1.0, volume))
 
-    def get_volume(self) -> float:
-        """Get current volume level."""
-        return self._volume
-
     def get_position(self) -> float:
         """Get current position in seconds."""
         with self._lock:
             return self._position / self._sample_rate if self._sample_rate > 0 else 0.0
 
-    def get_duration(self) -> float:
-        """Get track duration in seconds."""
-        return self._duration_samples / self._sample_rate if self._sample_rate > 0 else 0.0
-
     def get_state(self) -> PlayerState:
         """Get current player state."""
         return self._state
-
-    def is_loaded(self) -> bool:
-        """Check if a track is loaded."""
-        return self._samples is not None
 
     def get_samples(self) -> Optional[np.ndarray]:
         """Get loaded audio samples for visualization."""

@@ -1444,11 +1444,6 @@ class ResultsTable(ctk.CTkFrame):
 
         self._schedule_viewport_update()
 
-    def add_results(self, results: List[AnalysisResult]):
-        """Add multiple results to the table."""
-        for result in results:
-            self.add_result(result)
-
     def clear(self):
         """Clear all results from the table."""
         self._close_quality_popup()
@@ -1499,18 +1494,9 @@ class ResultsTable(ctk.CTkFrame):
         """Get all selected results."""
         return [self._results[fp] for fp in self._selected_fps if fp in self._results]
 
-    def get_all_results(self) -> List[AnalysisResult]:
-        """Get all results in the table."""
-        return list(self._results.values())
-
     def get_results_count(self) -> int:
         """Get the number of results."""
         return len(self._results)
-
-    def select_first(self):
-        """Select the first visible item in the table."""
-        if self._visible:
-            self._select_single(self._visible[0])
 
     def select_next(self) -> Optional[AnalysisResult]:
         """
@@ -1566,54 +1552,6 @@ class ResultsTable(ctk.CTkFrame):
         self._select_single(fp)
         self.scroll_to_index(idx)
         return self._results.get(fp)
-
-    def remove_result(self, filepath: str) -> Optional[AnalysisResult]:
-        """
-        Remove a single result from the table.
-
-        If the removed row was selected, auto-selects the next row (or previous if last).
-
-        Returns:
-            The newly selected result, or None if the table is now empty.
-        """
-        if filepath not in self._results:
-            return None
-
-        was_selected = filepath in self._selected_fps
-        # Position in the visible list (before removal) to pick a neighbour.
-        try:
-            index = self._visible.index(filepath)
-        except ValueError:
-            index = -1
-
-        if filepath in self._order:
-            self._order.remove(filepath)
-        del self._results[filepath]
-        if was_selected:
-            self._selected_fps.remove(filepath)
-        if self._anchor_fp == filepath:
-            self._anchor_fp = self._selected_fps[-1] if self._selected_fps else None
-        if self._pending_collapse_fp == filepath:
-            self._pending_collapse_fp = None
-
-        self._rebuild_visible()
-        self._refresh_viewport(force=True)
-
-        if not was_selected:
-            return self._results.get(self._selected_fps[-1]) if self._selected_fps else None
-
-        # If other selections remain, use the last one
-        if self._selected_fps:
-            return self._results[self._selected_fps[-1]]
-
-        # No selections remain — pick a neighbour
-        if not self._visible:
-            if self.on_selection_changed:
-                self.on_selection_changed(None)
-            return None
-
-        new_index = min(index, len(self._visible) - 1) if index >= 0 else 0
-        return self._select_at_index(new_index)
 
     def remove_results(self, filepaths: List[str]) -> Optional[AnalysisResult]:
         """

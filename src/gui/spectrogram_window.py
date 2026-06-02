@@ -11,7 +11,6 @@ import tkinter as tk
 from typing import Optional
 
 import customtkinter as ctk
-from matplotlib.colors import LinearSegmentedColormap
 import numpy as np
 from PIL import Image, ImageTk
 
@@ -34,21 +33,33 @@ _SPEK_COLORS_RGB = [
     (0xff, 0xe0, 0x00), (0xff, 0xff, 0x00), (0xff, 0xff, 0x40), (0xff, 0xff, 0x80),
     (0xff, 0xff, 0xc0), (0xff, 0xff, 0xff),
 ]
-SPEK_CMAP = LinearSegmentedColormap.from_list(
-    'spek',
-    [(r / 255, g / 255, b / 255) for r, g, b in _SPEK_COLORS_RGB],
-    N=256,
-)
-
 # Spectrogram dB range (matching Spek's sensitivity)
 _SPEC_DB_MIN = -80
 _SPEC_DB_MAX = 0
 
-# ── Pre-build 256-entry RGB lookup table from colormap (once at import) ──
-_COLORMAP_LUT = np.zeros((256, 3), dtype=np.uint8)
-for _i in range(256):
-    _r, _g, _b, _ = SPEK_CMAP(_i / 255.0)
-    _COLORMAP_LUT[_i] = [int(_r * 255), int(_g * 255), int(_b * 255)]
+
+# ── Pre-build 256-entry RGB lookup table from the palette (once at import) ──
+def _build_colormap_lut() -> np.ndarray:
+    """256-entry RGB LUT linearly interpolating the Spek anchor palette.
+
+    Reproduces, bit-for-bit, what a matplotlib ``LinearSegmentedColormap``
+    built from the same anchors and sampled at ``i/255`` used to give — but
+    with plain numpy, so the app carries no matplotlib dependency. The anchors
+    are spread evenly over [0, 1]; ``internal`` mirrors matplotlib's N=256
+    lookup table and ``xa`` mirrors its ``int(x * N)`` index mapping.
+    """
+    anchors = np.array(_SPEK_COLORS_RGB, dtype=np.float64)
+    anchor_pos = np.linspace(0.0, 1.0, len(anchors))
+    internal = np.linspace(0.0, 1.0, 256)
+    channels = [np.interp(internal, anchor_pos, anchors[:, c]) for c in range(3)]
+    lut = np.empty((256, 3), dtype=np.uint8)
+    for i in range(256):
+        xa = min(int(i / 255.0 * 256), 255)
+        lut[i] = [int(channels[c][xa]) for c in range(3)]
+    return lut
+
+
+_COLORMAP_LUT = _build_colormap_lut()
 
 
 class SpectrogramWindow(ctk.CTkToplevel):

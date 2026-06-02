@@ -4,7 +4,6 @@ Icons are drawn at 2x resolution on transparent RGBA canvases,
 then wrapped in CTkImage for HiDPI display. Cached at module level.
 """
 
-import math
 from typing import Tuple
 
 import customtkinter as ctk
@@ -39,35 +38,6 @@ def _c(hex_color):
 
 def _wrap(img, size):
     return ctk.CTkImage(light_image=img, dark_image=img, size=(size, size))
-
-
-# ── Settings (gear) ───────────────────────────────────────────────
-
-
-def icon_settings(size: int = 28, color: str = _COLOR) -> ctk.CTkImage:
-    """Gear icon."""
-    def factory():
-        img, draw, cs = _canvas(size)
-        sw = _sw(cs)
-        c = _c(color)
-        cx, cy = cs / 2, cs / 2
-        outer_r = cs * 0.38
-        inner_r = cs * 0.28
-        teeth = 8
-        points = []
-        for i in range(teeth * 2):
-            angle = math.pi * 2 * i / (teeth * 2) - math.pi / 2
-            r = outer_r if i % 2 == 0 else inner_r
-            points.append((cx + r * math.cos(angle), cy + r * math.sin(angle)))
-        draw.polygon(points, outline=c, width=sw)
-        center_r = cs * 0.1
-        draw.ellipse(
-            [cx - center_r, cy - center_r, cx + center_r, cy + center_r],
-            outline=c, width=sw,
-        )
-        return _wrap(img, size)
-
-    return _get_cached(("settings", size, color), factory)
 
 
 # ── Volume icons ──────────────────────────────────────────────────

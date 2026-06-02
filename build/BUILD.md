@@ -1,4 +1,4 @@
-# WaxCheck — Guía de Build y Distribución
+# AudioQual — Guía de Build y Distribución
 
 ## Requisitos previos
 
@@ -13,14 +13,14 @@ python3 -m pip install pyinstaller
 
 ## Build macOS
 
-### Generar WaxCheck.app
+### Generar AudioQual.app
 
 ```bash
 cd <carpeta_del_proyecto>
 bash build/build_macos.sh
 ```
 
-El resultado estará en `dist/WaxCheck.app`.
+El resultado estará en `dist/AudioQual.app`.
 
 ### Generar .dmg instalador (para compartir)
 
@@ -28,7 +28,7 @@ El resultado estará en `dist/WaxCheck.app`.
 bash build/build_macos.sh --dmg
 ```
 
-Genera `dist/WaxCheck-0.1.0-beta-macOS.dmg` (~100-130 MB).
+Genera `dist/AudioQual-0.1.0-beta-macOS.dmg` (~100-130 MB).
 El DMG incluye un atajo a Applications para arrastrar e instalar.
 
 ### Nota sobre apps sin firmar
@@ -36,10 +36,10 @@ El DMG incluye un atajo a Applications para arrastrar e instalar.
 Al no tener Apple Developer ID, macOS bloqueará la app la primera vez.
 Instrucciones para los testers:
 
-1. Intentar abrir WaxCheck normalmente (aparecerá un aviso de seguridad)
+1. Intentar abrir AudioQual normalmente (aparecerá un aviso de seguridad)
 2. Ir a **Ajustes del Sistema → Privacidad y Seguridad**
-3. Bajo "Seguridad", verán un mensaje sobre WaxCheck — pulsar **Abrir igualmente**
-4. Alternativamente: click derecho sobre WaxCheck.app → **Abrir** → **Abrir** en el diálogo
+3. Bajo "Seguridad", verán un mensaje sobre AudioQual — pulsar **Abrir igualmente**
+4. Alternativamente: click derecho sobre AudioQual.app → **Abrir** → **Abrir** en el diálogo
 
 Solo hay que hacerlo una vez; después se abre normalmente.
 
@@ -52,7 +52,7 @@ cd <carpeta_del_proyecto>
 build\build_windows.bat
 ```
 
-El resultado estará en `dist\WaxCheck\WaxCheck.exe`.
+El resultado estará en `dist\AudioQual\AudioQual.exe`.
 
 ### Generar .zip para compartir
 
@@ -60,40 +60,41 @@ El resultado estará en `dist\WaxCheck\WaxCheck.exe`.
 build\build_windows.bat --zip
 ```
 
-Genera `dist\WaxCheck-0.1.0-beta-Windows.zip` (~110-140 MB).
+Genera `dist\AudioQual-0.1.0-beta-Windows.zip` (~110-140 MB).
 
 ### Nota sobre antivirus
 
 Windows Defender y otros antivirus pueden marcar ejecutables de PyInstaller como sospechosos (falso positivo). Sin un certificado de code signing, esto es normal. Los testers pueden:
 
 1. Cuando aparezca el aviso de SmartScreen, pulsar **Más información** → **Ejecutar de todos modos**
-2. Si el antivirus lo bloquea, añadir una excepción para la carpeta `WaxCheck`
+2. Si el antivirus lo bloquea, añadir una excepción para la carpeta `AudioQual`
 
 ## Estructura generada
 
 ```
 dist/
-├── WaxCheck.app/                    (macOS)
+├── AudioQual.app/                    (macOS)
 │   └── Contents/
-│       ├── MacOS/WaxCheck           Ejecutable
+│       ├── MacOS/AudioQual           Ejecutable
 │       ├── Resources/               Icono, assets
 │       └── Info.plist               Metadatos de la app
 │
-├── WaxCheck/                        (Windows)
-│   ├── WaxCheck.exe                 Ejecutable principal
+├── AudioQual/                        (Windows)
+│   ├── AudioQual.exe                 Ejecutable principal
 │   ├── src/assets/                  Iconos, fuentes, imágenes
 │   └── *.dll, *.pyd                 Dependencias
 │
-├── WaxCheck-0.1.0-beta-macOS.dmg    (si se usó --dmg)
-└── WaxCheck-0.1.0-beta-Windows.zip  (si se usó --zip)
+├── AudioQual-0.1.0-beta-macOS.dmg    (si se usó --dmg)
+└── AudioQual-0.1.0-beta-Windows.zip  (si se usó --zip)
 ```
 
 ## Archivos de build
 
 | Archivo | Descripción |
 |---------|-------------|
-| `build/waxcheck_macos.spec` | Spec PyInstaller para macOS |
-| `build/waxcheck_windows.spec` | Spec PyInstaller para Windows |
+| `build/audioqual_macos.spec` | Spec PyInstaller para macOS |
+| `build/audioqual_windows.spec` | Spec PyInstaller para Windows |
+| `build/audioqual_linux.spec` | Spec PyInstaller para Linux |
 | `build/build_macos.sh` | Script de build macOS (bash) |
 | `build/build_windows.bat` | Script de build Windows (cmd) |
 | `build/icons/waxcheck.icns` | Icono macOS (generado del SVG) |
@@ -104,8 +105,8 @@ dist/
 **"No module named customtkinter"** al ejecutar la app buildeada:
 Asegúrate de que `customtkinter` está instalado en el mismo entorno Python donde ejecutas PyInstaller. El spec necesita importar el módulo para localizar sus archivos.
 
-**La app se abre pero no muestra iconos SVG:**
-Verifica que `cairosvg` y sus dependencias nativas (libcairo) están instaladas. En macOS: `brew install cairo`. En Windows: cairo se incluye con el paquete pip de `cairocffi`.
+**La app se abre pero no muestra iconos:**
+Los iconos se cargan como PNG pre-renderizados desde `src/assets/` (ya no se usa cairosvg en runtime). Verifica que el `.png` de cada icono está presente en `src/assets/` y que el spec incluye `src/assets` en `datas`. Para regenerar los PNG desde los SVG fuente: `pip install cairosvg && python3 scripts/render_icons.py`.
 
 **Error "tkdnd" en Windows:**
 `tkinterdnd2` necesita la DLL de tkdnd. El spec ya incluye todo el directorio de tkinterdnd2, pero si falla, verifica que la DLL está en la carpeta de salida.

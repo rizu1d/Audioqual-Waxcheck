@@ -41,8 +41,6 @@ a = Analysis(
         'librosa',
         'soundfile',
         'numpy',
-        'matplotlib',
-        'matplotlib.backends.backend_tkagg',
         'mutagen',
         'mutagen.mp3',
         'mutagen.flac',
@@ -65,6 +63,16 @@ a = Analysis(
         # alcanza (verificado: 0 imports en el repo y no se carga en runtime).
         # Excluida para reducir ~45 MB del paquete.
         'sklearn',
+        # cairosvg/libcairo: solo se usaba para rasterizar iconos SVG en
+        # runtime. Ahora los iconos se cargan como PNG pre-renderizados
+        # (scripts/render_icons.py), así que cairo ya no hace falta.
+        'cairosvg',
+        'cairocffi',
+        'cffi',
+        # matplotlib: solo se usaba para una colormap (LinearSegmentedColormap),
+        # ahora reconstruida como LUT numpy en spectrogram_window.py. Excluirla
+        # quita matplotlib y sus backends/fonts del paquete.
+        'matplotlib',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,

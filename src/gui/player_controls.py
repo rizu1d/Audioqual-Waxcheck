@@ -44,7 +44,6 @@ class PlayerControls(ctk.CTkFrame):
         self._duration = 0.0
         self._is_seeking = False
         self._update_timer = None
-        self._current_track_name: Optional[str] = None
 
         # Configure player callbacks
         self._player.set_callbacks(
@@ -327,10 +326,6 @@ class PlayerControls(ctk.CTkFrame):
         else:
             # Stop scheduling updates when not playing - saves CPU
             self._update_timer = None
-
-    def update_track_info(self, filepath: str, filename: str):
-        """Update the displayed track information."""
-        self._current_track_name = filename
 
     def reset(self):
         """Reset the controls to initial state."""

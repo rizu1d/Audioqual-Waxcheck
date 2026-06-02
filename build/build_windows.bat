@@ -1,7 +1,7 @@
 @echo off
 REM ╔════════════════════════════════════════════════════════════╗
-REM ║  WaxCheck — Windows Build Script                          ║
-REM ║  Generates WaxCheck.exe portable application              ║
+REM ║  AudioQual — Windows Build Script                          ║
+REM ║  Generates AudioQual.exe portable application              ║
 REM ╚════════════════════════════════════════════════════════════╝
 REM
 REM Usage:
@@ -18,7 +18,7 @@ setlocal enabledelayedexpansion
 set SCRIPT_DIR=%~dp0
 set PROJECT_ROOT=%SCRIPT_DIR%..
 set VERSION=0.1.0-beta
-set APP_NAME=WaxCheck
+set APP_NAME=AudioQual
 
 echo ========================================
 echo   Building %APP_NAME% v%VERSION% for Windows
@@ -29,20 +29,20 @@ cd /d "%PROJECT_ROOT%"
 
 REM ── 1. Clean previous build ──
 echo -- Cleaning previous build...
-if exist "dist\WaxCheck" rmdir /s /q "dist\WaxCheck"
-if exist "build\WaxCheck" rmdir /s /q "build\WaxCheck"
+if exist "dist\AudioQual" rmdir /s /q "dist\AudioQual"
+if exist "build\AudioQual" rmdir /s /q "build\AudioQual"
 
 REM ── 2. Run PyInstaller ──
 echo -- Running PyInstaller...
-python -m PyInstaller build\waxcheck_windows.spec --noconfirm --clean
+python -m PyInstaller build\audioqual_windows.spec --noconfirm --clean
 
-if not exist "dist\WaxCheck\WaxCheck.exe" (
-    echo [ERROR] Build failed - WaxCheck.exe not found
+if not exist "dist\AudioQual\AudioQual.exe" (
+    echo [ERROR] Build failed - AudioQual.exe not found
     exit /b 1
 )
 
 echo.
-echo [OK] WaxCheck.exe built successfully in dist\WaxCheck\
+echo [OK] AudioQual.exe built successfully in dist\AudioQual\
 
 REM ── 3. Create ZIP if requested ──
 if "%~1"=="--zip" (
@@ -52,12 +52,12 @@ if "%~1"=="--zip" (
     set ZIP_NAME=%APP_NAME%-%VERSION%-Windows.zip
 
     REM Use PowerShell to create zip (available on Win10+)
-    powershell -Command "Compress-Archive -Path 'dist\WaxCheck\*' -DestinationPath 'dist\!ZIP_NAME!' -Force"
+    powershell -Command "Compress-Archive -Path 'dist\AudioQual\*' -DestinationPath 'dist\!ZIP_NAME!' -Force"
 
     if exist "dist\!ZIP_NAME!" (
         echo [OK] ZIP created: dist\!ZIP_NAME!
     ) else (
-        echo [WARNING] ZIP creation failed. You can manually zip dist\WaxCheck\
+        echo [WARNING] ZIP creation failed. You can manually zip dist\AudioQual\
     )
 )
 
@@ -66,8 +66,8 @@ echo.
 echo ========================================
 echo   Build complete!
 echo.
-echo   Folder: dist\WaxCheck\
-echo   EXE:    dist\WaxCheck\WaxCheck.exe
+echo   Folder: dist\AudioQual\
+echo   EXE:    dist\AudioQual\AudioQual.exe
 if "%~1"=="--zip" (
     echo   ZIP:    dist\%ZIP_NAME%
 )

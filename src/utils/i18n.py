@@ -73,11 +73,6 @@ def init(lang: str = ""):
     _load_language(lang)
 
 
-def get_language() -> str:
-    """Return the currently active language code."""
-    return _current_lang
-
-
 def t(key: str, **kwargs) -> str:
     """Translate *key*, formatting with *kwargs* if provided.
 

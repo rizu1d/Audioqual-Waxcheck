@@ -12,7 +12,6 @@ from .bitrate_classifier import assess_quality, QualityAssessment
 from ..utils.constants import (
     STATUS_ERROR,
     STATUS_PENDING,
-    STATUS_ANALYZING,
     SAMPLE_RATE,
     FFT_SIZE,
     HOP_LENGTH,
@@ -271,20 +270,4 @@ def create_pending_result(filepath: str) -> AnalysisResult:
         status=STATUS_PENDING,
         confidence=0,
         details="Esperando análisis...",
-    )
-
-
-def create_analyzing_result(filepath: str) -> AnalysisResult:
-    """Create an analyzing result placeholder for a file."""
-    return AnalysisResult(
-        filepath=filepath,
-        filename=get_filename(filepath),
-        format="",
-        duration=0,
-        declared_bitrate=None,
-        detected_quality="",
-        cutoff_frequency_khz=0,
-        status=STATUS_ANALYZING,
-        confidence=0,
-        details="Analizando...",
     )

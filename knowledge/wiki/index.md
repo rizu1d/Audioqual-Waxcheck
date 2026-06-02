@@ -1,7 +1,7 @@
 ---
 title: Índice del Wiki AudioQual
 created: 2026-04-27
-updated: 2026-06-01
+updated: 2026-06-03
 ---
 
 # AudioQual Wiki — Índice
@@ -40,6 +40,8 @@ updated: 2026-06-01
 - [Medición de CPU](decisiones/medicion-cpu.md) — Cómo medir rendimiento: powermetrics vs ps, wakeups, verdicto de R3
 - [Desarrollo con LLM](decisiones/desarrollo-con-llm.md) — Modelo de trabajo humano + Claude Code
 - [Drag-out de archivos](decisiones/drag-out-archivos.md) — Arrastrar resultados a Finder; mueve vs copia (⌥), colapso diferido
+- [Now Playing / Media Session (aplazada)](decisiones/now-playing-media-session.md) — Integración con el SO (Centro de Control / SMTC / MPRIS); diseñada pero aparcada por coste en peso
+- [Limpieza de código muerto y peso](decisiones/limpieza-codigo-muerto-y-peso.md) — ~1030 líneas muertas fuera; matplotlib y cairosvg eliminados; bundle 211 MB y el llvmlite (52%) como próximo objetivo
 
 ## Cronología
 

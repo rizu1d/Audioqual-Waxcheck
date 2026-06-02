@@ -250,29 +250,3 @@ def load_audio(filepath: str, target_sr: int = SAMPLE_RATE) -> AudioData:
     )
 
 
-def load_audio_segment(
-    filepath: str,
-    start_time: float = 0,
-    duration: Optional[float] = None,
-    target_sr: int = SAMPLE_RATE,
-) -> Tuple[np.ndarray, int]:
-    """
-    Load a segment of an audio file.
-
-    Args:
-        filepath: Path to the audio file
-        start_time: Start time in seconds
-        duration: Duration in seconds (None for entire file from start)
-        target_sr: Target sample rate
-
-    Returns:
-        Tuple of (samples, sample_rate)
-    """
-    samples, sr = librosa.load(
-        filepath,
-        sr=target_sr,
-        mono=True,
-        offset=start_time,
-        duration=duration,
-    )
-    return samples, sr

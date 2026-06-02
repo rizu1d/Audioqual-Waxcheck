@@ -1,7 +1,7 @@
 #!/bin/bash
 # ╔════════════════════════════════════════════════════════════╗
-# ║  WaxCheck — macOS Build Script                            ║
-# ║  Generates WaxCheck.app and optionally a .dmg installer   ║
+# ║  AudioQual — macOS Build Script                            ║
+# ║  Generates AudioQual.app and optionally a .dmg installer   ║
 # ╚════════════════════════════════════════════════════════════╝
 #
 # Usage:
@@ -18,7 +18,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 VERSION="0.1.0-beta"
-APP_NAME="WaxCheck"
+APP_NAME="AudioQual"
 
 echo "╔════════════════════════════════════════╗"
 echo "║  Building $APP_NAME v$VERSION for macOS  ║"
@@ -29,23 +29,23 @@ cd "$PROJECT_ROOT"
 
 # ── 1. Clean previous build ──
 echo "→ Cleaning previous build..."
-rm -rf dist/WaxCheck dist/WaxCheck.app build/WaxCheck 2>/dev/null || true
+rm -rf dist/AudioQual dist/AudioQual.app build/AudioQual 2>/dev/null || true
 
 # ── 2. Run PyInstaller ──
 echo "→ Running PyInstaller..."
-python3 -m PyInstaller build/waxcheck_macos.spec --noconfirm --clean
+python3 -m PyInstaller build/audioqual_macos.spec --noconfirm --clean
 
 echo ""
-if [ -d "dist/WaxCheck.app" ]; then
-    APP_SIZE=$(du -sh "dist/WaxCheck.app" | cut -f1)
-    echo "✓ WaxCheck.app built successfully ($APP_SIZE)"
+if [ -d "dist/AudioQual.app" ]; then
+    APP_SIZE=$(du -sh "dist/AudioQual.app" | cut -f1)
+    echo "✓ AudioQual.app built successfully ($APP_SIZE)"
 else
-    # PyInstaller with BUNDLE creates the .app inside dist/WaxCheck/
+    # PyInstaller with BUNDLE creates the .app inside dist/AudioQual/
     # or directly in dist/ depending on version
-    if [ -d "dist/WaxCheck/WaxCheck.app" ]; then
-        echo "✓ WaxCheck.app built at dist/WaxCheck/WaxCheck.app"
+    if [ -d "dist/AudioQual/AudioQual.app" ]; then
+        echo "✓ AudioQual.app built at dist/AudioQual/AudioQual.app"
     else
-        echo "✗ Build failed — WaxCheck.app not found"
+        echo "✗ Build failed — AudioQual.app not found"
         exit 1
     fi
 fi
@@ -59,10 +59,10 @@ if [[ "${1:-}" == "--dmg" ]]; then
     DMG_TEMP="dist/dmg_temp"
 
     # Find the .app
-    if [ -d "dist/WaxCheck.app" ]; then
-        APP_PATH="dist/WaxCheck.app"
+    if [ -d "dist/AudioQual.app" ]; then
+        APP_PATH="dist/AudioQual.app"
     else
-        APP_PATH="dist/WaxCheck/WaxCheck.app"
+        APP_PATH="dist/AudioQual/AudioQual.app"
     fi
 
     # Prepare DMG staging directory
@@ -92,7 +92,7 @@ echo ""
 echo "════════════════════════════════════════"
 echo "  Build complete!"
 echo ""
-echo "  App:  dist/WaxCheck.app"
+echo "  App:  dist/AudioQual.app"
 if [[ "${1:-}" == "--dmg" ]]; then
     echo "  DMG:  dist/$DMG_NAME"
 fi
