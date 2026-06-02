@@ -30,6 +30,15 @@ SelectionCallback = Callable[[Optional[AnalysisResult]], None]
 _MONO_COLUMNS = {"duration", "declared_bitrate", "cutoff_frequency", "detected_quality"}
 
 
+def _placeholder_result() -> AnalysisResult:
+    """Empty result used to construct recycled pool rows before they are bound."""
+    return AnalysisResult(
+        filepath="", filename="", format="", duration=0.0,
+        declared_bitrate=None, detected_quality="", cutoff_frequency_khz=0.0,
+        status=STATUS_PENDING, confidence=0.0, details="",
+    )
+
+
 class QualityBadge(ctk.CTkFrame):
     """Pill-shaped quality badge with colored dot, text, and semi-transparent bg."""
 
@@ -458,6 +467,28 @@ class ResultRow(ctk.CTkFrame):
                     break
             cell.configure(text=self._get_value(col_id, width))
 
+    def rebind(self, result: AnalysisResult, selected: bool):
+        """Re-point this recycled row to a different result.
+
+        Used by the virtualized table to reuse a small pool of row widgets
+        instead of creating one widget per file.  Reconfigures the existing
+        cells/badge in place (no widget creation/destruction).
+        """
+        self.update_result(result)        # sets self.result + refreshes cells/badge
+        self.set_selected(selected)       # selection state comes from the model
+        self._hover_state = False
+        self._reset_dedup()
+
+    def _reset_dedup(self):
+        """Reset per-click dedup timestamps.
+
+        A recycled widget could otherwise inherit a stale event.time and drop
+        a legitimate click whose timestamp happens to collide.
+        """
+        self._last_row_click_time = 0
+        self._last_row_release_time = 0
+        self._last_badge_click_time = 0
+
 
 class ResultsTable(ctk.CTkFrame):
     """
@@ -481,6 +512,10 @@ class ResultsTable(ctk.CTkFrame):
 
     MIN_WIDTHS = [100, 50, 60, 60, 70, 70, 90]
 
+    # Virtualization geometry
+    ROW_HEIGHT = 41   # 40px row + 1px gap (matches former pady=(0, 1))
+    BUFFER = 8        # extra rows rendered above/below the viewport
+
     def __init__(
         self,
         master,
@@ -496,14 +531,28 @@ class ResultsTable(ctk.CTkFrame):
 
         self.on_selection_changed = on_selection_changed
         self.on_context_menu = on_context_menu
-        self._results: Dict[str, AnalysisResult] = {}
-        self._rows: Dict[str, ResultRow] = {}
-        self._selected_rows: List[ResultRow] = []
-        self._anchor_row: Optional[ResultRow] = None
-        # Row whose collapse-to-single was deferred from press to release,
+
+        # ── Model (source of truth — independent of which rows are rendered) ──
+        self._results: Dict[str, AnalysisResult] = {}   # filepath -> data
+        self._order: List[str] = []                      # filepaths in insertion/sort order (unfiltered)
+        self._visible: List[str] = []                    # filepaths after filter, in display order
+
+        # Selection lives in the MODEL (filepaths), so it survives a row leaving
+        # and re-entering the viewport during scroll.
+        self._selected_fps: List[str] = []
+        self._anchor_fp: Optional[str] = None
+        # Filepath whose collapse-to-single was deferred from press to release,
         # so a drag-out can keep the full multi-selection (Finder-style).
-        self._pending_collapse_row: Optional[ResultRow] = None
+        self._pending_collapse_fp: Optional[str] = None
         self._quality_popup: Optional[QualityPopup] = None
+
+        # ── View (recycled pool of ~K row widgets) ──
+        self._pool: List[ResultRow] = []                 # reusable ResultRow widgets
+        self._row_for_fp: Dict[str, ResultRow] = {}      # filepath -> widget, only for mounted rows
+        self._last_first: int = 0                        # cached rendered window (avoids redundant re-render)
+        self._last_last: int = 0
+        self._last_total_h: int = -1                     # cached content height (avoids redundant spacer resize)
+        self._viewport_timer = None                      # debounce for viewport refresh
 
         # Mutable column widths (source of truth for current widths)
         self._column_widths: List[int] = [w for _, _, w in self.COLUMNS]
@@ -527,12 +576,10 @@ class ResultsTable(ctk.CTkFrame):
         # Auto-resize state (distribute extra width to filename column)
         self._resize_table_timer = None
         self._last_table_width = 0
-        self._resize_active = False
 
         # Search/filter state
         self._filter_text: str = ""
         self._filter_active: bool = False
-        self._hidden_rows: set = set()
 
         self._setup_ui()
 
@@ -611,14 +658,31 @@ class ResultsTable(ctk.CTkFrame):
         )
         self.scroll_frame.grid(row=1, column=0, sticky="nsew")
 
-        # Throttle canvas→inner-frame width propagation so that during
-        # continuous window resize, the 90+ packed rows don't re-layout
-        # on every single frame.  Only the final width is applied.
+        # ── Virtualization ──
+        # A single packed spacer drives the inner frame's height (and therefore
+        # the canvas scrollregion via CTk's bbox("all") binding), so the
+        # scrollbar reflects the full list while only ~K rows are actually
+        # rendered.  Rows are positioned with absolute place() over the spacer.
+        self._spacer = ctk.CTkFrame(
+            self.scroll_frame, fg_color="transparent", corner_radius=0, height=1
+        )
+        self._spacer.pack(fill="x")
+        self._spacer.lower()
+
         self._canvas_fit_timer = None
         canvas = self.scroll_frame._parent_canvas
         window_id = self.scroll_frame._create_window_id
 
+        # Wrap the canvas yscrollcommand so every scroll source (wheel, scrollbar
+        # drag, yview_moveto, keyboard) triggers a viewport recompute, while
+        # still forwarding to the scrollbar so the thumb stays in sync.
+        self._scrollbar_set = self.scroll_frame._scrollbar.set
+        canvas.configure(yscrollcommand=self._on_canvas_yscroll)
+
+        # Throttle canvas width propagation during continuous resize; also
+        # recompute the visible window when the viewport height changes.
         def _throttled_canvas_fit(event):
+            self._schedule_viewport_update()
             if self._canvas_fit_timer is not None:
                 self.after_cancel(self._canvas_fit_timer)
             self._canvas_fit_timer = self.after(
@@ -627,14 +691,177 @@ class ResultsTable(ctk.CTkFrame):
 
         canvas.bind("<Configure>", _throttled_canvas_fit)
 
-        # Configure scroll frame columns to match header
-        for i in range(len(self.COLUMNS)):
-            self.scroll_frame.grid_columnconfigure(i, weight=0)
-
         self._setup_search_widget()
 
         # Auto-distribute width on resize
         self.bind("<Configure>", self._on_table_configure)
+
+    # ─── Virtualization engine ───────────────────────────────────────
+
+    def _on_canvas_yscroll(self, lo, hi):
+        """Proxy for the canvas yscrollcommand: keep the thumb in sync and
+        recompute the visible window on every scroll."""
+        self._scrollbar_set(lo, hi)
+        self._schedule_viewport_update()
+
+    def _schedule_viewport_update(self):
+        """Debounce viewport recomputation (~1 frame) to coalesce bursts."""
+        if self._viewport_timer is not None:
+            return
+        self._viewport_timer = self.after(16, self._refresh_viewport)
+
+    def _rebuild_visible(self):
+        """Recompute the visible (filtered) filepath list from the current order."""
+        if self._filter_text:
+            self._visible = [
+                fp for fp in self._order
+                if self._matches_filter(self._results[fp].filename)
+            ]
+        else:
+            self._visible = list(self._order)
+
+    def _ensure_pool(self, needed: int):
+        """Grow the recycled row pool to at least `needed` widgets (never shrinks)."""
+        while len(self._pool) < needed:
+            row = ResultRow(
+                self.scroll_frame,
+                _placeholder_result(),
+                self._current_columns(),
+                on_click=self._on_row_click,
+                on_release=self._on_row_release,
+                on_right_click=self._on_row_right_click,
+                on_badge_click=self._on_badge_click,
+                on_drag_files=self._get_drag_filepaths,
+            )
+            row._mounted = False
+            row._fp = None
+            row._cur_y = None
+            row.place_forget()
+            self._pool.append(row)
+
+    def _refresh_viewport(self, force: bool = False):
+        """Render only the rows inside the current viewport (+ buffer)."""
+        if self._viewport_timer is not None:
+            try:
+                self.after_cancel(self._viewport_timer)
+            except Exception:
+                pass
+            self._viewport_timer = None
+        canvas = self.scroll_frame._parent_canvas
+
+        n = len(self._visible)
+        total_h = n * self.ROW_HEIGHT
+
+        # Resize the spacer (drives scrollregion) only when the count changes.
+        if total_h != self._last_total_h:
+            self._spacer.configure(height=max(total_h, 1))
+            self._last_total_h = total_h
+            # Settle the scrollregion so canvasy() reads the new geometry.
+            try:
+                canvas.update_idletasks()
+            except Exception:
+                pass
+
+        if n == 0:
+            for row in self._pool:
+                if getattr(row, "_mounted", False):
+                    row.place_forget()
+                    row._mounted = False
+                    row._fp = None
+            self._row_for_fp = {}
+            self._last_first = self._last_last = 0
+            return
+
+        viewport_h = canvas.winfo_height()
+        if viewport_h <= 1:
+            # Canvas not realized yet — retry shortly.
+            self._schedule_viewport_update()
+            return
+
+        top_px = max(0.0, canvas.canvasy(0))
+        first = max(0, int(top_px // self.ROW_HEIGHT) - self.BUFFER)
+        count = int(viewport_h // self.ROW_HEIGHT) + 2 * self.BUFFER + 2
+        last = min(n, first + count)
+
+        if not force and first == self._last_first and last == self._last_last:
+            return
+        self._last_first, self._last_last = first, last
+
+        self._mount_range(first, last)
+
+    def _mount_range(self, first: int, last: int):
+        """Bind pool rows to the visible slice, recycling rows that already
+        show a still-visible filepath to minimize reconfigure work."""
+        desired = self._visible[first:last]
+        desired_set = set(desired)
+        selected_set = set(self._selected_fps)
+
+        self._ensure_pool(len(desired))
+
+        # Keep rows already showing a desired filepath; free the rest.
+        reuse: Dict[str, ResultRow] = {}
+        free: List[ResultRow] = []
+        for row in self._pool:
+            fp = getattr(row, "_fp", None)
+            if getattr(row, "_mounted", False) and fp in desired_set and fp not in reuse:
+                reuse[fp] = row
+            else:
+                free.append(row)
+
+        new_map: Dict[str, ResultRow] = {}
+        fi = 0
+        for offset, fp in enumerate(desired):
+            y = (first + offset) * self.ROW_HEIGHT
+            want_sel = fp in selected_set
+            row = reuse.get(fp)
+            if row is not None:
+                # Data is kept fresh by add_result/update_filepath.  Only touch
+                # geometry/appearance when something actually changed — during a
+                # plain scroll a reused row keeps its absolute y and state, so
+                # this loop becomes nearly free.
+                if row._selected != want_sel:
+                    row.set_selected(want_sel)
+                if row._cur_y != y:
+                    row.place_configure(y=y)
+                    row._cur_y = y
+            else:
+                row = free[fi]
+                fi += 1
+                row.rebind(self._results[fp], want_sel)
+                # Height comes from the constructor (40px, propagation off); CTk
+                # forbids passing width/height to place().
+                row.place(x=0, y=y, relwidth=1.0)
+                row._cur_y = y
+                row._mounted = True
+            row._fp = fp
+            new_map[fp] = row
+
+        # Hide any leftover free rows.
+        for k in range(fi, len(free)):
+            row = free[k]
+            if getattr(row, "_mounted", False):
+                row.place_forget()
+                row._mounted = False
+                row._fp = None
+
+        self._row_for_fp = new_map
+
+    def _apply_selection_to_pool(self):
+        """Reflect the model's selection on the currently mounted rows."""
+        sel = set(self._selected_fps)
+        for fp, row in self._row_for_fp.items():
+            row.set_selected(fp in sel)
+
+    def _sync_row_widths(self, row: ResultRow):
+        """Apply the current column widths to a single (pool) row."""
+        for i, (col_id, _, _) in enumerate(self.COLUMNS):
+            width = self._column_widths[i]
+            w = 1 if i == 0 else 0
+            cell_frame = row._cell_frames.get(col_id)
+            if cell_frame:
+                cell_frame.configure(width=width)
+            row.grid_columnconfigure(i, weight=w, minsize=width)
+            row._columns[i][2] = width
 
     # ─── Auto-resize ─────────────────────────────────────────────────
 
@@ -647,45 +874,23 @@ class ResultsTable(ctk.CTkFrame):
             pass
 
     def _on_table_configure(self, event):
-        """Expand filename column to fill available width on resize.
+        """Expand filename column to fill available width on resize (debounced).
 
-        During continuous window resize with many rows, temporarily detach
-        the scroll frame from the grid so tkinter skips geometry/rendering
-        for ~1400 child widgets.  The frame snaps back 150 ms after the
-        last Configure event.
+        With virtualization only ~K rows are ever rendered, so there is no need
+        to detach the scroll frame during resize — a simple debounce suffices.
         """
         # Don't interfere with manual column drag
         if self._resize_col >= 0:
             return
-        # Detach scroll frame on the first resize event (only when rows exist)
-        if not self._resize_active and self._rows:
-            self._resize_active = True
-            self.scroll_frame.grid_remove()
-        # Debounce: schedule restoration after resize ends
         if self._resize_table_timer is not None:
             self.after_cancel(self._resize_table_timer)
         self._resize_table_timer = self.after(150, self._finish_resize)
 
     def _finish_resize(self):
-        """Restore scroll frame and sync widths after resize ends."""
+        """Sync widths and re-render the viewport after resize ends."""
         self._resize_table_timer = None
-        if self._resize_active:
-            self._resize_active = False
-            self.scroll_frame.grid()
-            # Let grid settle before syncing widths
-            self.after(20, self._sync_after_resize)
-        else:
-            self._check_and_distribute_width()
-
-    def _sync_after_resize(self):
-        """Sync inner frame and column widths after grid restore."""
-        try:
-            canvas = self.scroll_frame._parent_canvas
-            wid = self.scroll_frame._create_window_id
-            canvas.itemconfigure(wid, width=canvas.winfo_width())
-        except Exception:
-            pass
         self._check_and_distribute_width()
+        self._refresh_viewport(force=True)
 
     def _check_and_distribute_width(self):
         """Check actual width and redistribute space to filename column."""
@@ -822,36 +1027,14 @@ class ResultsTable(ctk.CTkFrame):
         self._apply_filter()
 
     def _apply_filter(self):
-        """Show/hide rows based on the current filter text."""
-        if not self._filter_text:
-            self._show_all_rows()
-            return
-
-        newly_hidden = set()
-        for filepath, row in self._rows.items():
-            if self._matches_filter(row.result.filename):
-                if filepath in self._hidden_rows:
-                    self._hidden_rows.discard(filepath)
-                    row.pack(fill="x", pady=(0, 1))
-            else:
-                if filepath not in self._hidden_rows:
-                    row.pack_forget()
-                newly_hidden.add(filepath)
-
-        self._hidden_rows = newly_hidden
+        """Recompute the visible list from the current filter text and re-render."""
+        self._rebuild_visible()
+        self._refresh_viewport(force=True)
 
     def _show_all_rows(self):
-        """Restore all hidden rows."""
-        if not self._hidden_rows:
-            return
-        for filepath in list(self._hidden_rows):
-            row = self._rows.get(filepath)
-            if row:
-                row.pack(fill="x", pady=(0, 1))
-        self._hidden_rows.clear()
-        # Re-apply sort order if active
-        if self._sort_column:
-            self._reorder_rows()
+        """Restore all rows (filter cleared)."""
+        self._rebuild_visible()
+        self._refresh_viewport(force=True)
 
     # ─── Column resize (boundary-based, no grip widgets) ────────────
 
@@ -989,36 +1172,29 @@ class ResultsTable(ctk.CTkFrame):
         self._last_table_width = table_width
 
     def _apply_column_widths(self):
-        """Propagate current column widths to header and all rows."""
+        """Propagate current column widths to header and the row pool."""
         for i, (col_id, _, _) in enumerate(self.COLUMNS):
             width = self._column_widths[i]
             w = 1 if i == 0 else 0  # filename column stretches
-
             # Update header
             self._header_cells[i].configure(width=width)
             self.header_frame.grid_columnconfigure(i, weight=w, minsize=width)
-
-            # Update all rows
-            for row in self._rows.values():
-                cell_frame = row._cell_frames.get(col_id)
-                if cell_frame:
-                    cell_frame.configure(width=width)
-                row.grid_columnconfigure(i, weight=w, minsize=width)
-                # Keep row's _columns in sync
-                row._columns[i][2] = width
+        # Update the pool (only ~K widgets, not one per file)
+        for row in self._pool:
+            self._sync_row_widths(row)
 
     def _refresh_all_text(self):
-        """Re-truncate text in all rows based on current column widths."""
-        for row in self._rows.values():
+        """Re-truncate text in pool rows based on current column widths."""
+        for row in self._pool:
             row.refresh_text()
 
     def _apply_filename_width(self):
-        """Update only the filename column width (column 0) in header and rows."""
+        """Update only the filename column width (column 0) in header and pool rows."""
         width = self._column_widths[0]
         col_id = self.COLUMNS[0][0]
         self._header_cells[0].configure(width=width)
         self.header_frame.grid_columnconfigure(0, weight=1, minsize=width)
-        for row in self._rows.values():
+        for row in self._pool:
             cell_frame = row._cell_frames.get(col_id)
             if cell_frame:
                 cell_frame.configure(width=width)
@@ -1026,9 +1202,9 @@ class ResultsTable(ctk.CTkFrame):
             row._columns[0][2] = width
 
     def _refresh_filename_text(self):
-        """Re-truncate only filename text in all rows."""
+        """Re-truncate only filename text in pool rows."""
         width = self._column_widths[0]
-        for row in self._rows.values():
+        for row in self._pool:
             cell = row._cells.get("filename")
             if cell:
                 cell.configure(text=row._get_value("filename", width))
@@ -1041,13 +1217,15 @@ class ResultsTable(ctk.CTkFrame):
         """
         # A drag is starting: cancel any deferred collapse so the release does
         # not shrink the multi-selection after the files have been exported.
-        self._pending_collapse_row = None
-        if row in self._selected_rows and len(self._selected_rows) > 1:
-            return [r.result.filepath for r in self._selected_rows]
-        return [row.result.filepath]
+        self._pending_collapse_fp = None
+        fp = row.result.filepath
+        if fp in self._selected_fps and len(self._selected_fps) > 1:
+            return list(self._selected_fps)
+        return [fp]
 
     def _on_row_click(self, row: ResultRow, event=None):
         """Handle row click for selection with modifier key support."""
+        fp = row.result.filepath
         cmd_held = False
         shift_held = False
         if event:
@@ -1058,83 +1236,75 @@ class ResultsTable(ctk.CTkFrame):
             shift_held = bool(event.state & 0x1)     # Shift
 
         if cmd_held:
-            self._pending_collapse_row = None
-            self._toggle_selection(row)
+            self._pending_collapse_fp = None
+            self._toggle_selection(fp)
         elif shift_held:
-            self._pending_collapse_row = None
-            self._extend_selection(row)
-        elif row in self._selected_rows and len(self._selected_rows) > 1:
+            self._pending_collapse_fp = None
+            self._extend_selection(fp)
+        elif fp in self._selected_fps and len(self._selected_fps) > 1:
             # Pressing on an already multi-selected row: defer collapsing to a
             # single selection until release, so a drag-out can export them all.
-            self._pending_collapse_row = row
+            self._pending_collapse_fp = fp
         else:
-            self._pending_collapse_row = None
-            self._select_single(row)
+            self._pending_collapse_fp = None
+            self._select_single(fp)
 
     def _on_row_release(self, row: ResultRow, event=None):
         """Finalize a deferred single-select if the press did not start a drag."""
-        if self._pending_collapse_row is row:
-            self._pending_collapse_row = None
-            self._select_single(row)
+        fp = row.result.filepath
+        if self._pending_collapse_fp == fp:
+            self._pending_collapse_fp = None
+            self._select_single(fp)
 
-    def _select_single(self, row: ResultRow):
-        """Select a single row, deselecting all others."""
-        for r in self._selected_rows:
-            if r != row:
-                r.set_selected(False)
-        row.set_selected(True)
-        self._selected_rows = [row]
-        self._anchor_row = row
+    def _select_single(self, fp: str):
+        """Select a single filepath, deselecting all others."""
+        self._selected_fps = [fp]
+        self._anchor_fp = fp
+        self._apply_selection_to_pool()
         if self.on_selection_changed:
-            self.on_selection_changed(row.result)
+            self.on_selection_changed(self._results.get(fp))
 
-    def _toggle_selection(self, row: ResultRow):
-        """Toggle selection of a row (Cmd/Ctrl+click)."""
-        if row in self._selected_rows:
-            row.set_selected(False)
-            self._selected_rows.remove(row)
-            if self._anchor_row == row:
-                self._anchor_row = self._selected_rows[-1] if self._selected_rows else None
+    def _toggle_selection(self, fp: str):
+        """Toggle selection of a filepath (Cmd/Ctrl+click)."""
+        if fp in self._selected_fps:
+            self._selected_fps.remove(fp)
+            if self._anchor_fp == fp:
+                self._anchor_fp = self._selected_fps[-1] if self._selected_fps else None
         else:
-            row.set_selected(True)
-            self._selected_rows.append(row)
-            self._anchor_row = row
+            self._selected_fps.append(fp)
+            self._anchor_fp = fp
+        self._apply_selection_to_pool()
         if self.on_selection_changed:
-            result = self._selected_rows[-1].result if self._selected_rows else None
+            result = self._results.get(self._selected_fps[-1]) if self._selected_fps else None
             self.on_selection_changed(result)
 
-    def _extend_selection(self, row: ResultRow):
-        """Extend selection from anchor to row (Shift+click)."""
-        if not self._anchor_row:
-            self._select_single(row)
+    def _extend_selection(self, fp: str):
+        """Extend selection from anchor to filepath (Shift+click)."""
+        if not self._anchor_fp:
+            self._select_single(fp)
             return
 
-        visible = [r for fp, r in self._rows.items() if fp not in self._hidden_rows]
         try:
-            anchor_idx = visible.index(self._anchor_row)
-            target_idx = visible.index(row)
+            anchor_idx = self._visible.index(self._anchor_fp)
+            target_idx = self._visible.index(fp)
         except ValueError:
-            self._select_single(row)
+            self._select_single(fp)
             return
 
         start = min(anchor_idx, target_idx)
         end = max(anchor_idx, target_idx)
-
-        for r in self._selected_rows:
-            r.set_selected(False)
-
-        self._selected_rows = visible[start:end + 1]
-        for r in self._selected_rows:
-            r.set_selected(True)
+        self._selected_fps = self._visible[start:end + 1]
+        self._apply_selection_to_pool()
         # Don't change anchor on Shift+click
         if self.on_selection_changed:
-            self.on_selection_changed(row.result)
+            self.on_selection_changed(self._results.get(fp))
 
     def _on_row_right_click(self, row: ResultRow, event):
         """Handle right-click on a row."""
+        fp = row.result.filepath
         # If the row is not in the current selection, select it (single)
-        if row not in self._selected_rows:
-            self._select_single(row)
+        if fp not in self._selected_fps:
+            self._select_single(fp)
         if self.on_context_menu:
             self.on_context_menu(event)
 
@@ -1239,64 +1409,40 @@ class ResultsTable(ctk.CTkFrame):
         self._reorder_timer = self.after(50, self._reorder_rows)
 
     def _reorder_rows(self):
-        """Reorder all rows in the scroll frame based on current sort."""
+        """Reorder the model based on current sort, then re-render the viewport."""
         self._reorder_timer = None
 
-        if not self._sort_column or not self._rows:
+        if not self._sort_column or not self._order:
             return
 
-        # Sort rows
-        sorted_items = sorted(
-            self._rows.items(),
-            key=lambda item: self._get_sort_key(item[1].result),
+        self._order.sort(
+            key=lambda fp: self._get_sort_key(self._results[fp]),
             reverse=not self._sort_ascending,
         )
-
-        # Rebuild _rows dict in sorted order
-        self._rows = dict(sorted_items)
-
-        # Re-pack only visible rows using pack(after=...) to avoid flickering
-        visible = [
-            row for fp, row in self._rows.items()
-            if fp not in self._hidden_rows
-        ]
-        if not visible:
-            return
-        visible[0].pack(fill="x", pady=(0, 1))
-        for i in range(1, len(visible)):
-            visible[i].pack(fill="x", pady=(0, 1), after=visible[i - 1])
+        self._rebuild_visible()
+        self._refresh_viewport(force=True)
 
     def add_result(self, result: AnalysisResult):
         """Add or update a result in the table."""
-        self._results[result.filepath] = result
+        fp = result.filepath
+        existing = fp in self._results
+        self._results[fp] = result
 
-        # Check if row exists
-        if result.filepath in self._rows:
-            # Update existing row
-            self._rows[result.filepath].update_result(result)
+        if existing:
+            # Live update: if the row is currently mounted, refresh it in place.
+            row = self._row_for_fp.get(fp)
+            if row is not None:
+                row.rebind(result, fp in set(self._selected_fps))
         else:
-            # Create new row with current column widths
-            row = ResultRow(
-                self.scroll_frame,
-                result,
-                self._current_columns(),
-                on_click=self._on_row_click,
-                on_release=self._on_row_release,
-                on_right_click=self._on_row_right_click,
-                on_badge_click=self._on_badge_click,
-                on_drag_files=self._get_drag_filepaths,
-            )
-            row.pack(fill="x", pady=(0, 1))
-            self._rows[result.filepath] = row
+            self._order.append(fp)
 
-            # If filter is active and new file doesn't match, hide it
-            if self._filter_text and not self._matches_filter(result.filename):
-                row.pack_forget()
-                self._hidden_rows.add(result.filepath)
+        self._rebuild_visible()
 
         # Maintain sort order if sorting is active (debounced during batch)
         if self._sort_column:
             self._schedule_reorder()
+
+        self._schedule_viewport_update()
 
     def add_results(self, results: List[AnalysisResult]):
         """Add multiple results to the table."""
@@ -1307,53 +1453,51 @@ class ResultsTable(ctk.CTkFrame):
         """Clear all results from the table."""
         self._close_quality_popup()
         # Reset search/filter state
-        self._hidden_rows.clear()
         self._filter_text = ""
         if self._filter_active:
             self.close_search()
 
-        # Cancel any pending reorder timer
+        # Cancel any pending timers
         if self._reorder_timer is not None:
             self.after_cancel(self._reorder_timer)
             self._reorder_timer = None
+        if self._viewport_timer is not None:
+            self.after_cancel(self._viewport_timer)
+            self._viewport_timer = None
 
-        # Get all rows to destroy
-        rows_to_destroy = list(self._rows.values())
-
-        # Clear data structures immediately for responsiveness
-        self._rows.clear()
+        # Clear the model
         self._results.clear()
-        self._selected_rows.clear()
-        self._anchor_row = None
+        self._order.clear()
+        self._visible.clear()
+        self._selected_fps.clear()
+        self._anchor_fp = None
+        self._pending_collapse_fp = None
 
-        # Batch destroy widgets - do it in chunks to avoid long UI freeze
-        if len(rows_to_destroy) <= 50:
-            # Small batch: destroy all at once
-            for row in rows_to_destroy:
-                row.destroy()
-        else:
-            # Large batch: destroy in chunks using after() to keep UI responsive
-            self._destroy_rows_batched(rows_to_destroy, 0)
+        # Recycle (don't destroy) the pool: just unmount every row.
+        self._row_for_fp.clear()
+        for row in self._pool:
+            if getattr(row, "_mounted", False):
+                row.place_forget()
+                row._mounted = False
+                row._fp = None
 
-    def _destroy_rows_batched(self, rows: list, index: int, batch_size: int = 20):
-        """Destroy rows in batches to keep UI responsive."""
-        end_index = min(index + batch_size, len(rows))
-        for i in range(index, end_index):
-            rows[i].destroy()
-
-        if end_index < len(rows):
-            # Schedule next batch
-            self.after(1, lambda: self._destroy_rows_batched(rows, end_index, batch_size))
+        self._last_first = self._last_last = 0
+        self._last_total_h = -1
+        self._spacer.configure(height=1)
+        try:
+            self.scroll_frame._parent_canvas.yview_moveto(0.0)
+        except Exception:
+            pass
 
     def get_selected_result(self) -> Optional[AnalysisResult]:
         """Get the currently selected result (last clicked if multi-selected)."""
-        if self._selected_rows:
-            return self._selected_rows[-1].result
+        if self._selected_fps:
+            return self._results.get(self._selected_fps[-1])
         return None
 
     def get_selected_results(self) -> List[AnalysisResult]:
         """Get all selected results."""
-        return [r.result for r in self._selected_rows]
+        return [self._results[fp] for fp in self._selected_fps if fp in self._results]
 
     def get_all_results(self) -> List[AnalysisResult]:
         """Get all results in the table."""
@@ -1365,10 +1509,8 @@ class ResultsTable(ctk.CTkFrame):
 
     def select_first(self):
         """Select the first visible item in the table."""
-        for fp, row in self._rows.items():
-            if fp not in self._hidden_rows:
-                self._select_single(row)
-                return
+        if self._visible:
+            self._select_single(self._visible[0])
 
     def select_next(self) -> Optional[AnalysisResult]:
         """
@@ -1377,34 +1519,21 @@ class ResultsTable(ctk.CTkFrame):
         Returns:
             The newly selected result, or None if at end or no items.
         """
-        if not self._rows:
+        if not self._visible:
             return None
 
-        visible = [
-            row for fp, row in self._rows.items()
-            if fp not in self._hidden_rows
-        ]
-        if not visible:
-            return None
+        if not self._selected_fps:
+            return self._select_at_index(0)
 
-        if not self._selected_rows:
-            self._select_single(visible[0])
-            self.scroll_to_row(visible[0])
-            return visible[0].result
-
-        # Use last selected row as reference point
-        current = self._selected_rows[-1]
+        # Use last selected filepath as reference point
         try:
-            current_index = visible.index(current)
+            current_index = self._visible.index(self._selected_fps[-1])
         except ValueError:
             return None
 
         next_index = current_index + 1
-        if next_index < len(visible):
-            self._select_single(visible[next_index])
-            self.scroll_to_row(visible[next_index])
-            return visible[next_index].result
-
+        if next_index < len(self._visible):
+            return self._select_at_index(next_index)
         return None
 
     def select_previous(self) -> Optional[AnalysisResult]:
@@ -1414,35 +1543,29 @@ class ResultsTable(ctk.CTkFrame):
         Returns:
             The newly selected result, or None if at start or no items.
         """
-        if not self._rows:
+        if not self._visible:
             return None
 
-        visible = [
-            row for fp, row in self._rows.items()
-            if fp not in self._hidden_rows
-        ]
-        if not visible:
-            return None
+        if not self._selected_fps:
+            return self._select_at_index(len(self._visible) - 1)
 
-        if not self._selected_rows:
-            self._select_single(visible[-1])
-            self.scroll_to_row(visible[-1])
-            return visible[-1].result
-
-        # Use first selected row as reference point
-        current = self._selected_rows[0]
+        # Use first selected filepath as reference point
         try:
-            current_index = visible.index(current)
+            current_index = self._visible.index(self._selected_fps[0])
         except ValueError:
             return None
 
         prev_index = current_index - 1
         if prev_index >= 0:
-            self._select_single(visible[prev_index])
-            self.scroll_to_row(visible[prev_index])
-            return visible[prev_index].result
-
+            return self._select_at_index(prev_index)
         return None
+
+    def _select_at_index(self, idx: int) -> Optional[AnalysisResult]:
+        """Select the visible item at `idx`, scroll it into view, return its result."""
+        fp = self._visible[idx]
+        self._select_single(fp)
+        self.scroll_to_index(idx)
+        return self._results.get(fp)
 
     def remove_result(self, filepath: str) -> Optional[AnalysisResult]:
         """
@@ -1453,48 +1576,44 @@ class ResultsTable(ctk.CTkFrame):
         Returns:
             The newly selected result, or None if the table is now empty.
         """
-        if filepath not in self._rows:
+        if filepath not in self._results:
             return None
 
-        row = self._rows[filepath]
-        was_selected = row in self._selected_rows
-
-        # Find index in visible rows before removing
-        visible = [r for fp, r in self._rows.items() if fp not in self._hidden_rows]
+        was_selected = filepath in self._selected_fps
+        # Position in the visible list (before removal) to pick a neighbour.
         try:
-            index = visible.index(row)
+            index = self._visible.index(filepath)
         except ValueError:
             index = -1
 
-        # Remove from data structures
-        del self._rows[filepath]
+        if filepath in self._order:
+            self._order.remove(filepath)
         del self._results[filepath]
-        self._hidden_rows.discard(filepath)
         if was_selected:
-            self._selected_rows.remove(row)
-        if self._anchor_row == row:
-            self._anchor_row = self._selected_rows[-1] if self._selected_rows else None
-        row.destroy()
+            self._selected_fps.remove(filepath)
+        if self._anchor_fp == filepath:
+            self._anchor_fp = self._selected_fps[-1] if self._selected_fps else None
+        if self._pending_collapse_fp == filepath:
+            self._pending_collapse_fp = None
+
+        self._rebuild_visible()
+        self._refresh_viewport(force=True)
 
         if not was_selected:
-            return self._selected_rows[-1].result if self._selected_rows else None
+            return self._results.get(self._selected_fps[-1]) if self._selected_fps else None
 
         # If other selections remain, use the last one
-        if self._selected_rows:
-            return self._selected_rows[-1].result
+        if self._selected_fps:
+            return self._results[self._selected_fps[-1]]
 
-        # No selections remain — pick a new one
-        remaining = list(self._rows.values())
-        if not remaining:
+        # No selections remain — pick a neighbour
+        if not self._visible:
             if self.on_selection_changed:
                 self.on_selection_changed(None)
             return None
 
-        new_index = min(index, len(remaining) - 1)
-        new_row = remaining[new_index]
-        self._select_single(new_row)
-        self.scroll_to_row(new_row)
-        return new_row.result
+        new_index = min(index, len(self._visible) - 1) if index >= 0 else 0
+        return self._select_at_index(new_index)
 
     def remove_results(self, filepaths: List[str]) -> Optional[AnalysisResult]:
         """
@@ -1507,100 +1626,87 @@ class ResultsTable(ctk.CTkFrame):
             return self.get_selected_result()
 
         for filepath in filepaths:
-            if filepath not in self._rows:
+            if filepath not in self._results:
                 continue
-            row = self._rows[filepath]
-            if row in self._selected_rows:
-                self._selected_rows.remove(row)
-            if self._anchor_row == row:
-                self._anchor_row = None
-            del self._rows[filepath]
+            if filepath in self._order:
+                self._order.remove(filepath)
             del self._results[filepath]
-            self._hidden_rows.discard(filepath)
-            row.destroy()
+            if filepath in self._selected_fps:
+                self._selected_fps.remove(filepath)
+            if self._anchor_fp == filepath:
+                self._anchor_fp = None
+            if self._pending_collapse_fp == filepath:
+                self._pending_collapse_fp = None
+
+        self._rebuild_visible()
+        self._refresh_viewport(force=True)
 
         # Auto-select if nothing is selected
-        if not self._selected_rows:
-            self._anchor_row = None
-            remaining = list(self._rows.values())
-            if remaining:
-                self._select_single(remaining[0])
-                return remaining[0].result
-            else:
-                if self.on_selection_changed:
-                    self.on_selection_changed(None)
-                return None
+        if not self._selected_fps:
+            self._anchor_fp = None
+            if self._visible:
+                fp = self._visible[0]
+                self._select_single(fp)
+                return self._results[fp]
+            if self.on_selection_changed:
+                self.on_selection_changed(None)
+            return None
 
-        return self._selected_rows[-1].result
+        return self._results[self._selected_fps[-1]]
 
-    def scroll_to_row(self, row: ResultRow):
-        """Scroll the table so that the given row is visible."""
+    def scroll_to_index(self, idx: int):
+        """Scroll so that the visible item at `idx` is shown, then render it."""
         try:
             canvas = self.scroll_frame._parent_canvas
-            canvas.update_idletasks()
-
-            # Get canvas viewport height
-            canvas_height = canvas.winfo_height()
-            if canvas_height <= 0:
+            n = len(self._visible)
+            if n == 0:
                 return
-
-            # Get total scrollable height
-            scroll_region = canvas.cget("scrollregion")
-            if not scroll_region:
-                return
-            total_height = int(scroll_region.split()[-1])
-            if total_height <= canvas_height:
-                return  # Everything fits, no scroll needed
-
-            # Get row position relative to the scroll frame inner widget
-            row_y = row.winfo_y()
-            row_height = row.winfo_height()
-
-            # Current viewport top/bottom in content coordinates
-            current_top = canvas.yview()[0] * total_height
-            current_bottom = canvas.yview()[1] * total_height
-
-            if row_y < current_top:
-                # Row is above viewport — scroll up
-                canvas.yview_moveto(row_y / total_height)
-            elif row_y + row_height > current_bottom:
-                # Row is below viewport — scroll down so row bottom aligns with viewport bottom
-                canvas.yview_moveto((row_y + row_height - canvas_height) / total_height)
+            total_height = n * self.ROW_HEIGHT
+            viewport_h = canvas.winfo_height()
+            if viewport_h > 1 and total_height > viewport_h:
+                target_top = idx * self.ROW_HEIGHT
+                view_top = max(0.0, canvas.canvasy(0))
+                view_bottom = view_top + viewport_h
+                if target_top < view_top:
+                    canvas.yview_moveto(target_top / total_height)
+                elif target_top + self.ROW_HEIGHT > view_bottom:
+                    canvas.yview_moveto(
+                        (target_top + self.ROW_HEIGHT - viewport_h) / total_height
+                    )
         except Exception:
             pass  # Scroll is best-effort
+        # Ensure the target row is mounted (selection must be visible immediately).
+        self._refresh_viewport(force=True)
 
     def update_filepath(self, old_filepath: str, new_filepath: str):
         """Re-key a result when its file has been renamed on disk.
 
         Updates internal dicts, the AnalysisResult, and the displayed row.
         """
-        if old_filepath not in self._rows:
+        if old_filepath not in self._results:
             return
 
-        row = self._rows.pop(old_filepath)
         result = self._results.pop(old_filepath)
-        was_hidden = old_filepath in self._hidden_rows
-        self._hidden_rows.discard(old_filepath)
-
         # Update the dataclass fields
         result.filepath = new_filepath
         result.filename = Path(new_filepath).name
-
-        # Re-insert under new key
         self._results[new_filepath] = result
-        self._rows[new_filepath] = row
 
-        # Refresh the row display
-        row.update_result(result)
+        # Re-key the order and selection state
+        try:
+            self._order[self._order.index(old_filepath)] = new_filepath
+        except ValueError:
+            self._order.append(new_filepath)
+        self._selected_fps = [
+            new_filepath if fp == old_filepath else fp for fp in self._selected_fps
+        ]
+        if self._anchor_fp == old_filepath:
+            self._anchor_fp = new_filepath
+        if self._pending_collapse_fp == old_filepath:
+            self._pending_collapse_fp = new_filepath
 
-        # Re-evaluate filter with new filename
-        if self._filter_text:
-            matches = self._matches_filter(result.filename)
-            if not matches:
-                row.pack_forget()
-                self._hidden_rows.add(new_filepath)
-            elif was_hidden:
-                row.pack(fill="x", pady=(0, 1))
+        self._rebuild_visible()
+        self._refresh_viewport(force=True)
 
     def get_ordered_filepaths(self) -> List[str]:
         """
@@ -1609,4 +1715,4 @@ class ResultsTable(ctk.CTkFrame):
         Returns:
             List of filepaths in the order they appear in the table.
         """
-        return [row.result.filepath for row in self._rows.values()]
+        return list(self._order)

@@ -35,7 +35,7 @@ AudioQual se ha desarrollado desde el inicio (28 enero 2026) con asistencia de C
 ## Patrones que no funcionaron
 
 1. **Confianza ciega en herramientas visuales**: Spek nos llevó a conclusiones erróneas hasta que se contrastó con MusicScope
-2. **Reescrituras grandes sin validación incremental**: virtual scroll (600 líneas) falló; enfoques incrementales habrían sido más seguros
+2. **Reescrituras grandes sin validación incremental**: el primer intento de virtual scroll (600 líneas) falló; enfoques incrementales habrían sido más seguros. El segundo intento (2026-06) sí funcionó: plan previo claro + implementación por pasos con verificación tras cada uno (ver [Virtual scroll](no-virtual-scroll.md))
 
 ## Relevancia para el TFG
 

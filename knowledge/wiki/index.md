@@ -34,7 +34,7 @@ updated: 2026-06-01
 ## Decisiones de diseño
 
 - [Spek vs MusicScope](decisiones/spek-vs-musicscope.md) — Por qué MusicScope es la referencia definitiva
-- [No virtual scroll](decisiones/no-virtual-scroll.md) — Por qué el intento de virtualización falló
+- [Virtual scroll](decisiones/no-virtual-scroll.md) — Intento fallido (2026-04) y la solución que sí funcionó (2026-06)
 - [Investigación cluster-4](decisiones/investigacion-cluster4.md) — Proceso de 5 iteraciones para resolver falsos positivos
 - [PollingObserver](decisiones/polling-observer.md) — Por qué no FSEventsObserver (bug Unicode macOS)
 - [Medición de CPU](decisiones/medicion-cpu.md) — Cómo medir rendimiento: powermetrics vs ps, wakeups, verdicto de R3
