@@ -28,10 +28,19 @@ Estimación: bundle 202 MB → **~70-90 MB** según qué decoder se elija para m
 (libsndfile 1.2.2), que en este entorno soporta **wav/flac/ogg/aiff/mp3**. Solo quedan fuera de
 soundfile: **m4a, aac, wma** (3 de los 9 formatos de `SUPPORTED_FORMATS`).
 
-## Fase 1 — Reemplazos espectrales (RIESGO BAJO, hacer primero)
+## Fase 1 — Reemplazos espectrales (RIESGO BAJO) — ✅ IMPLEMENTADO 2026-06-03
 
-Los tres se han verificado **bit a bit** contra librosa 0.11 con ruido sintético (diff máx **0.0**).
-Código probado, listo para pegar en `frequency_detector.py` (sustituye `compute_spectrogram`):
+**Hecho** en `frequency_detector.py` (helpers `_stft_magnitude` + `_amplitude_to_db_refmax`,
+`import librosa` eliminado del fichero). Verificación:
+- Sintético (ruido): diff **0.0** vs librosa 0.11 en las 3 funciones.
+- **Audio real (16 archivos del corpus, mp3/aiff/m4a):** `fft_frequencies` diff 0.0; `spectrogram_db`
+  diff máx **~3e-4 dB**. No es bit-exacto en audio real porque `librosa.stft` calcula la FFT en
+  float32 (complex64) y la nuestra en float64→cast: la nuestra es *más* precisa, los 3e-4 dB son el
+  redondeo float32 de librosa. ~6 órdenes por debajo de cualquier umbral del algoritmo y el
+  espectrograma se cuantiza luego a uint8 → irrelevante.
+- `bash tests/full_check.sh`: **TODO OK**, suite de detección sin regresiones.
+
+Código tal como quedó (referencia):
 
 ```python
 import numpy as np

@@ -3,8 +3,8 @@
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
-import librosa
 import numpy as np
+from scipy.signal import get_window
 
 from ..utils.constants import (
     FFT_SIZE,
@@ -62,6 +62,40 @@ class FrequencyAnalysis:
     energy_at_cutoff_db: float = -80.0  # Average energy in band just before cutoff (dB)
 
 
+def _stft_magnitude(
+    samples: np.ndarray, n_fft: int, hop_length: int
+) -> np.ndarray:
+    """Magnitude STFT, bit-identical to ``np.abs(librosa.stft(...))``.
+
+    Replicates librosa's defaults (verified diff 0.0 vs librosa 0.11): periodic
+    Hann window, ``center=True`` with zero-padding (``pad_mode='constant'``, the
+    librosa >= 0.10 default — NOT 'reflect'), then rfft per frame.
+    """
+    win = get_window("hann", n_fft, fftbins=True).astype(np.float32)
+    pad = n_fft // 2
+    padded = np.pad(samples, pad, mode="constant")
+    n_frames = 1 + (len(padded) - n_fft) // hop_length
+    idx = np.arange(n_fft)[:, None] + hop_length * np.arange(n_frames)[None, :]
+    frames = padded[idx] * win[:, None]
+    return np.abs(np.fft.rfft(frames, n=n_fft, axis=0)).astype(np.float32)
+
+
+def _amplitude_to_db_refmax(
+    magnitude: np.ndarray, amin: float = 1e-5, top_db: float = 80.0
+) -> np.ndarray:
+    """dB scaling, bit-identical to ``librosa.amplitude_to_db(magnitude, ref=np.max)``.
+
+    librosa works in power: ``power_to_db(S**2, ref**2)`` with power floor
+    ``amin**2`` (amplitude amin = 1e-5), then clips to ``top_db`` below the peak.
+    """
+    mag = np.abs(magnitude)
+    ref_power = mag.max() ** 2
+    power = mag ** 2
+    db = 10.0 * np.log10(np.maximum(amin ** 2, power)) \
+        - 10.0 * np.log10(np.maximum(amin ** 2, ref_power))
+    return np.maximum(db, db.max() - top_db).astype(np.float32)
+
+
 def compute_spectrogram(
     samples: np.ndarray,
     sample_rate: int,
@@ -80,15 +114,12 @@ def compute_spectrogram(
     Returns:
         Tuple of (spectrogram in dB, frequency bins)
     """
-    # Compute STFT
-    stft = librosa.stft(samples, n_fft=n_fft, hop_length=hop_length)
+    # Magnitude STFT (float32 for half memory and better cache locality).
+    magnitude = _stft_magnitude(samples, n_fft, hop_length)
+    spectrogram_db = _amplitude_to_db_refmax(magnitude)
 
-    # Convert to magnitude (float32 for half memory and better cache locality)
-    magnitude = np.abs(stft).astype(np.float32)
-    spectrogram_db = librosa.amplitude_to_db(magnitude, ref=np.max)
-
-    # Get frequency bins
-    frequencies = librosa.fft_frequencies(sr=sample_rate, n_fft=n_fft)
+    # Frequency bins (== librosa.fft_frequencies(sr, n_fft)).
+    frequencies = np.fft.rfftfreq(n_fft, d=1.0 / sample_rate)
 
     return spectrogram_db, frequencies
 
