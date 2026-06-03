@@ -74,6 +74,39 @@ siempre el PNG (downscale Pillow LANCZOS a 2× el tamaño pedido). `app.py` usa
   variantes `waxcheck-empty-cover{,-medium}.png` y 11 iconos PNG/SVG de versiones antiguas.
   `src/assets/` quedó en ~528 KB (8 PNG activos + 8 SVG fuente + cover + fuentes).
 
+### 5. Poda de Pillow + `strip` en los specs (riesgo bajo, −9 MB)
+
+Segundo lote de recortes baratos, posterior a los 211 MB. La app solo decodifica **PNG y
+JPEG** (iconos de toolbar/logo + carátulas APIC/FLAC); el espectrograma se construye desde un
+array RGB en memoria (`Image.fromarray`), e `ImageDraw` se usa solo para formas/máscaras (no hay
+`ImageFont`/`truetype`/`.text()`). Por tanto sobran los decoders y stacks que Pillow trae por
+defecto.
+
+**Restricción clave descubierta con `otool -L`:** el core de Pillow (`_imaging`) **enlaza
+obligatoriamente** `libtiff`, `libjpeg`, `libopenjp2`, `libz` y `libxcb` (→ `libXau`, `liblzma`).
+Esos **no se pueden quitar** sin recompilar Pillow — un primer intento que borró `libtiff`/
+`libopenjp2` hizo que la `.app` crasheara al arrancar (`dlopen … libtiff.6.dylib`). Solo son
+eliminables las libs alcanzadas **exclusivamente** vía plugins de carga perezosa:
+
+- `_avif` → `libavif` (≈3,0 MB)
+- `_webp` → `libwebp` + `libwebpmux` + `libwebpdemux` + `libsharpyuv` (≈0,8 MB)
+- `_imagingft` → `libfreetype` + `libharfbuzz` + `libbrotli{common,dec}` (≈3,2 MB, stack de fuentes)
+- `_imagingcms` → `liblcms2` (≈0,5 MB, motor ICC)
+
+Implementado como filtro de `a.binaries` en los 3 specs (`_is_unused_pil_binary`, match por
+substring del basename con guarda de ruta `'/pil/'`/`'/pil.libs/'` → cross-platform). Se borran
+tanto esos dylibs como los `.so` de sus plugins. `PIL.init()` importa los plugins WebP/AVIF
+dentro de `try/except ImportError`, así que su ausencia degrada con elegancia; `ImageFont`/
+`ImageCms` no los importa nunca la app. Se conservan `_imaging`, `_imagingmath` y `_imagingtk`
+(este último necesario para `ImageTk`).
+
+Además `strip=True` en EXE+COLLECT de los 3 specs (quita símbolos de debug). **UPX**: se dejó
+`upx=True` en Windows/Linux (útil si UPX está instalado; no-op si no) pero **`upx=False` en
+macOS** porque rompe la firma de código en arm64.
+
+**Build medido tras esto: 211 → 202 MB** (firma OK, arranca correctamente, JPEG/PNG intactos por
+conservar `libjpeg`/`libpng` en el core). Verificación: `verify_implementation.py --quick` OK.
+
 ## Fuera de alcance (trabajo futuro): reemplazar librosa
 
 Reemplazar **librosa** por `scipy.signal`/numpy se evaluó pero se **aplazó** por riesgo sobre el

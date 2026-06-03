@@ -1,6 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 """PyInstaller spec file for Windows build."""
 
+import os
 import sys
 from pathlib import Path
 
@@ -79,6 +80,36 @@ a = Analysis(
     noarchive=False,
 )
 
+# --- Trim unused Pillow native libraries ---
+# The app only decodes PNG and JPEG (toolbar/logo icons + APIC/FLAC cover
+# art); the spectrogram is built from an in-memory RGB array, and ImageDraw
+# is used only for shapes (no truetype text). The core extension (_imaging)
+# hard-links libtiff/libjpeg/libopenjp2/libz/libxcb, so those MUST stay. Only
+# the libraries reached exclusively through lazily-imported plugins are
+# removable: AVIF (_avif), WebP (_webp), the font stack (_imagingft →
+# freetype/harfbuzz/brotli) and the ICC color engine (_imagingcms → lcms).
+# We drop both those plugin extensions and their private dylibs. PIL.init()
+# imports the WebP/AVIF plugins inside try/except, so their absence degrades
+# gracefully; ImageFont/ImageCms are never imported by the app. Saves ~7.5 MB.
+_PIL_DROP_TOKENS = (
+    # private dylibs reached only via the plugins below
+    'libavif', 'libwebp', 'libsharpyuv',
+    'libfreetype', 'libharfbuzz', 'libbrotli', 'liblcms',
+    # the plugin C-extensions themselves
+    '_webp.', '_avif.', '_imagingft.', '_imagingcms.',
+)
+
+
+def _is_unused_pil_binary(dest, source):
+    src = (source or '').replace('\\', '/').lower()
+    if '/pil/' not in src and '/pil.libs/' not in src:
+        return False
+    name = os.path.basename(dest).lower()
+    return any(tok in name for tok in _PIL_DROP_TOKENS)
+
+
+a.binaries = [b for b in a.binaries if not _is_unused_pil_binary(b[0], b[1])]
+
 # Remove duplicate binaries/datas
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
@@ -90,7 +121,7 @@ exe = EXE(
     name='AudioQual',
     debug=False,
     bootloader_ignore_signals=False,
-    strip=False,
+    strip=True,
     upx=True,
     console=False,
     disable_windowed_traceback=False,
@@ -106,7 +137,7 @@ coll = COLLECT(
     a.binaries,
     a.zipfiles,
     a.datas,
-    strip=False,
+    strip=True,
     upx=True,
     upx_exclude=[],
     name='AudioQual',
