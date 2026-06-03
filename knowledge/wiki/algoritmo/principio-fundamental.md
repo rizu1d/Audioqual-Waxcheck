@@ -1,7 +1,7 @@
 ---
 title: Principio fundamental de detección
 created: 2026-04-27
-updated: 2026-04-27
+updated: 2026-06-03
 sources: [ALGORITMO.txt]
 tags: [algoritmo, codec, tfg]
 ---
@@ -29,6 +29,8 @@ Estos valores son aproximados porque dependen del encoder específico (LAME, Fra
 ## El principio de detección
 
 Si alguien toma un MP3 de 128kbps (corte a ~16 kHz) y lo re-codifica a 320kbps, el archivo resultante dirá "320kbps" pero **no tendrá contenido real por encima de 16 kHz**. Solo habrá ruido de cuantización o silencio en esas frecuencias.
+
+Hay un corolario complementario: un lossless genuino conserva una **alfombra de ruido de banda ancha hasta Nyquist** aunque no haya contenido musical agudo, mientras que un lossy la trunca en seco. Ver [suelo de ruido hasta Nyquist](suelo-ruido-nyquist.md).
 
 AudioQual detecta exactamente dónde termina el contenido musical real (la **frecuencia de corte**) y la compara con lo que el bitrate declarado debería tener. Si hay discrepancia significativa, es un transcode.
 

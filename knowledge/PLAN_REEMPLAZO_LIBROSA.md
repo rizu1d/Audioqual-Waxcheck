@@ -42,21 +42,33 @@ soundfile: **m4a, aac, wma** (3 de los 9 formatos de `SUPPORTED_FORMATS`).
 
 Código tal como quedó (referencia):
 
+**⚠️ Rendimiento (lección aprendida):** la primera versión usaba `yp[idx]` (fancy-indexing) +
+`np.fft.rfft`. Funcionaba pero era **4× más lenta que librosa** y disparaba la memoria a >2 GB por
+archivo (índice int64 enorme + FFT en float64). La versión correcta usa un **view** con
+`sliding_window_view` (sin copia) y `scipy.fft.rfft` en **float32→complex64 por bloques** — más
+rápida que librosa y con el mismo footprint. NO reintroducir el gather ingenuo.
+
 ```python
 import numpy as np
+from numpy.lib.stride_tricks import sliding_window_view
+from scipy.fft import rfft
 from scipy.signal import get_window
 
 def _stft_magnitude(samples, n_fft, hop_length):
-    # Equivalente bit-exacto a np.abs(librosa.stft(...)) en librosa 0.11:
+    # Equivalente a np.abs(librosa.stft(...)) en librosa 0.11 (diff ~1e-4):
     # ventana Hann periódica (fftbins=True), center=True con pad de ZEROS
-    # (pad_mode='constant', que es el default de librosa >= 0.10), rfft.
+    # (pad_mode='constant', el default de librosa >= 0.10, NO 'reflect').
     win = get_window('hann', n_fft, fftbins=True).astype(np.float32)
     pad = n_fft // 2
-    yp = np.pad(samples, pad, mode='constant')          # <-- 'constant', NO 'reflect'
-    n_frames = 1 + (len(yp) - n_fft) // hop_length
-    idx = np.arange(n_fft)[:, None] + hop_length * np.arange(n_frames)[None, :]
-    frames = yp[idx] * win[:, None]
-    return np.abs(np.fft.rfft(frames, n=n_fft, axis=0)).astype(np.float32)
+    yp = np.pad(samples, pad, mode='constant')              # 'constant', NO 'reflect'
+    frames = sliding_window_view(yp, n_fft)[::hop_length]   # (n_frames, n_fft) view
+    n_frames = frames.shape[0]
+    out = np.empty((n_fft // 2 + 1, n_frames), dtype=np.float32)
+    block = max(1, (8 * 1024 * 1024) // (n_fft * 4))        # ~8 MB de temporal por bloque
+    for s in range(0, n_frames, block):
+        e = min(s + block, n_frames)
+        out[:, s:e] = np.abs(rfft(frames[s:e] * win, n=n_fft, axis=-1)).T
+    return out
 
 def _amplitude_to_db_refmax(magnitude, amin=1e-5, top_db=80.0):
     # Equivalente bit-exacto a librosa.amplitude_to_db(magnitude, ref=np.max).

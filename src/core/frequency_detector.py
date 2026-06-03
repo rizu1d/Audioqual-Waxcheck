@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
 import numpy as np
+from numpy.lib.stride_tricks import sliding_window_view
+from scipy.fft import rfft
 from scipy.signal import get_window
 
 from ..utils.constants import (
@@ -65,19 +67,32 @@ class FrequencyAnalysis:
 def _stft_magnitude(
     samples: np.ndarray, n_fft: int, hop_length: int
 ) -> np.ndarray:
-    """Magnitude STFT, bit-identical to ``np.abs(librosa.stft(...))``.
+    """Magnitude STFT, equivalent to ``np.abs(librosa.stft(...))``.
 
-    Replicates librosa's defaults (verified diff 0.0 vs librosa 0.11): periodic
-    Hann window, ``center=True`` with zero-padding (``pad_mode='constant'``, the
+    Replicates librosa's defaults (diff ~1e-4 vs librosa 0.11): periodic Hann
+    window, ``center=True`` with zero-padding (``pad_mode='constant'``, the
     librosa >= 0.10 default — NOT 'reflect'), then rfft per frame.
+
+    Frames are a strided **view** (no copy) and the rfft runs in float32 →
+    complex64 over column blocks, so this matches librosa's speed/memory
+    profile. A naive ``samples[idx]`` gather + ``np.fft`` (float64) was ~4x
+    slower and spiked memory into the GB range, so do NOT reintroduce it.
     """
     win = get_window("hann", n_fft, fftbins=True).astype(np.float32)
     pad = n_fft // 2
     padded = np.pad(samples, pad, mode="constant")
-    n_frames = 1 + (len(padded) - n_fft) // hop_length
-    idx = np.arange(n_fft)[:, None] + hop_length * np.arange(n_frames)[None, :]
-    frames = padded[idx] * win[:, None]
-    return np.abs(np.fft.rfft(frames, n=n_fft, axis=0)).astype(np.float32)
+    frames = sliding_window_view(padded, n_fft)[::hop_length]  # (n_frames, n_fft) view
+    n_frames = frames.shape[0]
+
+    out = np.empty((n_fft // 2 + 1, n_frames), dtype=np.float32)
+    # Bound the windowed-frame temporary to ~8 MB per block (the full output
+    # is allocated once above; only a slice of windowed frames is transient).
+    block = max(1, (8 * 1024 * 1024) // (n_fft * 4))
+    for start in range(0, n_frames, block):
+        end = min(start + block, n_frames)
+        spec = rfft(frames[start:end] * win, n=n_fft, axis=-1)  # float32 -> complex64
+        out[:, start:end] = np.abs(spec).T
+    return out
 
 
 def _amplitude_to_db_refmax(

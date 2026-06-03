@@ -14,6 +14,7 @@ updated: 2026-06-03
 - [Análisis por segmentos](algoritmo/analisis-segmentos.md) — Método secundario: 50 segmentos temporales, percentil 90
 - [Lógica de decisión](algoritmo/logica-decision.md) — Cómo se combinan ambos métodos
 - [Brickwall vs rolloff natural](algoritmo/brickwall-vs-rolloff.md) — Verificación post-detección: gradiente + varianza
+- [Suelo de ruido hasta Nyquist](algoritmo/suelo-ruido-nyquist.md) — Tell complementario lossless/lossy: dither de banda ancha hasta el borde del espectro (no implementado)
 - [Falsos positivos](algoritmo/falsos-positivos.md) — Casos estudiados, taxonomía y capas de protección
 - [Referencia de energía](algoritmo/energia-referencia.md) — Escala de dB, umbrales, media vs peak
 
@@ -28,6 +29,7 @@ updated: 2026-06-03
 ## Fuentes externas
 
 - [Tutorial MPEG compression (Pan, 1995)](fuentes/tutorial-mpeg-compression.md) — Paper fundacional sobre compresión MP3
+- [Robust Lossy Audio Compression Identification (Koops, 2024)](fuentes/robust-lossy-identification-koops.md) — Por qué depender del corte es frágil; AAC es duro; respalda el tell del suelo de ruido
 - [Enlaces recopilados](fuentes/enlaces-recopilados.md) — IEEE, EBU, Reddit, herramientas + fuentes pendientes
 - [Herramientas de referencia](fuentes/herramientas-referencia.md) — Spek, MusicScope, librosa, mutagen
 

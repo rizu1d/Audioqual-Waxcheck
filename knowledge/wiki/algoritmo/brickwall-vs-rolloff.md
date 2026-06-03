@@ -1,7 +1,7 @@
 ---
 title: Brickwall vs rolloff natural
 created: 2026-04-27
-updated: 2026-04-27
+updated: 2026-06-03
 sources: [MEJORAS_EN_ALGORITMO.txt, ALGORITMO.txt]
 tags: [algoritmo, brickwall, falsos-positivos, tfg]
 ---
@@ -70,6 +70,10 @@ Known bug: `YT_012 (NTM Boogie Man)` — YouTube rip indistinguible de rolloff n
 ## Evolución de la implementación
 
 La función pasó por 5 iteraciones. Ver [Investigación falsos positivos cluster-4](../decisiones/investigacion-cluster4.md) para el proceso completo.
+
+## Criterio complementario (no implementado)
+
+La varianza temporal post-corte mira la zona del codec como *muerta en el tiempo*. Un ángulo complementario es el [suelo de ruido hasta Nyquist](suelo-ruido-nyquist.md): un lossless conserva alfombra de ruido de banda ancha hasta el borde del espectro; un lossy la trunca. Es una vía de mejora futura del algoritmo (medir energía de ruido en `[cutoff, Nyquist]`), por ahora solo criterio de inspección manual.
 
 ## Constantes (en `constants.py`)
 

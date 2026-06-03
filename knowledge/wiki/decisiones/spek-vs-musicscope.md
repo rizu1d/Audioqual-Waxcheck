@@ -1,7 +1,7 @@
 ---
 title: "Decisión: Spek vs MusicScope como referencia"
 created: 2026-04-27
-updated: 2026-04-27
+updated: 2026-06-03
 sources: [MEJORAS_EN_ALGORITMO.txt]
 tags: [decision, herramientas, tfg]
 ---
@@ -41,3 +41,21 @@ MusicScope (Linear Frequency Spectrum) se convirtió en la **referencia definiti
 ## Lección
 
 Las herramientas de visualización tienen sesgos inherentes (colormap, escalas, promedios). Nunca confiar en una sola herramienta visual para decisiones de clasificación.
+
+## Técnicas de inspección manual con MusicScope
+
+Dos reglas visuales útiles cuando se valida un archivo a ojo (sesión de análisis 2026-06-03):
+
+### 1. Variabilidad temporal del muro
+
+Un lowpass de codec es **constante en el tiempo** (es una propiedad fija del bitrate). Por tanto:
+
+> Si un "muro" en, p. ej., 16 kHz **aparece y desaparece** según avanza el tema (presente en una intro tranquila, ausente en el drop), **no es un corte de codec** — es simplemente ausencia/presencia de contenido musical agudo.
+
+Para confirmarlo: comparar la intro con el **clímax/drop** (máxima energía de agudos). Un transcode mantiene el muro clavado en el clímax; un real lo "abre". Es la versión visual de la [varianza temporal post-corte](../algoritmo/brickwall-vs-rolloff.md) que el algoritmo ya mide.
+
+### 2. Suelo de ruido hasta Nyquist
+
+> Un lossless conserva una alfombra de ruido tenue hasta los 22 kHz aunque no haya contenido musical; un lossy la trunca en seco en su corte.
+
+Requiere **subir la sensibilidad** del display para verlo (el suelo está a ~−93 dBFS). Ver [suelo de ruido hasta Nyquist](../algoritmo/suelo-ruido-nyquist.md) para la base física y las excepciones.
