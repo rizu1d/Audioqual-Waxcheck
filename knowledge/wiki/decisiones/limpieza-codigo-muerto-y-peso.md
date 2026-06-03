@@ -123,6 +123,12 @@ algoritmo (núcleo del TFG):
   manteniendo librosa porque `import librosa` los requiere al cargar. Pendiente de una iteración
   dedicada con verificación end-to-end de los 3 SO.
 
+**Plan detallado escrito** (2026-06-03) en `knowledge/PLAN_REEMPLAZO_LIBROSA.md`: incluye los
+reemplazos espectrales numpy/scipy ya **verificados bit-exacto** (stft con pad `'constant'`,
+`amplitude_to_db`, `fft_frequencies` → diff 0.0 vs librosa 0.11) y el análisis de opciones para el
+bloqueo de `librosa.load` (audioread directo / PyAV / nativo por SO). El único riesgo serio
+identificado es el backend de decodificación de audioread en Linux.
+
 Ver también [features-conscientes-del-peso] y la nota de Now Playing aplazada por el mismo motivo
 de peso en [now-playing-media-session](now-playing-media-session.md).
 
