@@ -34,7 +34,7 @@ class PlayerState(Enum):
 
 class AudioPlayer:
     """
-    Audio playback engine using sounddevice + librosa.
+    Audio playback engine using sounddevice + soundfile/audioread.
 
     Uses a callback-based streaming approach for precise position tracking
     and non-blocking playback.
@@ -157,9 +157,10 @@ class AudioPlayer:
                     down = file_sr // g
                     samples = signal.resample_poly(samples, up, down).astype(np.float32)
             else:
-                # Fallback to librosa for MP3, M4A, AAC, WMA and other formats
-                import librosa
-                samples, _ = librosa.load(filepath, sr=self._sample_rate, mono=True)
+                # Fallback to audioread for M4A, AAC, WMA (and any other format
+                # libsndfile can't read). Shared decode path with audio_loader.
+                from ..core.audio_loader import load_via_audioread
+                samples, _ = load_via_audioread(filepath, self._sample_rate)
 
             # Check again if this is still the file we want
             if filepath != self._current_filepath:

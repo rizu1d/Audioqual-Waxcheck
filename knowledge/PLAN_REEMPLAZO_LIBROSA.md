@@ -83,7 +83,24 @@ el default. (`librosa.stft` con `center=False` evitaría el pad pero cambia el n
 `compute_spectrogram` nuevo vs librosa sobre los 32 archivos reales y asserte diff < 1e-3 en el
 `spectrogram_db` y cutoff idéntico (la prueba sintética ya dio 0.0, pero validar con audio real).
 
-## Fase 2 — Carga de audio (EL BLOQUEO: m4a/aac/wma)
+## Fase 2 — Carga de audio (m4a/aac/wma) — ✅ IMPLEMENTADO 2026-06-03 (audioread)
+
+**Hecho con la Opción A (audioread directo).** `_load_with_librosa` → `load_via_audioread` en
+`audio_loader.py` (audioread → int16/32768 → downmix → resample con **soxr** para paridad);
+`audio_player.py` reusa esa función; `import librosa` eliminado de ambos. `requirements.txt`:
+fuera librosa, dentro `audioread`+`soxr`+**`scipy`** (era transitiva de librosa, ahora explícita).
+Los 3 specs: librosa fuera de `hiddenimports`, audioread(+backends)/soxr/scipy dentro, y
+`librosa`/`numba`/`llvmlite` en `excludes`.
+
+**Resultado: build macOS 202 → 87 MB** (−115 MB). llvmlite/numba/librosa = **0 archivos** en el
+bundle. **Verificación:** paridad de samples m4a bit-exacta (maxdiff 0.0 vs librosa.load);
+`full_check` TODO OK; runtime con librosa/numba/llvmlite **bloqueados** decodifica m4a y analiza OK
+(0 dependencia oculta); `.app` firma y arranca. **Pendiente de QA cross-OS antes de mergear:**
+confirmar decodificación de m4a/aac/wma en Windows y Linux empaquetados (necesitan ffmpeg/GStreamer
+del sistema, igual que ya exigía librosa). macOS usa CoreAudio nativo (sin ffmpeg). WMA en macOS no
+está soportado por CoreAudio (tampoco lo estaba con librosa). README actualizado.
+
+### Notas de diseño (referencia)
 
 `librosa.load` internamente intenta soundfile y, si falla, cae a **audioread**, que usa el decoder
 nativo del SO (CoreAudio en macOS, Media Foundation en Windows, gstreamer/ffmpeg en Linux). Nosotros

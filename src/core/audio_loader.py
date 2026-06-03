@@ -1,13 +1,12 @@
 """Audio file loading and metadata extraction."""
 
 import struct
-import warnings
 from dataclasses import dataclass
 from math import gcd
 from pathlib import Path
 from typing import Optional, Tuple
 
-import librosa
+import audioread
 import numpy as np
 from mutagen import File as MutagenFile
 from mutagen.mp3 import MP3, HeaderNotFoundError
@@ -27,7 +26,7 @@ except ImportError:
 
 # Formats that soundfile (libsndfile) can read natively.
 # MP3 is added only if the installed libsndfile (>= 1.1.0) supports it,
-# which lets us skip librosa's deprecated audioread fallback for MP3s.
+# which lets us skip the slower audioread fallback for MP3s.
 _SOUNDFILE_FORMATS = {'wav', 'flac', 'ogg', 'aiff', 'aif'}
 if HAS_SOUNDFILE and 'MP3' in sf.available_formats():
     _SOUNDFILE_FORMATS.add('mp3')
@@ -83,7 +82,7 @@ def _validate_mp3_file(filepath: str) -> None:
     except ValueError:
         raise
     except Exception:
-        pass  # File read issues will be caught by librosa anyway
+        pass  # File read issues will be caught by the decoder anyway
 
 
 @dataclass
@@ -189,19 +188,29 @@ def _load_with_soundfile(filepath: str, target_sr: int) -> Tuple[np.ndarray, int
     return samples, target_sr
 
 
-def _load_with_librosa(filepath: str, target_sr: int) -> Tuple[np.ndarray, int]:
-    """Load via librosa for formats libsndfile can't read (m4a, aac, wma).
+def load_via_audioread(filepath: str, target_sr: int) -> Tuple[np.ndarray, int]:
+    """Decode formats libsndfile can't read (m4a, aac, wma) via audioread.
 
-    librosa falls back to the (deprecated) audioread backend for these, which
-    emits a UserWarning + FutureWarning. The fallback is intended and works,
-    so we suppress that expected noise here.
+    audioread uses the OS-native decoder (CoreAudio on macOS, GStreamer/ffmpeg
+    on Linux/Windows) — the same backend librosa.load fell back to internally.
+    It always yields 16-bit signed little-endian PCM, so we scale by 1/32768
+    and average channels for mono, then resample with soxr. This reproduces
+    librosa.load(sr=target_sr, mono=True) bit-for-bit (verified on the corpus).
     """
-    # librosa attributes these warnings to the caller's module (via stacklevel),
-    # so they must be filtered by message, not by module="librosa".
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", message="PySoundFile failed")
-        warnings.filterwarnings("ignore", message=".*audioread.*")
-        return librosa.load(filepath, sr=target_sr, mono=True)
+    with audioread.audio_open(filepath) as f:
+        native_sr, channels = f.samplerate, f.channels
+        pcm = b"".join(f.read_data())
+
+    samples = np.frombuffer(pcm, dtype="<i2").astype(np.float32) / 32768.0
+    if channels > 1:
+        samples = samples.reshape(-1, channels).mean(axis=1)
+
+    if native_sr != target_sr:
+        # soxr matches librosa.load's default resampler (soxr_hq) for parity.
+        import soxr
+        samples = soxr.resample(samples, native_sr, target_sr).astype(np.float32)
+
+    return samples, target_sr
 
 
 def load_audio(filepath: str, target_sr: int = SAMPLE_RATE) -> AudioData:
@@ -209,7 +218,7 @@ def load_audio(filepath: str, target_sr: int = SAMPLE_RATE) -> AudioData:
     Load an audio file and return audio data with metadata.
 
     Uses soundfile (libsndfile) for WAV/FLAC/OGG/AIFF/MP3 (3-5x faster),
-    falls back to librosa for M4A/AAC/WMA.
+    falls back to audioread for M4A/AAC/WMA.
 
     Args:
         filepath: Path to the audio file
@@ -232,10 +241,10 @@ def load_audio(filepath: str, target_sr: int = SAMPLE_RATE) -> AudioData:
         try:
             samples, sr = _load_with_soundfile(filepath, target_sr)
         except Exception:
-            samples, sr = _load_with_librosa(filepath, target_sr)
+            samples, sr = load_via_audioread(filepath, target_sr)
     else:
-        # Slow path: librosa for M4A, AAC, WMA (and MP3 if libsndfile lacks it)
-        samples, sr = _load_with_librosa(filepath, target_sr)
+        # Slow path: audioread for M4A, AAC, WMA (and MP3 if libsndfile lacks it)
+        samples, sr = load_via_audioread(filepath, target_sr)
 
     # Update metadata with actual loaded values if they were missing
     if metadata.duration == 0:

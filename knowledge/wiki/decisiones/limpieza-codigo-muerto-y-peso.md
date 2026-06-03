@@ -107,27 +107,33 @@ macOS** porque rompe la firma de código en arm64.
 **Build medido tras esto: 211 → 202 MB** (firma OK, arranca correctamente, JPEG/PNG intactos por
 conservar `libjpeg`/`libpng` en el core). Verificación: `verify_implementation.py --quick` OK.
 
-## Fuera de alcance (trabajo futuro): reemplazar librosa
+### 6. Reemplazo de librosa — HECHO (202 → 87 MB)
 
-Reemplazar **librosa** por `scipy.signal`/numpy se evaluó pero se **aplazó** por riesgo sobre el
-algoritmo (núcleo del TFG):
+El mayor objetivo de peso. La cadena librosa→numba→**llvmlite** dominaba el bundle (`llvmlite/binding`
+≈110 MB, ≈52 % del `.app`) y **nada usa numba/llvmlite fuera de librosa** (0 imports directos), así
+que quitar librosa elimina toda la cadena. Hecho en dos fases (plan completo en
+`knowledge/PLAN_REEMPLAZO_LIBROSA.md`):
 
-- Usos triviales de portar: `frequency_detector` usa `librosa.stft`, `amplitude_to_db`,
-  `fft_frequencies` → equivalentes directos en `scipy.signal`/numpy (scipy ya es dependencia).
-- **Bloqueo real:** `audio_loader`/`audio_player` usan `librosa.load` como fallback para
-  **m4a/aac/wma** (vía audioread). Sustituirlo requiere otra ruta de decodificación.
-- **Beneficio medido (clave):** en el build de macOS de 211 MB, la cadena
-  librosa→numba→**llvmlite** domina el bundle: `llvmlite/binding` ocupa **110 MB (≈52 % del
-  `.app`)**, más numba y la propia librosa. Es, con diferencia, el mayor objetivo de peso
-  pendiente — mucho mayor que matplotlib/cairosvg. No se puede simplemente excluir numba/llvmlite
-  manteniendo librosa porque `import librosa` los requiere al cargar. Pendiente de una iteración
-  dedicada con verificación end-to-end de los 3 SO.
+- **Fase 1 (espectral):** los 3 usos de `frequency_detector.py` → numpy/scipy: `librosa.stft` →
+  `_stft_magnitude` (Hann periódica + `center` con pad de **zeros**, `pad_mode='constant'`, el
+  default de librosa 0.10+ — NO 'reflect'); `amplitude_to_db(ref=np.max)` → `_amplitude_to_db_refmax`
+  (en potencia, floor `amin²`, clip `top_db=80`); `fft_frequencies` → `np.fft.rfftfreq`. Verificado:
+  sintético diff 0.0; audio real diff máx ~3e-4 dB (nuestra FFT en float64 es más precisa que el
+  float32 de librosa; irrelevante frente a los umbrales y la cuantización uint8).
+- **Fase 2 (carga):** `librosa.load` para **m4a/aac/wma** → `load_via_audioread` (audioread →
+  int16/32768 → downmix mono → resample con **soxr**). audioread usa el decoder nativo del SO
+  (CoreAudio en macOS; ffmpeg/GStreamer en Linux/Windows) — el mismo backend que librosa.load usaba
+  por dentro, así que **no hay regresión de comportamiento** (librosa tampoco empaquetaba decoder).
+  Paridad de samples bit-exacta (maxdiff 0.0 vs librosa.load). `requirements.txt`: fuera librosa,
+  dentro audioread/soxr/**scipy** (era transitiva de librosa). Specs: librosa fuera de
+  `hiddenimports`; audioread(+backends)/soxr/scipy dentro; librosa/numba/llvmlite en `excludes`.
 
-**Plan detallado escrito** (2026-06-03) en `knowledge/PLAN_REEMPLAZO_LIBROSA.md`: incluye los
-reemplazos espectrales numpy/scipy ya **verificados bit-exacto** (stft con pad `'constant'`,
-`amplitude_to_db`, `fft_frequencies` → diff 0.0 vs librosa 0.11) y el análisis de opciones para el
-bloqueo de `librosa.load` (audioread directo / PyAV / nativo por SO). El único riesgo serio
-identificado es el backend de decodificación de audioread en Linux.
+**Build macOS: 202 → 87 MB** (−115 MB); llvmlite/numba/librosa = 0 archivos. Verificación:
+`full_check` TODO OK sin regresiones; runtime con la cadena librosa **bloqueada** decodifica y
+analiza un m4a (0 dependencia oculta); `.app` firma y arranca. **Pendiente:** QA de carga
+m4a/aac/wma en Windows/Linux empaquetados (necesitan ffmpeg/GStreamer del sistema, igual que ya
+exigía librosa; README actualizado). WMA en macOS sigue sin estar (CoreAudio no lo decodifica,
+tampoco con librosa).
 
 Ver también [features-conscientes-del-peso] y la nota de Now Playing aplazada por el mismo motivo
 de peso en [now-playing-media-session](now-playing-media-session.md).

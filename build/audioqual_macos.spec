@@ -38,9 +38,16 @@ a = Analysis(
     hiddenimports=[
         'customtkinter',
         'tkinterdnd2',
-        'librosa',
         'soundfile',
+        'audioread',
+        'audioread.macca',
+        'audioread.ffdec',
+        'audioread.gstdec',
+        'audioread.rawread',
+        'soxr',
         'numpy',
+        'scipy',
+        'scipy.signal',
         'mutagen',
         'mutagen.mp3',
         'mutagen.flac',
@@ -73,6 +80,13 @@ a = Analysis(
         # ahora reconstruida como LUT numpy en spectrogram_window.py. Excluirla
         # quita matplotlib y sus backends/fonts del paquete.
         'matplotlib',
+        # librosa: eliminada. Sus 3 usos espectrales son ahora numpy/scipy y la
+        # decodificación va por soundfile + audioread. numba/llvmlite solo
+        # entraban a través de librosa (0 usos directos), así que se excluye
+        # toda la cadena — era ~110 MB de llvmlite, el mayor objetivo de peso.
+        'librosa',
+        'numba',
+        'llvmlite',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,

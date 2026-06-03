@@ -18,24 +18,23 @@ fallan la reproducción de audio, la carga de ciertos formatos o el renderizado 
 | Función | Librería del sistema | Notas |
 |---------|----------------------|-------|
 | Reproducción de audio (`sounddevice`) | PortAudio | Los *wheels* recientes suelen incluirla |
-| Carga WAV/FLAC/OGG (`soundfile`) | libsndfile | Los *wheels* recientes suelen incluirla |
-| Carga M4A/AAC/WMA (`librosa`) | ffmpeg | Opcional; sin él esos formatos no cargan |
-| Iconos SVG (`cairosvg`) | libcairo | Hay *fallback* a PNG si falta |
+| Carga WAV/FLAC/OGG/MP3 (`soundfile`) | libsndfile (≥ 1.1 para MP3) | Los *wheels* recientes suelen incluirla |
+| Carga M4A/AAC/WMA (`audioread`) | macOS: ninguna (CoreAudio); Linux/Windows: ffmpeg o GStreamer | Sin el decoder, solo esos 3 formatos no cargan |
 | Papelera (Linux) | `gio` (glib2) | Para enviar archivos a la papelera |
 
-**macOS** (Homebrew):
+**macOS** (Homebrew): M4A/AAC se decodifican con CoreAudio del sistema, no hace falta ffmpeg.
 ```bash
-brew install portaudio libsndfile cairo ffmpeg
+brew install portaudio libsndfile
 ```
 
 **Linux** (Debian/Ubuntu):
 ```bash
-sudo apt install libportaudio2 libsndfile1 libcairo2 ffmpeg
+sudo apt install libportaudio2 libsndfile1 ffmpeg   # ffmpeg habilita M4A/AAC/WMA
 # 'gio' viene con glib2 (paquete libglib2.0-bin)
 ```
 
-**Windows:** normalmente cubierto por los *wheels* de PyPI. Para soportar M4A/AAC instala
-`ffmpeg` y añádelo al `PATH`.
+**Windows:** normalmente cubierto por los *wheels* de PyPI. Para soportar M4A/AAC/WMA instala
+`ffmpeg` y añádelo al `PATH` (o ten GStreamer disponible).
 
 ## Uso
 
