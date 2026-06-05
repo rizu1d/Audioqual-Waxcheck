@@ -65,7 +65,32 @@ Validación contra `powermetrics`: el reposo medido aquí (~3.4% CPU, ~220 MB RS
 
 ### Capa 3 — perfilado de diagnóstico (puntual, cuando algo regresa)
 
-No periódico. Cuando Capa 1/2 disparan: **`memray`** para RAM (flamegraph del pico, headless) y **`py-spy`** para CPU (sampling, se engancha a la app viva sin tocar código). Ambas, dependencias de dev.
+**Reactiva, no periódica.** No se instala "por tener": las Capas 1 y 2 dicen *que* hay una regresión; la Capa 3 dice *dónde* está. Las herramientas viven **comentadas** en `requirements-dev.txt`; se activan el día que hacen falta.
+
+**Activar:**
+```bash
+pip install memray py-spy   # o descomenta sus líneas en requirements-dev.txt
+```
+
+**`memray` — cuando se dispara la RAM** (`rss_peak_mb`/`heap_peak_mb` en Capa 1, o `rss` en Capa 2). Da un flamegraph del pico: qué función/línea reserva la memoria. El `--native` es clave aquí porque el grueso de la RAM está en numpy/scipy (C), no en Python puro:
+```bash
+# Perfilar el batch (reutiliza el corpus de la Capa 1)
+python3 -m memray run --native -o profile.bin tests/benchmark.py
+python3 -m memray flamegraph profile.bin        # genera profile.html
+# Engancharse a la app viva (no hace falta reiniciarla)
+python3 -m memray attach <PID>
+```
+Habría señalado al instante el STFT roto de `f91cb5e` (+2 GB en una función).
+
+**`py-spy` — cuando se dispara la CPU/tiempo** (`wall_s`/`cpu_s` en Capa 1, o `cpu` en Capa 2). Sampling profiler que se **engancha a la app viva sin tocar el código ni reiniciar**:
+```bash
+py-spy top --pid <PID>                       # vista tipo top, en vivo
+py-spy record -o profile.svg --pid <PID>     # flamegraph de N segundos
+py-spy dump --pid <PID>                       # volcado puntual de stacks
+```
+El `<PID>` es el mismo que usa la Capa 2 (proceso `python` de `src/main.py`).
+
+Ninguna de las dos se empaqueta (son solo de dev); no afectan al peso del bundle.
 
 ### `powermetrics` (nicho: wakeups y energía/batería)
 
