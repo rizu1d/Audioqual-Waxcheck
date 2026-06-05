@@ -48,9 +48,20 @@ Sale con **código 1 si alguna métrica supera su umbral** (tiempo/CPU +10%, RSS
 
 > ⚠️ Habría cazado al instante el STFT roto de `f91cb5e` (4× más lento, +2 GB): `wall_s` y `heap_peak_mb` se habrían disparado muy por encima del umbral.
 
-### Capa 2 — muestreo en vivo con `psutil` (estados GUI, manual) *(pendiente de montar)*
+### Capa 2 — `tests/benchmark_live.py` (estados GUI en vivo, manual)
 
-El benchmark de Capa 1 no cubre los estados interactivos (reposo, tabla llena, analizando, watcher). Para esos hay que muestrear el proceso vivo: `psutil.Process()` con `cpu_percent()` y RSS cada 0.5 s durante N segundos → media + pico. Sustituye al antiguo `ps %cpu`, **demasiado ruidoso para resolver diferencias de ~2%** a niveles bajos (servía para cambios grandes 29%→4%, no para microoptimizaciones). `psutil` iría como dependencia **solo de dev**, no se empaqueta.
+El benchmark de Capa 1 no cubre los estados interactivos. Para esos, este script se engancha al proceso de la app y muestrea `cpu_percent()` y RSS cada 0.5 s durante N segundos → media/mediana/pico, **atribuido solo a ese proceso**. Requiere `psutil` (dependencia **solo de dev**, `requirements-dev.txt`; no se empaqueta). Sustituye al antiguo `ps %cpu`, **demasiado ruidoso para resolver diferencias de ~2%** a niveles bajos.
+
+```bash
+python3 src/main.py                              # la app, en una terminal
+python3 tests/benchmark_live.py --list           # guion de montaje de cada estado
+python3 tests/benchmark_live.py --state reposo   # en otra terminal
+python3 tests/benchmark_live.py --state analizando --seconds 20
+```
+
+Autodetecta el PID exigiendo `name=python` (el wrapper de shell también tiene `src/main.py` en su cmdline → falso positivo descartado). **No** falla con código 1 (los estados en vivo son demasiado ruidosos para umbrales); anexa cada run a `benchmark_live_history.jsonl` etiquetado por estado, y muestra el delta contra el run anterior del mismo estado para ver la deriva. CPU% > 100% es normal (varios cores; 100% = 1 core).
+
+Validación contra `powermetrics`: el reposo medido aquí (~3.4% CPU, ~220 MB RSS) coincide con el ~3.4% que dio `powermetrics`, confirmando que ambas miden lo mismo en reposo.
 
 ### Capa 3 — perfilado de diagnóstico (puntual, cuando algo regresa)
 

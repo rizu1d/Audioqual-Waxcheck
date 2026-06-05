@@ -1,0 +1,11 @@
+# Dependencias solo de desarrollo (NO se empaquetan en el bundle).
+# Instalar con:  pip install -r requirements-dev.txt
+
+# Capa 2 del benchmarking: muestreo en vivo de la app (tests/benchmark_live.py).
+psutil>=5.9.0
+
+# Capa 3 (perfilado puntual, opcional — descomenta cuando lo necesites):
+#   memray   — perfilado de RAM con flamegraph del pico (headless)
+#   py-spy   — sampling de CPU, se engancha a la app viva sin tocar código
+# memray>=1.10.0
+# py-spy>=0.3.14
