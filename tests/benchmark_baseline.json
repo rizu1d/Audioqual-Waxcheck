@@ -1,0 +1,13 @@
+{
+  "timestamp": "2026-06-05T17:42:00",
+  "git_sha": "cee3da6",
+  "machine": "Darwin-arm64-8c",
+  "python": "3.13.0",
+  "n_files": 34,
+  "metrics": {
+    "wall_s": 19.107,
+    "cpu_s": 19.103,
+    "rss_peak_mb": 3921.9,
+    "heap_peak_mb": 1246.6
+  }
+}

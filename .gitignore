@@ -43,6 +43,9 @@ evaluation/*.xlsx
 # Test results (generated)
 tests/results_*.json
 
+# Benchmark: dumps verbosos por-run (el baseline y el history SI se commitean)
+tests/benchmark_results_*.json
+
 # Claude Code (configuración local)
 .claude/
 CLAUDE.local.md

@@ -1,7 +1,7 @@
 ---
 title: "Medición de CPU y rendimiento"
 created: 2026-06-01
-updated: 2026-06-01
+updated: 2026-06-05
 sources: [DIAGNOSTICO_CPU.txt]
 tags: [rendimiento, threading, herramientas]
 ---
@@ -19,22 +19,44 @@ Siempre comparar los **mismos estados** antes/después de un cambio:
 3. **Analizando** — durante un lote de análisis.
 4. **Monitorizando** — watcher activo sobre una carpeta, sin archivos nuevos llegando.
 
-## Herramientas, de menos a más fiable
+## Herramientas: tres capas según el problema
 
-### `scripts/measure_cpu.sh` (rápido, orientativo)
+Hay **dos problemas de medición distintos** y piden herramientas distintas: carga de trabajo determinista (el pipeline analizando archivos) vs. estados interactivos en vivo (la GUI en reposo, watcher, reproducción).
 
-Muestrea `%cpu` del proceso cada 2s y promedia. Uso:
+### Capa 1 — `tests/benchmark.py` (regresión determinista, periódico/CI)
+
+La herramienta **primaria** para detectar regresiones cada X días. Corre el pipeline sobre los archivos de `tests.json` de forma reproducible y **solo con stdlib** (`time`, `resource`, `tracemalloc`) — cero dependencias, encaja con el criterio de peso del bundle.
 
 ```bash
-python3 src/main.py            # en una terminal
-bash scripts/measure_cpu.sh    # en otra; o "bash scripts/measure_cpu.sh 60"
+python3 tests/benchmark.py                  # mide y compara contra baseline
+python3 tests/benchmark.py --update-baseline    # fija el run actual como referencia
+python3 tests/benchmark.py --save           # vuelca detalle por-archivo
 ```
 
-Autodetecta el PID por `pgrep -f "src/main.py"`.
+Mide en **dos pasadas separadas** (para no contaminar el tiempo con el overhead de tracemalloc):
 
-**Limitación crítica:** `ps %cpu` es un promedio decadente y **demasiado ruidoso para resolver diferencias de ~2%** a niveles bajos. Sirve para ver cambios grandes (29% → 4%), NO para validar microoptimizaciones de reposo.
+- **Pasada A** (tracemalloc OFF): `wall_s` (`perf_counter`), `cpu_s` (`getrusage` user+sys) y `rss_peak_mb` (`ru_maxrss`, marca de agua alta del RSS).
+- **Pasada B** (tracemalloc ON): `heap_peak_mb`, pico del heap de Python.
 
-### `powermetrics` (preciso, para deltas pequeños)
+Sale con **código 1 si alguna métrica supera su umbral** (tiempo/CPU +10%, RSS/heap +15%). Resultados:
+
+- `tests/benchmark_baseline.json` — referencia maestra, **commiteada** (como `tests.json`).
+- `tests/benchmark_history.jsonl` — una línea por run (fecha, git SHA, máquina, métricas), **commiteado**: serie temporal.
+- `tests/benchmark_results_*.json` — dump verboso por-archivo, **gitignored**.
+
+**Clave sobre comparar entre máquinas:** `wall_s`/`cpu_s`/`rss_peak_mb` dependen del hardware → solo válidos contra un baseline de la **misma** máquina (por eso cada run guarda el campo `machine` y avisa si no coincide). `heap_peak_mb` es **determinista e independiente del hardware** — se verificó empíricamente: dos runs consecutivos dieron 1246.6 MB clavado. Es la señal fiable en CI con hardware distinto.
+
+> ⚠️ Habría cazado al instante el STFT roto de `f91cb5e` (4× más lento, +2 GB): `wall_s` y `heap_peak_mb` se habrían disparado muy por encima del umbral.
+
+### Capa 2 — muestreo en vivo con `psutil` (estados GUI, manual) *(pendiente de montar)*
+
+El benchmark de Capa 1 no cubre los estados interactivos (reposo, tabla llena, analizando, watcher). Para esos hay que muestrear el proceso vivo: `psutil.Process()` con `cpu_percent()` y RSS cada 0.5 s durante N segundos → media + pico. Sustituye al antiguo `ps %cpu`, **demasiado ruidoso para resolver diferencias de ~2%** a niveles bajos (servía para cambios grandes 29%→4%, no para microoptimizaciones). `psutil` iría como dependencia **solo de dev**, no se empaqueta.
+
+### Capa 3 — perfilado de diagnóstico (puntual, cuando algo regresa)
+
+No periódico. Cuando Capa 1/2 disparan: **`memray`** para RAM (flamegraph del pico, headless) y **`py-spy`** para CPU (sampling, se engancha a la app viva sin tocar código). Ambas, dependencias de dev.
+
+### `powermetrics` (nicho: wakeups y energía/batería)
 
 Mide **wakeups** reales, que es lo que de verdad importa para el consumo en reposo en macOS:
 
@@ -65,6 +87,19 @@ Subir los intervalos de las 3 capas de drenaje de callbacks (poller 50→250ms, 
 | Pkg idle wakeups | ~0.8/s | ~1.2/s | igual (ambos bajísimos) |
 
 Beneficio real pero modesto, sin contrapartida en los wakeups caros. Se mantiene. La ruta primaria (pipe event-driven) sigue entregando callbacks al instante; solo cambia la latencia de la red de seguridad anti-freeze.
+
+## Verificación post-reemplazo de librosa (2026-06-05)
+
+Tras quitar librosa (commit `cee3da6`, bundle 202→87 MB) el usuario sospechó que el análisis consumía más recursos. Se midió con `powermetrics` (M-series, MacBook Air) en los cuatro estados y se comparó contra el baseline **con** librosa de 2026-06-01. Promedios de 5 muestras (`-i 1000 -n 5`):
+
+| Estado | CPU ms/s (≈% de core) | Intr Wakeups/s | Pkg idle/s | Baseline con librosa |
+|--------|----------------------|----------------|------------|----------------------|
+| Reposo | ~34 (≈3.4%) | ~53.6 | ~0.98 | ~3.3% / ~54 / ~0.8 → **idéntico** |
+| Tabla llena (300, en reposo) | ~34 (≈3.4%) | ~51.7 | ~0.98 | ≈ reposo → **la tabla no añade coste** |
+| Analizando 300 | ~3568 (≈357%, ~3.5 cores) | ~90–105 (pico 215) | 0.00 | ~330% (~3.3 cores) → **igual, dentro de ruido** |
+| Tabla llena + watcher | ~80 (≈8%) | ~54.7 | ~0.99–4.9 | ~4–10% (PollingObserver 3s) → **en rango** |
+
+**Conclusión:** el reemplazo de librosa **no introdujo regresión de consumo** en ninguno de los cuatro estados. El ~357% durante el análisis son los 4 workers paralelos haciendo trabajo real y transitorio (mismo perfil que con librosa), no una fuga. La lentitud que el usuario había percibido antes era el STFT roto de `f91cb5e` (4× más lento, +2 GB RAM), ya corregido en `cee3da6` — ver [log.md](../log.md) 2026-06-03. Reposo/tabla/watcher salen clavados porque el reemplazo no toca timers ni watcher. Se descartó volver a `218ce95`.
 
 ## Si en el futuro hay que bajar más el reposo
 
