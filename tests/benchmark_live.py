@@ -90,21 +90,45 @@ def find_app_pid():
     return pids
 
 
+def _proc_tree(proc):
+    """El proceso y sus hijos vivos. CRITICO desde que el analisis corre en
+    PROCESOS auxiliares (ProcessPoolExecutor): el trabajo pesado vive en hijos
+    con otro PID. Medir solo el coordinador haria que 'analizando' enganase
+    (marcaria RAM/CPU ridiculas mientras los workers consumen los GB reales)."""
+    procs = [proc]
+    try:
+        procs.extend(proc.children(recursive=True))
+    except psutil.NoSuchProcess:
+        pass
+    return procs
+
+
 def sample(pid, seconds, interval, state):
-    """Muestrea CPU% y RSS del proceso durante `seconds`. Devuelve dict de metricas."""
+    """Muestrea CPU% y RSS del ARBOL (app + workers) durante `seconds`."""
     proc = psutil.Process(pid)
     cores = os.cpu_count() or 1
 
-    print(f"{CYAN}{BOLD}Muestreando PID {pid} — estado '{state}' "
+    print(f"{CYAN}{BOLD}Muestreando PID {pid} (+ procesos hijos) — estado '{state}' "
           f"({seconds}s cada {interval}s)...{RESET}")
-    proc.cpu_percent(interval=None)  # primer cebado: la 1a lectura siempre es 0.0
+    for p in _proc_tree(proc):  # cebado: la 1a lectura de cpu_percent es 0.0
+        try:
+            p.cpu_percent(interval=None)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
 
     n = max(1, int(round(seconds / interval)))
     cpu_samples, rss_samples = [], []
     try:
         for i in range(n):
-            cpu = proc.cpu_percent(interval=interval)  # bloquea `interval` s
-            rss = proc.memory_info().rss / (1024 * 1024)
+            time.sleep(interval)
+            cpu, rss = 0.0, 0.0
+            for p in _proc_tree(proc):  # re-enumera: los workers van y vienen
+                try:
+                    cpu += p.cpu_percent(interval=None)
+                    rss += p.memory_info().rss
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+            rss /= (1024 * 1024)
             cpu_samples.append(cpu)
             rss_samples.append(rss)
             print(f"\r  [{i + 1}/{n}] cpu {cpu:6.1f}%   rss {rss:7.1f} MB   ",
