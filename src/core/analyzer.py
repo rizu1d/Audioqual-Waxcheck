@@ -2,7 +2,7 @@
 
 import os
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional
 
@@ -17,6 +17,14 @@ from ..utils.constants import (
     HOP_LENGTH,
 )
 from ..utils.file_utils import get_filename
+
+# Lotes con al menos este numero de archivos se analizan en PROCESOS auxiliares
+# (no hilos). Cada proceso libera su RAM pesada (~1.5 GB/archivo de STFT) al SO
+# al terminar, en vez de dejar esa "marca de agua" pegada en la app para siempre
+# (los hilos comparten el espacio de memoria del proceso principal). Por debajo
+# del umbral se usan hilos: arrancar un proceso reimporta numpy/scipy (~0.5 s) y
+# no compensa para 1-2 archivos sueltos (p.ej. el watcher o un drag pequeno).
+PROCESS_POOL_MIN_FILES = 4
 
 
 @dataclass
@@ -59,6 +67,88 @@ class BatchAnalysisState:
 ProgressCallback = Callable[[int, int, str, Optional[AnalysisResult]], None]
 
 
+def _analyze(filepath: str, sample_rate: int, n_fft: int, hop_length: int) -> AnalysisResult:
+    """Nucleo del analisis de un archivo. Devuelve un AnalysisResult CON el
+    `frequency_analysis` (el espectrograma pesado, ~100-200 MB).
+
+    Es una funcion a nivel de modulo -no un metodo- a proposito: asi puede
+    ejecutarse dentro de un proceso auxiliar (ProcessPoolExecutor), que exige
+    objetos serializables y no transfiere bien los metodos enlazados.
+    """
+    filename = get_filename(filepath)
+
+    try:
+        audio_data = load_audio(filepath, sample_rate)
+
+        frequency_analysis = analyze_frequency_cutoff(
+            audio_data.samples,
+            audio_data.sample_rate,
+            n_fft,
+            hop_length,
+        )
+
+        quality = assess_quality(frequency_analysis, audio_data.metadata)
+
+        return AnalysisResult(
+            filepath=filepath,
+            filename=filename,
+            format=audio_data.metadata.format,
+            duration=audio_data.metadata.duration,
+            declared_bitrate=audio_data.metadata.bitrate,
+            detected_quality=quality.detected_quality,
+            cutoff_frequency_khz=quality.cutoff_frequency_khz,
+            status=quality.status,
+            confidence=quality.confidence,
+            details=quality.details,
+            frequency_analysis=frequency_analysis,  # Passed for UI, cleared later
+            is_uncertain=quality.is_uncertain,
+            uncertainty_reason=quality.uncertainty_reason,
+            display_cutoff_override=quality.display_cutoff_override,
+        )
+
+    except Exception as e:
+        return AnalysisResult(
+            filepath=filepath,
+            filename=filename,
+            format="",
+            duration=0,
+            declared_bitrate=None,
+            detected_quality="unknown",
+            cutoff_frequency_khz=0,
+            status=STATUS_ERROR,
+            confidence=0,
+            details=str(e),
+            error=str(e),
+        )
+
+
+def _analyze_file_worker(
+    filepath: str, sample_rate: int, n_fft: int, hop_length: int
+) -> AnalysisResult:
+    """Ejecutado dentro de un PROCESO auxiliar.
+
+    Analiza el archivo y, antes de devolver, vuelca el espectrograma a la cache
+    de disco (~4 MB) ahi mismo. Luego suelta el espectrograma pesado y devuelve
+    un resultado LIGERO (solo texto y numeros). Asi los ~100-200 MB nacen y
+    mueren dentro del proceso auxiliar: cuando el pool lo cierra, el SO recupera
+    toda esa RAM en vez de dejarla retenida en la app principal.
+
+    Si el volcado a disco falla, no pasa nada critico: la app sabe recalcular el
+    espectrograma bajo demanda al seleccionar el archivo.
+    """
+    result = _analyze(filepath, sample_rate, n_fft, hop_length)
+
+    if result.frequency_analysis is not None:
+        try:
+            from ..utils.spectrogram_cache import save_to_cache
+            save_to_cache(filepath, result.frequency_analysis, result.cutoff_frequency_khz)
+        except Exception:
+            pass  # red de seguridad: recalculo bajo demanda en la UI
+        result.frequency_analysis = None
+
+    return result
+
+
 class AudioAnalyzer:
     """Main audio analysis engine."""
 
@@ -84,53 +174,9 @@ class AudioAnalyzer:
             filepath: Path to the audio file
 
         Returns:
-            AnalysisResult with complete analysis data
+            AnalysisResult with complete analysis data (incl. frequency_analysis)
         """
-        filename = get_filename(filepath)
-
-        try:
-            audio_data = load_audio(filepath, self.sample_rate)
-
-            frequency_analysis = analyze_frequency_cutoff(
-                audio_data.samples,
-                audio_data.sample_rate,
-                self.n_fft,
-                self.hop_length,
-            )
-
-            quality = assess_quality(frequency_analysis, audio_data.metadata)
-
-            return AnalysisResult(
-                filepath=filepath,
-                filename=filename,
-                format=audio_data.metadata.format,
-                duration=audio_data.metadata.duration,
-                declared_bitrate=audio_data.metadata.bitrate,
-                detected_quality=quality.detected_quality,
-                cutoff_frequency_khz=quality.cutoff_frequency_khz,
-                status=quality.status,
-                confidence=quality.confidence,
-                details=quality.details,
-                frequency_analysis=frequency_analysis,  # Passed for UI, cleared later
-                is_uncertain=quality.is_uncertain,
-                uncertainty_reason=quality.uncertainty_reason,
-                display_cutoff_override=quality.display_cutoff_override,
-            )
-
-        except Exception as e:
-            return AnalysisResult(
-                filepath=filepath,
-                filename=filename,
-                format="",
-                duration=0,
-                declared_bitrate=None,
-                detected_quality="unknown",
-                cutoff_frequency_khz=0,
-                status=STATUS_ERROR,
-                confidence=0,
-                details=str(e),
-                error=str(e),
-            )
+        return _analyze(filepath, self.sample_rate, self.n_fft, self.hop_length)
 
     def analyze_batch(
         self,
@@ -156,13 +202,33 @@ class AudioAnalyzer:
             self._state.results.clear()
 
         results = []
-        self._executor = ThreadPoolExecutor(max_workers=self.max_workers)
+
+        # Lotes grandes -> procesos auxiliares (liberan su RAM al SO al terminar,
+        # ver PROCESS_POOL_MIN_FILES). Lotes pequenos -> hilos (sin coste de
+        # arranque de proceso). Solo el modo procesos vuelca el espectrograma a
+        # disco dentro del worker; el modo hilos sigue devolviendolo en memoria
+        # para que la UI lo cachee como hasta ahora.
+        use_processes = len(filepaths) >= PROCESS_POOL_MIN_FILES
+
+        if use_processes:
+            self._executor = ProcessPoolExecutor(max_workers=self.max_workers)
+        else:
+            self._executor = ThreadPoolExecutor(max_workers=self.max_workers)
 
         try:
-            futures = {
-                self._executor.submit(self._analyze_with_state, fp): fp
-                for fp in filepaths
-            }
+            if use_processes:
+                futures = {
+                    self._executor.submit(
+                        _analyze_file_worker, fp,
+                        self.sample_rate, self.n_fft, self.hop_length,
+                    ): fp
+                    for fp in filepaths
+                }
+            else:
+                futures = {
+                    self._executor.submit(self._analyze_with_state, fp): fp
+                    for fp in filepaths
+                }
 
             for future in as_completed(futures):
                 if self._state.is_cancelled:
