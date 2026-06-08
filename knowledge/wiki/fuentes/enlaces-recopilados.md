@@ -1,7 +1,7 @@
 ---
 title: Enlaces y recursos recopilados
 created: 2026-04-27
-updated: 2026-04-27
+updated: 2026-06-05
 sources: [Artículos.rtf]
 tags: [tfg, herramientas]
 ---
@@ -27,6 +27,18 @@ Fuentes externas recopiladas desde el material del TFG (`Artículos.rtf`).
 - **Reddit: How to determine the true quality of an audio file**
   [r/skrillex thread](https://www.reddit.com/r/skrillex/comments/3l0yxp/how_to_determine_the_true_quality_of_an_audio_file/)
   Discusión comunitaria sobre detección manual de calidad usando Spek. Muestra el problema que AudioQual automatiza.
+
+## Dither y suelo de ruido (cuantización)
+
+Fuentes que respaldan el criterio de [suelo de ruido hasta Nyquist](../algoritmo/suelo-ruido-nyquist.md) (id `tonmeister-high-res-noise`).
+
+- **High-Res Audio: Part 6 — Noise, noise, noise** (Geoff Martin / Tonmeister, 2021)
+  [tonmeister.ca](https://www.tonmeister.ca/wordpress/2021/06/24/high-res-audio-part-6-noise-noise-noise/)
+  Explica por qué un PCM correctamente *dithered* conserva un suelo de ruido de banda ancha hasta Nyquist (dither TPDF, ~−93 dBFS a 16 bits, noise shaping). Base física del tell lossless vs. lossy en agudos.
+
+- **What is dither, and how does it work?** (SoundGuys)
+  [soundguys.com](https://www.soundguys.com/what-is-dither-23700/)
+  Introducción accesible al dither y la distorsión de cuantización. Complemento divulgativo a la fuente de Tonmeister para el marco teórico del TFG.
 
 ## Estándares
 
