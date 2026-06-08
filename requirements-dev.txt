@@ -1,8 +1,9 @@
 # Dependencias solo de desarrollo (NO se empaquetan en el bundle).
 # Instalar con:  pip install -r requirements-dev.txt
 
-# Capa 2 del benchmarking: muestreo en vivo de la app (tests/benchmark_live.py).
-psutil>=5.9.0
+# Nota: psutil paso a requirements.txt (produccion) — el analizador lo usa para
+# medir la RAM disponible y adaptar el paralelismo. La Capa 2 del benchmarking
+# (tests/benchmark_live.py) lo reaprovecha; ya no hace falta declararlo aqui.
 
 # Capa 3 (perfilado puntual, opcional — descomenta cuando lo necesites):
 #   memray   — perfilado de RAM con flamegraph del pico (headless)

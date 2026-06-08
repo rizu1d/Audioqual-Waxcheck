@@ -27,21 +27,19 @@ from ..utils.file_utils import get_filename
 # no compensa para 1-2 archivos sueltos (p.ej. el watcher o un drag pequeno).
 PROCESS_POOL_MIN_FILES = 4
 
-# Cada auxiliar muere y renace tras procesar este numero de archivos
-# (maxtasksperchild). Sin esto, un auxiliar que procesa muchos archivos seguidos
-# arrastra la marca de agua del allocator de cada uno y se infla a varios GB
-# (medido: ~4 GB tras 34 archivos). Reciclando, cada auxiliar vuelve a su coste
-# real por archivo (~1.5 GB). El reciclado cuesta re-arrancar el proceso
-# (~0.5 s), asi que reciclar cada 1 minimiza el pico a cambio de algo de tiempo.
-WORKER_RECYCLE_EVERY = 1
-
-# Cuantos auxiliares pueden correr A LA VEZ se limita por RAM ademas de por
-# nucleos: cada uno usa ~1.5 GB de pico de STFT, asi que en equipos modestos
-# reducimos el paralelismo para no ahogar la maquina durante el analisis.
-# Reservamos RAM para el SO + la app y damos un margen generoso por worker
-# (el pico real ~1.5 GB + overhead del proceso). Da: 4 GB->1, 8 GB->2, 16 GB->4.
-RAM_RESERVED_GB = 3.0
-RAM_PER_WORKER_GB = 2.5
+# El paralelismo (cuantos auxiliares) y el reciclado (cada cuantos archivos muere
+# y renace cada auxiliar, via maxtasksperchild) se deciden por la RAM DISPONIBLE
+# en cada analisis (no la total: el publico objetivo suele tener la DAW abierta
+# comiendo varios GB). Dos motivos para reciclar: un auxiliar de vida larga
+# arrastra la marca de agua del allocator de cada archivo y se infla a varios GB
+# (medido: ~4 GB tras 34 archivos); reciclando vuelve a su coste real (~1.5 GB).
+# Con holgura -> mas workers + reciclado relajado (rapido). Justo -> menos workers
+# + reciclado por archivo (pico minimo, mas lento, pero no ahoga el equipo).
+RAM_RESERVED_GB = 1.5             # margen para el SO y la propia app
+RAM_PER_WORKER_GB = 1.8           # pico de un auxiliar RECICLADO, por worker
+RAM_GLUTTON_PER_WORKER_GB = 2.0   # pico de un auxiliar con reciclado relajado
+RECYCLE_AGGRESSIVE = 1            # reciclar cada archivo: pico minimo, mas lento
+RECYCLE_RELAXED = 6              # reciclar cada 6: techo de RAM, casi sin coste
 
 
 def _total_ram_gb():
@@ -77,15 +75,36 @@ def _total_ram_gb():
         return None
 
 
-def _default_max_workers():
-    """Numero de auxiliares simultaneos: el menor entre lo que permiten los
-    nucleos y lo que permite la RAM. Si la RAM es desconocida, conservador."""
-    by_cpu = min(4, os.cpu_count() or 2)
-    ram_gb = _total_ram_gb()
-    if ram_gb is None:
-        return min(2, by_cpu)
-    by_ram = int((ram_gb - RAM_RESERVED_GB) / RAM_PER_WORKER_GB)
-    return max(1, min(by_cpu, by_ram))
+def _available_ram_gb():
+    """RAM DISPONIBLE ahora mismo en GB (no la total). psutil la calcula bien en
+    los 3 SO; en macOS la 'libre' cruda engana (el SO usa RAM como cache y la
+    comprime), por eso no basta sysconf. Fallback a la total si psutil fallara."""
+    try:
+        import psutil
+        return psutil.virtual_memory().available / (1024 ** 3)
+    except Exception:
+        return _total_ram_gb()
+
+
+def _plan_parallelism():
+    """Decide (max_workers, recycle_every) segun la RAM disponible AHORA.
+
+    workers: cuantos auxiliares en paralelo, limitado por nucleos y por la RAM
+    disponible (cada uno necesita ~RAM_PER_WORKER_GB de holgura).
+    recycle: si el presupuesto cubre el pico gloton de esos workers, se recicla
+    relajado (rapido); si va justo, se recicla cada archivo (pico minimo).
+    """
+    cpu = min(4, os.cpu_count() or 2)
+    avail = _available_ram_gb()
+    if avail is None:
+        return min(2, cpu), RECYCLE_AGGRESSIVE  # RAM desconocida: conservador
+    budget = avail - RAM_RESERVED_GB
+    workers = max(1, min(cpu, int(budget / RAM_PER_WORKER_GB)))
+    if budget >= workers * RAM_GLUTTON_PER_WORKER_GB:
+        recycle = RECYCLE_RELAXED
+    else:
+        recycle = RECYCLE_AGGRESSIVE
+    return workers, recycle
 
 
 @dataclass
@@ -224,14 +243,15 @@ class AudioAnalyzer:
         n_fft: int = FFT_SIZE,
         hop_length: int = HOP_LENGTH,
         max_workers: Optional[int] = None,
+        recycle_every: Optional[int] = None,
     ):
         self.sample_rate = sample_rate
         self.n_fft = n_fft
         self.hop_length = hop_length
-        # None -> se decide por RAM + nucleos (ver _default_max_workers). Limitar
-        # por RAM evita que en equipos modestos N analisis en paralelo (~1.5 GB
-        # cada uno) ahoguen la maquina durante el analisis.
-        self.max_workers = max_workers if max_workers is not None else _default_max_workers()
+        # None en ambos -> se deciden por la RAM disponible al lanzar cada lote
+        # (ver _plan_parallelism). Pasarlos explicitos los fija (util en tests).
+        self.max_workers = max_workers
+        self.recycle_every = recycle_every
         self._state = BatchAnalysisState()
         self._executor: Optional[ThreadPoolExecutor] = None  # modo hilos (lotes pequenos)
         self._pool = None  # modo procesos (lotes grandes), multiprocessing.Pool
@@ -271,24 +291,36 @@ class AudioAnalyzer:
             self._state.is_cancelled = False
             self._state.results.clear()
 
+        # Decide workers y reciclado por la RAM disponible AHORA (cambia entre
+        # analisis: el usuario pudo abrir/cerrar la DAW desde el ultimo lote).
+        workers, recycle = self._resolve_plan()
+
         # Lotes grandes -> procesos auxiliares (liberan su RAM al SO al terminar);
         # lotes pequenos -> hilos (sin coste de arranque de proceso).
         try:
             if len(filepaths) >= PROCESS_POOL_MIN_FILES:
-                results = self._run_with_processes(filepaths, progress_callback)
+                results = self._run_with_processes(filepaths, progress_callback, workers, recycle)
             else:
-                results = self._run_with_threads(filepaths, progress_callback)
+                results = self._run_with_threads(filepaths, progress_callback, workers)
         finally:
             with self._state.lock:
                 self._state.is_running = False
 
         return results
 
-    def _run_with_threads(self, filepaths, progress_callback):
+    def _resolve_plan(self):
+        """(workers, recycle_every) para este lote. Si no se fijaron en el
+        constructor, se deciden por la RAM disponible en este momento."""
+        auto_workers, auto_recycle = _plan_parallelism()
+        workers = self.max_workers if self.max_workers is not None else auto_workers
+        recycle = self.recycle_every if self.recycle_every is not None else auto_recycle
+        return workers, recycle
+
+    def _run_with_threads(self, filepaths, progress_callback, workers):
         """Modo hilos (lotes pequenos). El resultado conserva el espectrograma en
         memoria y la UI lo cachea, como hasta ahora."""
         results = []
-        self._executor = ThreadPoolExecutor(max_workers=self.max_workers)
+        self._executor = ThreadPoolExecutor(max_workers=workers)
         try:
             futures = {
                 self._executor.submit(self._analyze_with_state, fp): fp
@@ -320,14 +352,14 @@ class AudioAnalyzer:
             self._executor = None
         return results
 
-    def _run_with_processes(self, filepaths, progress_callback):
+    def _run_with_processes(self, filepaths, progress_callback, workers, recycle):
         """Modo procesos (lotes grandes). Cada worker vuelca el espectrograma a
         disco y devuelve un resultado ligero (sin el array pesado).
 
-        maxtasksperchild=WORKER_RECYCLE_EVERY recicla cada worker para que suelte
+        maxtasksperchild=recycle hace que cada worker muera y renazca, soltando
         la marca de agua del allocator; si no, un worker que procesa muchos
         archivos se infla a varios GB. El reposo lo libera todo al cerrar el pool;
-        el pico queda acotado a ~max_workers x el coste de un archivo (~1.5 GB).
+        el pico queda acotado a ~workers x el coste de un archivo (~1.5 GB).
         """
         results = []
         args = [
@@ -335,8 +367,8 @@ class AudioAnalyzer:
             for fp in filepaths
         ]
         self._pool = multiprocessing.Pool(
-            processes=self.max_workers,
-            maxtasksperchild=WORKER_RECYCLE_EVERY,
+            processes=workers,
+            maxtasksperchild=recycle,
         )
         try:
             for result in self._pool.imap_unordered(_analyze_worker_star, args):
