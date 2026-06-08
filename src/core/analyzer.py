@@ -1,8 +1,9 @@
 """Batch audio analysis engine with threading support."""
 
+import multiprocessing
 import os
 import threading
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional
 
@@ -25,6 +26,66 @@ from ..utils.file_utils import get_filename
 # del umbral se usan hilos: arrancar un proceso reimporta numpy/scipy (~0.5 s) y
 # no compensa para 1-2 archivos sueltos (p.ej. el watcher o un drag pequeno).
 PROCESS_POOL_MIN_FILES = 4
+
+# Cada auxiliar muere y renace tras procesar este numero de archivos
+# (maxtasksperchild). Sin esto, un auxiliar que procesa muchos archivos seguidos
+# arrastra la marca de agua del allocator de cada uno y se infla a varios GB
+# (medido: ~4 GB tras 34 archivos). Reciclando, cada auxiliar vuelve a su coste
+# real por archivo (~1.5 GB). El reciclado cuesta re-arrancar el proceso
+# (~0.5 s), asi que reciclar cada 1 minimiza el pico a cambio de algo de tiempo.
+WORKER_RECYCLE_EVERY = 1
+
+# Cuantos auxiliares pueden correr A LA VEZ se limita por RAM ademas de por
+# nucleos: cada uno usa ~1.5 GB de pico de STFT, asi que en equipos modestos
+# reducimos el paralelismo para no ahogar la maquina durante el analisis.
+# Reservamos RAM para el SO + la app y damos un margen generoso por worker
+# (el pico real ~1.5 GB + overhead del proceso). Da: 4 GB->1, 8 GB->2, 16 GB->4.
+RAM_RESERVED_GB = 3.0
+RAM_PER_WORKER_GB = 2.5
+
+
+def _total_ram_gb():
+    """RAM fisica total en GB, sin psutil (es solo dependencia de dev, no se
+    empaqueta). Multiplataforma. Devuelve None si no se puede determinar."""
+    try:
+        # POSIX (macOS, Linux)
+        return os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE") / (1024 ** 3)
+    except (ValueError, AttributeError, OSError):
+        pass
+    try:
+        # Windows
+        import ctypes
+
+        class _MemStatus(ctypes.Structure):
+            _fields_ = [
+                ("dwLength", ctypes.c_ulong),
+                ("dwMemoryLoad", ctypes.c_ulong),
+                ("ullTotalPhys", ctypes.c_ulonglong),
+                ("ullAvailPhys", ctypes.c_ulonglong),
+                ("ullTotalPageFile", ctypes.c_ulonglong),
+                ("ullAvailPageFile", ctypes.c_ulonglong),
+                ("ullTotalVirtual", ctypes.c_ulonglong),
+                ("ullAvailVirtual", ctypes.c_ulonglong),
+                ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+            ]
+
+        stat = _MemStatus()
+        stat.dwLength = ctypes.sizeof(_MemStatus)
+        ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))
+        return stat.ullTotalPhys / (1024 ** 3)
+    except Exception:
+        return None
+
+
+def _default_max_workers():
+    """Numero de auxiliares simultaneos: el menor entre lo que permiten los
+    nucleos y lo que permite la RAM. Si la RAM es desconocida, conservador."""
+    by_cpu = min(4, os.cpu_count() or 2)
+    ram_gb = _total_ram_gb()
+    if ram_gb is None:
+        return min(2, by_cpu)
+    by_ram = int((ram_gb - RAM_RESERVED_GB) / RAM_PER_WORKER_GB)
+    return max(1, min(by_cpu, by_ram))
 
 
 @dataclass
@@ -149,6 +210,11 @@ def _analyze_file_worker(
     return result
 
 
+def _analyze_worker_star(args):
+    """Adaptador para Pool.imap_unordered, que pasa un solo argumento."""
+    return _analyze_file_worker(*args)
+
+
 class AudioAnalyzer:
     """Main audio analysis engine."""
 
@@ -157,14 +223,18 @@ class AudioAnalyzer:
         sample_rate: int = SAMPLE_RATE,
         n_fft: int = FFT_SIZE,
         hop_length: int = HOP_LENGTH,
-        max_workers: int = min(4, os.cpu_count() or 2),
+        max_workers: Optional[int] = None,
     ):
         self.sample_rate = sample_rate
         self.n_fft = n_fft
         self.hop_length = hop_length
-        self.max_workers = max_workers
+        # None -> se decide por RAM + nucleos (ver _default_max_workers). Limitar
+        # por RAM evita que en equipos modestos N analisis en paralelo (~1.5 GB
+        # cada uno) ahoguen la maquina durante el analisis.
+        self.max_workers = max_workers if max_workers is not None else _default_max_workers()
         self._state = BatchAnalysisState()
-        self._executor: Optional[ThreadPoolExecutor] = None
+        self._executor: Optional[ThreadPoolExecutor] = None  # modo hilos (lotes pequenos)
+        self._pool = None  # modo procesos (lotes grandes), multiprocessing.Pool
 
     def analyze_file(self, filepath: str) -> AnalysisResult:
         """
@@ -201,39 +271,32 @@ class AudioAnalyzer:
             self._state.is_cancelled = False
             self._state.results.clear()
 
-        results = []
-
-        # Lotes grandes -> procesos auxiliares (liberan su RAM al SO al terminar,
-        # ver PROCESS_POOL_MIN_FILES). Lotes pequenos -> hilos (sin coste de
-        # arranque de proceso). Solo el modo procesos vuelca el espectrograma a
-        # disco dentro del worker; el modo hilos sigue devolviendolo en memoria
-        # para que la UI lo cachee como hasta ahora.
-        use_processes = len(filepaths) >= PROCESS_POOL_MIN_FILES
-
-        if use_processes:
-            self._executor = ProcessPoolExecutor(max_workers=self.max_workers)
-        else:
-            self._executor = ThreadPoolExecutor(max_workers=self.max_workers)
-
+        # Lotes grandes -> procesos auxiliares (liberan su RAM al SO al terminar);
+        # lotes pequenos -> hilos (sin coste de arranque de proceso).
         try:
-            if use_processes:
-                futures = {
-                    self._executor.submit(
-                        _analyze_file_worker, fp,
-                        self.sample_rate, self.n_fft, self.hop_length,
-                    ): fp
-                    for fp in filepaths
-                }
+            if len(filepaths) >= PROCESS_POOL_MIN_FILES:
+                results = self._run_with_processes(filepaths, progress_callback)
             else:
-                futures = {
-                    self._executor.submit(self._analyze_with_state, fp): fp
-                    for fp in filepaths
-                }
+                results = self._run_with_threads(filepaths, progress_callback)
+        finally:
+            with self._state.lock:
+                self._state.is_running = False
 
+        return results
+
+    def _run_with_threads(self, filepaths, progress_callback):
+        """Modo hilos (lotes pequenos). El resultado conserva el espectrograma en
+        memoria y la UI lo cachea, como hasta ahora."""
+        results = []
+        self._executor = ThreadPoolExecutor(max_workers=self.max_workers)
+        try:
+            futures = {
+                self._executor.submit(self._analyze_with_state, fp): fp
+                for fp in filepaths
+            }
             for future in as_completed(futures):
                 if self._state.is_cancelled:
                     break
-
                 filepath = futures[future]
                 try:
                     result = future.result()
@@ -251,52 +314,76 @@ class AudioAnalyzer:
                         details=str(e),
                         error=str(e),
                     )
-
-                # Capture values inside lock to avoid race condition
-                with self._state.lock:
-                    self._state.completed_files += 1
-                    completed = self._state.completed_files
-                    total = self._state.total_files
-                    # Store result WITHOUT frequency_analysis to save memory
-                    # Create a lightweight copy for storage
-                    stored_result = AnalysisResult(
-                        filepath=result.filepath,
-                        filename=result.filename,
-                        format=result.format,
-                        duration=result.duration,
-                        declared_bitrate=result.declared_bitrate,
-                        detected_quality=result.detected_quality,
-                        cutoff_frequency_khz=result.cutoff_frequency_khz,
-                        status=result.status,
-                        confidence=result.confidence,
-                        details=result.details,
-                        error=result.error,
-                        frequency_analysis=None,  # Don't store heavy spectrogram data
-                        is_uncertain=result.is_uncertain,
-                        uncertainty_reason=result.uncertainty_reason,
-                        display_cutoff_override=result.display_cutoff_override,
-                    )
-                    self._state.results[filepath] = stored_result
-
-                # Use lightweight copy (no spectrogram) for results list
-                results.append(stored_result)
-
-                if progress_callback:
-                    # Pass full result with frequency_analysis for UI display
-                    progress_callback(
-                        completed,
-                        total,
-                        result.filename,
-                        result,
-                    )
-
+                self._store_and_report(result, results, progress_callback)
         finally:
             self._executor.shutdown(wait=True)
             self._executor = None
-            with self._state.lock:
-                self._state.is_running = False
-
         return results
+
+    def _run_with_processes(self, filepaths, progress_callback):
+        """Modo procesos (lotes grandes). Cada worker vuelca el espectrograma a
+        disco y devuelve un resultado ligero (sin el array pesado).
+
+        maxtasksperchild=WORKER_RECYCLE_EVERY recicla cada worker para que suelte
+        la marca de agua del allocator; si no, un worker que procesa muchos
+        archivos se infla a varios GB. El reposo lo libera todo al cerrar el pool;
+        el pico queda acotado a ~max_workers x el coste de un archivo (~1.5 GB).
+        """
+        results = []
+        args = [
+            (fp, self.sample_rate, self.n_fft, self.hop_length)
+            for fp in filepaths
+        ]
+        self._pool = multiprocessing.Pool(
+            processes=self.max_workers,
+            maxtasksperchild=WORKER_RECYCLE_EVERY,
+        )
+        try:
+            for result in self._pool.imap_unordered(_analyze_worker_star, args):
+                if self._state.is_cancelled:
+                    break
+                self._store_and_report(result, results, progress_callback)
+        finally:
+            pool = self._pool
+            self._pool = None
+            if pool is not None:
+                pool.terminate()  # mata workers (idempotente si cancel() ya lo hizo)
+                pool.join()
+        return results
+
+    def _store_and_report(self, result, results, progress_callback):
+        """Guarda una copia ligera (sin espectrograma) en el estado y en la lista
+        de resultados, y dispara el callback con el resultado completo. Compartido
+        por los modos hilos y procesos."""
+        with self._state.lock:
+            self._state.completed_files += 1
+            completed = self._state.completed_files
+            total = self._state.total_files
+            stored_result = AnalysisResult(
+                filepath=result.filepath,
+                filename=result.filename,
+                format=result.format,
+                duration=result.duration,
+                declared_bitrate=result.declared_bitrate,
+                detected_quality=result.detected_quality,
+                cutoff_frequency_khz=result.cutoff_frequency_khz,
+                status=result.status,
+                confidence=result.confidence,
+                details=result.details,
+                error=result.error,
+                frequency_analysis=None,  # no guardar el espectrograma pesado
+                is_uncertain=result.is_uncertain,
+                uncertainty_reason=result.uncertainty_reason,
+                display_cutoff_override=result.display_cutoff_override,
+            )
+            self._state.results[result.filepath] = stored_result
+
+        results.append(stored_result)
+
+        if progress_callback:
+            # El resultado completo lleva frequency_analysis solo en modo hilos;
+            # en modo procesos ya viene None (volcado a disco por el worker).
+            progress_callback(completed, total, result.filename, result)
 
     def _analyze_with_state(self, filepath: str) -> AnalysisResult:
         """Analyze a file while updating state."""
@@ -312,6 +399,9 @@ class AudioAnalyzer:
 
         if self._executor:
             self._executor.shutdown(wait=False, cancel_futures=True)
+        pool = self._pool
+        if pool is not None:
+            pool.terminate()  # interrumpe imap_unordered en marcha
 
     def get_state(self) -> BatchAnalysisState:
         """Get the current state of batch analysis."""
