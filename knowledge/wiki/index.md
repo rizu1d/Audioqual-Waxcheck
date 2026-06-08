@@ -44,6 +44,7 @@ updated: 2026-06-03
 - [Drag-out de archivos](decisiones/drag-out-archivos.md) — Arrastrar resultados a Finder; mueve vs copia (⌥), colapso diferido
 - [Now Playing / Media Session (aplazada)](decisiones/now-playing-media-session.md) — Integración con el SO (Centro de Control / SMTC / MPRIS); diseñada pero aparcada por coste en peso
 - [Limpieza de código muerto y peso](decisiones/limpieza-codigo-muerto-y-peso.md) — ~1030 líneas muertas fuera; matplotlib y cairosvg eliminados; bundle 211 MB y el llvmlite (52%) como próximo objetivo
+- [Análisis en procesos auxiliares + RAM adaptativa](decisiones/procesos-auxiliares-ram.md) — multiprocessing.Pool libera la RAM al SO (reposo 1945→215 MB); workers y reciclado según la RAM disponible (psutil); pico acotado a ~5-6 GB
 
 ## Cronología
 
