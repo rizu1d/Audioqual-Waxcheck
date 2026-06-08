@@ -62,6 +62,13 @@ STATES = {
                "Mide el coste del sondeo en reposo.",
 }
 
+# Estados que DEBERIAN volver cerca de la linea base de 'reposo' una vez acaba el
+# trabajo. Si su RSS en idle supera IDLE_RSS_WARN_FACTOR x el de reposo, la RAM
+# no se devolvio tras analizar: posible retencion o marca de agua del allocator.
+# 'analizando' NO entra aqui (su RSS alto es esperado: varios archivos en vuelo).
+IDLE_STATES = {"tabla-llena", "watcher"}
+IDLE_RSS_WARN_FACTOR = 2.0
+
 
 def find_app_pid():
     """PIDs del interprete Python que ejecuta src/main.py. Devuelve lista (idealmente 1).
@@ -134,7 +141,28 @@ def previous_run(state, machine):
     return last
 
 
-def report(metrics, state, prev):
+def check_idle_rss(metrics, state, idle_baseline):
+    """Avisa si un estado idle no devolvio la RAM cerca de la linea base de reposo.
+
+    Devuelve True si dispara el aviso. El sentido entero de la Capa 2 es que el
+    instrumento grite solo: no depende de que un humano lea bien la cifra.
+    """
+    if state not in IDLE_STATES or not idle_baseline:
+        return False
+    rest = idle_baseline["metrics"].get("rss_mean_mb")
+    cur = metrics["rss_mean_mb"]
+    if not rest or cur <= IDLE_RSS_WARN_FACTOR * rest:
+        return False
+    print(f"\n{RED}{BOLD}⚠ AVISO RAM: RSS en idle {cur:.0f} MB > "
+          f"{IDLE_RSS_WARN_FACTOR:g}x reposo ({rest:.0f} MB).{RESET}")
+    print(f"  {YELLOW}La RAM no volvio a la linea base tras el trabajo "
+          f"(x{cur / rest:.1f}). Posible retencion o marca de agua del allocator.\n"
+          f"  Corre dos tandas seguidas para distinguir fuga real "
+          f"(sube cada vez) de high-water-mark (se estanca).{RESET}")
+    return True
+
+
+def report(metrics, state, prev, idle_baseline=None):
     print(f"\n{BOLD}{'=' * 56}{RESET}")
     print(f"{BOLD}EN VIVO{RESET}  estado '{state}'  ({metrics['cores']} cores)")
     print(f"{'=' * 56}")
@@ -145,6 +173,8 @@ def report(metrics, state, prev):
     if metrics["cpu_peak_pct"] > 100:
         print(f"  {DIM}(CPU% > 100% es normal: usa varios cores, "
               f"100% = 1 core){RESET}")
+
+    check_idle_rss(metrics, state, idle_baseline)
 
     if prev:
         pm = prev["metrics"]
@@ -192,7 +222,8 @@ def main():
     machine = machine_tag()
     metrics = sample(pid, args.seconds, args.interval, args.state)
     prev = previous_run(args.state, machine)
-    report(metrics, args.state, prev)
+    idle_baseline = previous_run("reposo", machine)  # referencia para el aviso de RAM idle
+    report(metrics, args.state, prev, idle_baseline)
 
     if not args.no_history:
         rec = {
