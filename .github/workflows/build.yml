@@ -115,7 +115,7 @@ jobs:
           cp build/linux/AppRun "$APPDIR/AppRun"
           chmod +x "$APPDIR/AppRun"
           cp build/linux/AudioQual.desktop "$APPDIR/AudioQual.desktop"
-          cp src/assets/logo-WaxCheck.png "$APPDIR/audioqual.png"
+          cp src/assets/logo-waxcheckV2.png "$APPDIR/audioqual.png"
 
       - name: Build AppImage
         run: |

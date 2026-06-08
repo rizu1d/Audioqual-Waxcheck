@@ -135,8 +135,8 @@ exe = EXE(
     name='AudioQual',
     debug=False,
     bootloader_ignore_signals=False,
-    strip=True,
-    upx=True,
+    strip=False,  # UPX/strip corrompen python3xx.dll en Windows -> "Failed to load Python DLL"
+    upx=False,
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -151,8 +151,8 @@ coll = COLLECT(
     a.binaries,
     a.zipfiles,
     a.datas,
-    strip=True,
-    upx=True,
+    strip=False,  # idem: no comprimir/strippear las DLLs nativas en Windows
+    upx=False,
     upx_exclude=[],
     name='AudioQual',
 )
