@@ -35,11 +35,15 @@ PROCESS_POOL_MIN_FILES = 4
 # (medido: ~4 GB tras 34 archivos); reciclando vuelve a su coste real (~1.5 GB).
 # Con holgura -> mas workers + reciclado relajado (rapido). Justo -> menos workers
 # + reciclado por archivo (pico minimo, mas lento, pero no ahoga el equipo).
-RAM_RESERVED_GB = 1.5             # margen para el SO y la propia app
+RAM_RESERVED_GB = 2.0             # margen para el SO y la propia app
 RAM_PER_WORKER_GB = 1.8           # pico de un auxiliar RECICLADO, por worker
 RAM_GLUTTON_PER_WORKER_GB = 2.0   # pico de un auxiliar con reciclado relajado
 RECYCLE_AGGRESSIVE = 1            # reciclar cada archivo: pico minimo, mas lento
-RECYCLE_RELAXED = 6              # reciclar cada 6: techo de RAM, casi sin coste
+RECYCLE_RELAXED = 3              # reciclar cada 3: acota el pico, casi sin coste
+# Tope de auxiliares en paralelo. 3 y no 4 a proposito: con 4 el pico se dispara
+# (~8 GB), con 3 queda en ~5-6 GB, que es un techo mas razonable para un equipo
+# de escritorio. Cuesta algo de velocidad en maquinas muy potentes.
+MAX_WORKERS_CAP = 3
 
 
 def _total_ram_gb():
@@ -94,7 +98,7 @@ def _plan_parallelism():
     recycle: si el presupuesto cubre el pico gloton de esos workers, se recicla
     relajado (rapido); si va justo, se recicla cada archivo (pico minimo).
     """
-    cpu = min(4, os.cpu_count() or 2)
+    cpu = min(MAX_WORKERS_CAP, os.cpu_count() or 2)
     avail = _available_ram_gb()
     if avail is None:
         return min(2, cpu), RECYCLE_AGGRESSIVE  # RAM desconocida: conservador
